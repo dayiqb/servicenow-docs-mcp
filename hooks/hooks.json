@@ -1,0 +1,24 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv",
+            "args": [
+              "run",
+              "--frozen",
+              "--quiet",
+              "--directory",
+              "${CLAUDE_PLUGIN_ROOT}",
+              "python",
+              "hooks/servicenow_prompt.py"
+            ],
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}

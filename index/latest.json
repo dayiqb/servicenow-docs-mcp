@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "indexes": {
+    "australia": {
+      "snapshot": "2026-05-15",
+      "corpus_commit": "0ba98cdaf706821d72ff79e92b18adc057e60e29",
+      "url": "https://github.com/dayiqb/servicenow-docs-mcp/releases/download/index-australia-2026-05-15/servicenow-docs-index-australia-2026-05-15-04e38491fd4b.db.gz",
+      "gz_sha256": "04e38491fd4be3d1ee8d05766e330d498f12bc252ff27afa47cc016c61e80774",
+      "gz_bytes": 545850628,
+      "db_sha256": "0a310a2f54e8b47bb5e8297e77a53887185632431171a37325da7e61c4134386",
+      "db_bytes": 1348288512,
+      "chunks": 253589,
+      "context_lines": 253589,
+      "min_server_version": "0.1.0"
+    }
+  }
+}

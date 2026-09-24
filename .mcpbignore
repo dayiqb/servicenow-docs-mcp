@@ -1,0 +1,17 @@
+.venv/
+.venv
+**/__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+tests/
+scripts/
+dist/
+.gitignore
+.mcpbignore
+.DS_Store
+.claude-plugin/
+skills/
+.github/
+index/
+hooks/

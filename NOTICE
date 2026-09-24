@@ -1,0 +1,21 @@
+ServiceNow Docs for Claude
+Copyright (c) 2026 Dayan Iqbal (code, MIT License)
+
+The downloadable docs indexes published with this project's releases contain content derived
+from ServiceNow product documentation:
+
+    ServiceNowDocs — https://github.com/ServiceNow/ServiceNowDocs
+    Copyright 2026 ServiceNow, Inc.
+    Licensed under the Apache License, Version 2.0
+    (https://www.apache.org/licenses/LICENSE-2.0)
+
+Each index records its source branch (release) and commit in its `meta` table and in
+index/latest.json.
+
+Modifications: the documentation is split into sections, and each section is stored with a
+short machine-generated context sentence (written by an open-weight Qwen model; the model is
+recorded per index), search embeddings (BAAI/bge-small-en-v1.5) and a keyword index. The page
+text itself is unchanged. This project is not affiliated with or endorsed by ServiceNow, Inc.
+
+The search models (BAAI/bge-small-en-v1.5, BAAI/bge-reranker-base; MIT License) are downloaded
+from Hugging Face at first run and are not redistributed here.

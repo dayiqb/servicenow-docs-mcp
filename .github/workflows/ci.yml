@@ -1,0 +1,39 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-14, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --frozen
+      - run: uv run --frozen ruff check .
+      - run: uv run --frozen pytest -q
+
+  e2e:
+    # The real thing, as a teammate gets it: download the published index and models,
+    # then search and read over stdio. Runs on demand and for version tags.
+    name: real install + search (${{ matrix.os }})
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-14]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --frozen
+      - run: uv run --frozen snow-docs-mcp setup
+      - run: uv run --frozen python scripts/smoke_e2e.py

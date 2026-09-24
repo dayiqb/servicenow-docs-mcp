@@ -1,0 +1,80 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "servicenow-docs-mcp"
+version = "0.1.0"
+description = "Search the ServiceNow product docs from Claude: contextual-retrieval hybrid search, cited answers."
+# The <3.14 ceiling is load-bearing, not cosmetic: with a bare ">=3.11" uv resolved and ran
+# against CPython 3.14.5 in every scratch project (RESEARCH Pitfall 6). With the ceiling it
+# selects 3.11.x, which is the interpreter this server is developed and tested against.
+requires-python = ">=3.11,<3.14"
+dependencies = [
+    # >=2.0 because the 2.x line is where MCPServer, structured output and ToolAnnotations
+    # live; the old mcp.server.fastmcp import path is GONE in 2.x. <3 because a future major
+    # would move the API again. The root project stays on mcp>=1.8,<2 in its own venv — the
+    # two SDK majors must never share a process.
+    "mcp>=2.0,<3",
+    # ==0.8.0 is deliberate: it is the exact fastembed the measured spike ran, so query
+    # embeddings (and therefore rankings) match the +.0811 nDCG@10 result bit for bit.
+    # Bumping it is a re-measurement decision, not a routine upgrade.
+    "fastembed==0.8.0",
+    # ==1.25.1 for the same reason, and it is not hypothetical: under 1.30.0 the query
+    # embedding drifts by ~1e-5, enough to change which candidates reach the rerank pool
+    # (parity check: 1 of 67 gold queries got a different top-10). Under 1.25.1 all
+    # scores match the spike exactly. (No Intel-Mac wheel exists; Intel Macs are not
+    # supported. Apple silicon needs macOS 14+.)
+    "onnxruntime==1.25.1",
+    "numpy>=2",
+    # OS-level cross-process lock for first-run setup (released by the OS if a process
+    # dies). Already in the tree via huggingface-hub; declared because we import it.
+    "filelock>=3.12",
+    # Use the operating system's certificate store (Windows/macOS) for HTTPS, so downloads
+    # work behind corporate proxies that inspect TLS with their own root certificate.
+    "truststore>=0.9",
+]
+
+[project.scripts]
+# Exactly one entry point, and it exists. The index-build CLI is registered in Phase 19,
+# together with the module it points at — no dangling entry points (D-08). The isolation
+# guard asserts this file names no other script, comments included.
+snow-docs-mcp = "snow_docs_mcp.server:main"
+
+[tool.uv]
+# `uv lock` fails if any of these platforms cannot install the locked set, instead of a
+# teammate finding out at install time.
+required-environments = [
+    "sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "sys_platform == 'win32' and platform_machine == 'AMD64'",
+    "sys_platform == 'linux' and platform_machine == 'x86_64'",
+]
+
+[tool.hatch.build.targets.wheel]
+# src/snow_docs_mcp MUST be listed or a built wheel silently omits the package.
+packages = ["src/snow_docs_mcp"]
+
+# THE isolation guard (PKG-01), and it is not optional. Declaring an empty workspace here makes
+# this project its OWN workspace root, so uv stops walking up to the repo root. Verified: with a
+# `members = ["servers/*"]` glob at the parent and no table here, `uv lock --directory` writes the
+# lock to the PARENT with both members and writes no child lock. This table travels with the
+# directory copy, which is the whole extraction procedure.
+[tool.uv.workspace]
+members = []
+
+# uv's dependency-group idiom, deliberately diverged from the root's
+# [project.optional-dependencies]. ruff is listed even though the root `ruff check .` already
+# descends into servers/ — so the extracted copy is self-sufficient (D-10).
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "ruff>=0.15",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"

@@ -1,0 +1,35 @@
+{
+  "name": "servicenow-docs",
+  "version": "0.1.0",
+  "description": "Search the official ServiceNow product docs (Australia and Brazil releases) from Claude, with cited answers. Runs locally; needs uv.",
+  "author": {
+    "name": "Dayan Iqbal"
+  },
+  "homepage": "https://github.com/dayiqb/servicenow-docs-mcp",
+  "repository": "https://github.com/dayiqb/servicenow-docs-mcp",
+  "license": "MIT",
+  "keywords": [
+    "servicenow",
+    "documentation",
+    "search",
+    "rag",
+    "mcp"
+  ],
+  "mcpServers": {
+    "servicenow-docs": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--frozen",
+        "--quiet",
+        "--directory",
+        "${CLAUDE_PLUGIN_ROOT}",
+        "server/main.py"
+      ],
+      "env": {
+        "UV_SYSTEM_CERTS": "1",
+        "UV_NATIVE_TLS": "1"
+      }
+    }
+  }
+}
