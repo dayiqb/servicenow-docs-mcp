@@ -31,29 +31,31 @@ Then quit and reopen Claude so it picks up uv.
 **Windows only:** the search models need the Microsoft Visual C++ Redistributable (x64), which
 most PCs already have. If not, install it from https://aka.ms/vs/17/release/vc_redist.x64.exe.
 
-### 2. Add the plugin
+### 2. Add it to Claude
 
-**Claude Desktop:** **Customize → Plugins → Add marketplace → Add from a repository**, enter
-`dayiqb/servicenow-docs-mcp`, then install **servicenow-docs** from that marketplace.
+**Claude Desktop (chat, Cowork and the Code tab): the extension.** Download
+`servicenow-docs.mcpb` from the
+[latest release](https://github.com/dayiqb/servicenow-docs-mcp/releases/latest) and double-click
+it (or **Settings → Extensions → Advanced settings → Install Extension…**). It is unsigned, so
+Claude Desktop shows a warning. Extensions run on your computer, and Claude Desktop makes them
+available in chat, in Cowork and in the Code tab.
 
-**Claude Code:**
+> Don't use **Customize → Plugins** for this one in Claude Desktop. Cowork runs plugins inside
+> a sandboxed virtual machine that can't reach GitHub or Hugging Face, so the plugin's server
+> can never download the docs there.
+
+**Claude Code (terminal or IDE): the plugin.** It also adds the "docs first" hook (below).
 
 ```
 /plugin marketplace add dayiqb/servicenow-docs-mcp
 /plugin install servicenow-docs@servicenow-docs
 ```
 
+Using both (the extension in Desktop, the plugin in the terminal) is fine: they share one data
+folder, so nothing downloads twice.
+
 The very first start takes a little longer (uv sets up Python, about 200 MB). If Claude says
 the server failed to start the first time, restart Claude once.
-
-<details>
-<summary>Alternative: the Claude Desktop extension file</summary>
-
-Download `servicenow-docs.mcpb` from the
-[latest release](https://github.com/dayiqb/servicenow-docs-mcp/releases/latest) and double-click
-it (or **Settings → Extensions → Advanced settings → Install Extension…**). It is unsigned, so
-Claude Desktop shows a warning. Use either the plugin or the extension, not both.
-</details>
 
 ## First run
 
@@ -97,8 +99,8 @@ unmistakable term is enough (ServiceNow, GlideRecord, `g_form`, `sys_id`, Flow D
 Server, a transform map, …); words that also appear in everyday IT talk (business rule,
 client script, update set, CMDB, ITSM, ACL, catalog item, …) count only when two come
 together. Other messages are left alone. The hook never blocks a message; turn it off with
-the environment variable `SNOW_DOCS_PROMPT_HOOK=off`. (Hooks run in Claude Code; in Claude
-Desktop the plugin's skill does the same job.)
+the environment variable `SNOW_DOCS_PROMPT_HOOK=off`. (The hook comes with the plugin, in
+Claude Code; in Claude Desktop the extension's built-in instructions do the same job.)
 
 ## Troubleshooting
 
