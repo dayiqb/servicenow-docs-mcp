@@ -365,7 +365,8 @@ def snow_docs_status() -> StatusResult:
         notes.append(
             "the first version's docs index is still in the data folder ("
             + ", ".join(p.name for p in legacy)
-            + "); delete it once that version is uninstalled, to free about 1.3 GB"
+            + "); this version doesn't need it. Delete it once that version is uninstalled "
+            "(after the next docs update it would otherwise keep about 1.3 GB in use)"
         )
     return StatusResult(
         ok=setup.search_ready(default),
