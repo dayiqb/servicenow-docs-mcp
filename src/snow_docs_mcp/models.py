@@ -25,6 +25,12 @@ EMBED_MODEL_NAME = "BAAI/bge-small-en-v1.5"
 RERANK_MODEL_NAME = "BAAI/bge-reranker-base"
 # How many hybrid-search candidates the cross-encoder re-scores. Wider than any real top_k.
 RERANK_POOL = 25
+# The reranker reads only the start of each candidate (context line, heading, first few
+# hundred characters). Measured on the 67 gold queries (qrels v5, nDCG@10 over top-20):
+# +.003 [-.012, +.018] vs the full text, at half the time (3.1 s -> 1.5 s per search on
+# 2 CPU threads). Fewer candidates (16/12) cost -.026; smaller rerankers -.018 to -.030.
+# None = full text (the measured research pipeline, used by the parity check).
+RERANK_CHARS: int | None = 800
 # Candidates per reranker batch. fastembed's default (64) scores all 25 in one padded batch,
 # which grows onnxruntime's memory arena by ~1.3 GB; batches of 8 keep it to ~0.2 GB.
 # Padding differs per batch, which moves scores by <1e-5 and no rankings (parity: 67/67

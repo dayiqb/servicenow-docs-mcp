@@ -3,8 +3,9 @@
 `run_search` reproduces the measured configuration exactly: embed the query, hybrid
 retrieve (BM25 gets the raw query), then — with rerank on — re-score a pool of
 RERANK_POOL candidates with the cross-encoder and reorder. The cross-encoder sees the
-stored content INCLUDING its context line; that is what was measured. The context line is
-only stripped from text shown to people (`strip_blurb`).
+stored content INCLUDING its context line (what was measured), cut to its first
+RERANK_CHARS characters (measured: same quality, half the time). The context line is only
+stripped from text shown to people (`strip_blurb`).
 """
 
 # run_search copied (not imported) from the research spike's searcher module; the only
@@ -54,7 +55,8 @@ def run_search(
         file_path_prefix=source_filter,
         query_text=query_text,
     )
-    relevance = models.rerank(query, [h.content for h in hits])
+    cut = models.RERANK_CHARS
+    relevance = models.rerank(query, [h.content if cut is None else h.content[:cut] for h in hits])
     if len(relevance) != len(hits):
         raise ValueError(f"reranker returned {len(relevance)} scores for {len(hits)} candidates")
     for hit, score in zip(hits, relevance):

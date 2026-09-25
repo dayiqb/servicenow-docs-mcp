@@ -170,3 +170,14 @@ def test_a_page_header_reads_as_title_and_description() -> None:
     )
     assert S.snippet(cut_off, len("A context line.\n\n")) == "Very long header: Covers it all."
     assert S.snippet("---\nno fields here", 0) == "--- no fields here"
+
+
+def test_the_reranker_reads_only_the_start_of_each_candidate(fixture_db, fake_models, monkeypatch) -> None:
+    from snow_docs_mcp import models
+
+    monkeypatch.setattr(models, "RERANK_CHARS", 20)
+    S.run_search(fixture_db, "incident", top_k=3, query_text="incident")
+    assert fake_models.reranked_docs and all(len(d) <= 20 for d in fake_models.reranked_docs[-1])
+    monkeypatch.setattr(models, "RERANK_CHARS", None)  # the measured research pipeline
+    S.run_search(fixture_db, "incident", top_k=3, query_text="incident")
+    assert max(len(d) for d in fake_models.reranked_docs[-1]) > 20
