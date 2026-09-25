@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "servicenow-docs-mcp"
-version = "0.1.0"
+version = "0.1.1"
 description = "Search the ServiceNow product docs from Claude: contextual-retrieval hybrid search, cited answers."
 # The <3.14 ceiling is load-bearing, not cosmetic: with a bare ">=3.11" uv resolved and ran
 # against CPython 3.14.5 in every scratch project (RESEARCH Pitfall 6). With the ceiling it

@@ -7,7 +7,9 @@ description: Use when the user asks how ServiceNow works, how to configure or tr
 
 Answer ServiceNow questions from the official product documentation, not from memory.
 
-1. Call `snow_docs_search` with the user's question in plain words. If the user's instance
+1. Call `snow_docs_search` with the question in plain English, using ServiceNow's own
+   terms: the docs are English-only, so translate a question asked in another language
+   first (and still answer in the user's language). If the user's instance
    runs the Brazil release, pass `release: "brazil"`; otherwise leave the default
    (Australia). If the results look off-topic, rephrase and search again, or narrow with
    `product` (for example `it-service-management`).

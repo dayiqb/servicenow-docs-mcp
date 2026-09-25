@@ -36,6 +36,7 @@ import contextlib
 import difflib
 import logging
 import os
+import re
 import sys
 import threading
 from collections.abc import AsyncIterator
@@ -45,10 +46,10 @@ from mcp.server import MCPServer
 from mcp.types import ToolAnnotations
 from pydantic import BaseModel, Field
 
-from snow_docs_mcp import config, sections, setup, store
+from snow_docs_mcp import config, models, sections, setup, store
 from snow_docs_mcp.read import ReadResult as _ReadResult
 from snow_docs_mcp.read import not_an_id, read_section
-from snow_docs_mcp.search import make_id, parse_id, run_search, snippet
+from snow_docs_mcp.search import make_id, parse_id, run_search, snippet, strip_blurb
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +59,9 @@ ANSWER_RULES = """\
 You have tools for the official ServiceNow product documentation, for the australia and brazil
 releases (snow_docs_search's `release` argument; australia unless the user's instance runs brazil).
 When answering a ServiceNow question with them:
-1. Call snow_docs_search first (rephrase and search again if results look off-topic).
+1. Call snow_docs_search first, with the query in English using ServiceNow's own terms: the docs
+   are English-only, so translate a question asked in another language (and still answer in
+   the user's language). Rephrase and search again if results look off-topic or weak.
 2. Answer ONLY from the passages the tools returned; do not fill gaps from memory.
 3. Cite every factual claim with the passage id in square brackets, e.g. [australia:markdown/...md::Heading]; when a result has a url, you may also link it.
 4. Before giving step-by-step instructions, call snow_docs_read on the id to get the full section.
@@ -159,6 +162,71 @@ def _not_ready(release: str) -> str:
     )
 
 
+# A best reranker score below this means nothing really matched. Measured on the Australia
+# index: Norwegian questions top out between -9.4 and -4.9; even vague one-word English
+# queries ("index", "update") reach -0.0 or more.
+WEAK_SCORE = -2.0
+
+
+_LINK_RE = re.compile(r"\[([^\]]*)\]\([^)]*\)")
+_WORD_RE = re.compile(r"\w+")
+SAME_TEXT = 0.8  # word overlap (Jaccard) above which two passages count as one
+
+
+def _words(content: str, context_chars: int | None) -> frozenset[str]:
+    """A passage's words, ignoring its context line, front matter and link targets: what
+    differs between two published copies of one page."""
+    text = strip_blurb(content, context_chars).lstrip()
+    text = _LINK_RE.sub(r"\1", sections.strip_front_matter(text))
+    return frozenset(_WORD_RE.findall(text.lower()))
+
+
+def _distinct_hits(db, rel: str, hits: list, limit: int) -> list[Hit]:
+    """The best `limit` hits, one per section. Parts of one long section share an id, and
+    ServiceNow publishes some pages under two product folders (same file name and headings,
+    nearly the same text: the header's breadcrumb and link targets differ)."""
+    pages: dict[str, str] = {}
+    seen_ids: set[str] = set()
+    kept_words: dict[tuple[str, str], list[frozenset[str]]] = {}
+    out: list[Hit] = []
+    for h in hits:
+        if len(out) >= limit:
+            break
+        if h.file_path not in pages:
+            pages[h.file_path] = store.get_document(db, h.file_path) or ""
+        page = pages[h.file_path]
+        hit_id = make_id(
+            rel,
+            h.file_path,
+            h.heading_path,
+            sections.occurrence_of(page, h.heading_path, h.byte_offset),
+        )
+        if hit_id in seen_ids:
+            continue
+        same_place = (h.file_path.rsplit("/", 1)[-1], h.heading_path)
+        words = _words(h.content, h.context_chars)
+        if any(
+            len(words & w) >= SAME_TEXT * max(1, len(words | w))
+            for w in kept_words.get(same_place, [])
+        ):
+            continue
+        seen_ids.add(hit_id)
+        kept_words.setdefault(same_place, []).append(words)
+        out.append(
+            Hit(
+                id=hit_id,
+                release=rel,
+                page_title=sections.front_matter_value(page, "title"),
+                url=sections.front_matter_value(page, "canonical_url"),
+                heading_path=h.heading_path,
+                product=store.product_of(h.file_path),
+                snippet=snippet(h.content, h.context_chars),
+                score=round(float(h.score), 4),
+            )
+        )
+    return out
+
+
 def _snapshot_of(release: str) -> str:
     act = setup.active_installed(release)
     return act.snapshot if act else ""
@@ -187,8 +255,9 @@ def snow_docs_search(
     `id` can be passed to snow_docs_read for the full section, and should be cited as [id].
 
     Args:
-        query: A natural-language question or keywords, e.g. "how are incident priorities
-            calculated".
+        query: A question or keywords in English, using ServiceNow's terms, e.g. "how are
+            incident priorities calculated". The docs are English-only: translate a question
+            asked in another language first (e.g. "katalogvariabel" -> "catalog variable").
         limit: Number of passages to return, 1-20 (default 5).
         product: Optional top-level docs area to search within, e.g.
             "it-service-management", "now-platform", "platform-security". An unknown value
@@ -238,11 +307,12 @@ def snow_docs_search(
         # re-resolve the index once and retry before giving up.
         for attempt in range(2):
             try:
-                hits = run_search(db, q, top_k=lim, source_filter=prefix, query_text=q)
-                pages: dict[str, str] = {}
-                for h in hits:
-                    if h.file_path not in pages:
-                        pages[h.file_path] = store.get_document(db, h.file_path) or ""
+                # The reranker always scores the whole pool, so taking all of it costs nothing
+                # extra and leaves room to drop duplicates and still return `lim` passages.
+                hits = run_search(
+                    db, q, top_k=max(lim, models.RERANK_POOL), source_filter=prefix, query_text=q
+                )
+                out = _distinct_hits(db, rel, hits, lim)
                 break
             except FileNotFoundError:
                 newer = setup.active_index(rel)
@@ -252,27 +322,6 @@ def snow_docs_search(
                 db = newer
                 _release_unused_indexes()
 
-        def page(file_path: str) -> str:
-            return pages.get(file_path, "")
-
-        out = [
-            Hit(
-                id=make_id(
-                    rel,
-                    h.file_path,
-                    h.heading_path,
-                    sections.occurrence_of(page(h.file_path), h.heading_path, h.byte_offset),
-                ),
-                release=rel,
-                page_title=sections.front_matter_value(page(h.file_path), "title"),
-                url=sections.front_matter_value(page(h.file_path), "canonical_url"),
-                heading_path=h.heading_path,
-                product=store.product_of(h.file_path),
-                snippet=snippet(h.content, h.context_chars),
-                score=round(float(h.score), 4),
-            )
-            for h in hits
-        ]
         if out:
             msg = (
                 f"{len(out)} passages from the {rel} docs. Answer only from these, cite as "
@@ -280,6 +329,11 @@ def snow_docs_search(
             )
         else:
             msg = "No passages matched. Try other wording, or drop the product filter."
+        if out and max(h.score for h in out) < WEAK_SCORE:
+            msg += (
+                " These matches look weak. The docs are in English: if the question isn't, "
+                "search again with English ServiceNow terms; otherwise try other wording."
+            )
         if notes:
             msg += " Note: " + "; ".join(notes) + "."
         return SearchResult(ok=True, message=msg, release=rel, snapshot=_snapshot_of(rel), hits=out)
@@ -358,7 +412,7 @@ def snow_docs_status() -> StatusResult:
                 chunks=chunks,
             )
         )
-    models = "ready" if setup.models_on_disk() else (setup.models_status().message or "missing")
+    models_state = "ready" if setup.models_on_disk() else (setup.models_status().message or "missing")
     notes = [setup.update_note()]
     legacy = setup.legacy_files()
     if legacy:
@@ -372,7 +426,7 @@ def snow_docs_status() -> StatusResult:
         ok=setup.search_ready(default),
         default_release=default,
         releases=releases,
-        models=models,
+        models=models_state,
         update_note="; ".join(n for n in notes if n),
         data_folder=str(config.data_home()),
     )

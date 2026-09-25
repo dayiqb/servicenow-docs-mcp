@@ -82,7 +82,9 @@ def looks_like_servicenow(prompt: str) -> bool:
 
 NUDGE = (
     "This looks like a ServiceNow question. Before answering, search the official "
-    "ServiceNow docs with the servicenow-docs tools: call snow_docs_search (pass "
+    "ServiceNow docs with the servicenow-docs tools: call snow_docs_search with an English "
+    "query in ServiceNow's terms (translate the question if needed; answer in the user's "
+    "language; pass "
     'release "brazil" if the user\'s instance runs Brazil; Australia is the default), '
     "answer only from the returned passages with [id] citations, and call snow_docs_read "
     "for the full section before giving steps. If the docs don't cover it, say so."

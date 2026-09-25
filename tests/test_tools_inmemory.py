@@ -280,3 +280,84 @@ def test_the_old_snapshots_memory_is_freed_after_a_switch(ready, fixture_db) -> 
 def test_status_mentions_a_first_version_index_left_behind(ready) -> None:
     (config.data_home() / "index-2026-05-15.db").write_bytes(b"x")
     assert "index-2026-05-15.db" in _call("snow_docs_status")["update_note"]
+
+
+# --- feedback round: duplicates and non-English queries -----------------------------------
+
+
+def _with_duplicates(fixture_db, tmp_path):
+    """The fixture plus the two kinds of duplicate seen in real results: a second part of a
+    long section (same file and heading, so the same id) and the same page published
+    word for word under another product folder."""
+    from conftest import CHANGE_DOC, CHUNKS, one_hot
+
+    db = tmp_path / "dups.db"
+    db.write_bytes(fixture_db.read_bytes())
+    conn = sqlite3.connect(db)
+    rows = [
+        ("markdown/itsm/incident.md", "Incident management > Priority",
+         ("Explains how incident priority is derived.\n\nIncident management > Priority\n\n"
+          "Priority part two: the urgency matrix."), 6),
+        # the republished copy links differently, as ServiceNow's copies do
+        ("markdown/build/change.md", CHUNKS[5][1],
+         f"{CHUNKS[5][2]}\n\n{CHUNKS[5][1]}\n\n"
+         + CHUNKS[5][3].replace("changes", "[changes](https://raw.githubusercontent.com/x/c.md)"),
+         7),
+    ]
+    for fp, hp, content, i in rows:
+        conn.execute(
+            "INSERT INTO chunks (file_path, heading_path, content, byte_offset, embedding) "
+            "VALUES (?, ?, ?, 0, ?)",
+            (fp, hp, content, one_hot(i).tobytes()),
+        )
+    conn.execute("INSERT INTO documents VALUES (?, ?)", ("markdown/build/change.md", CHANGE_DOC))
+    conn.commit()
+    conn.close()
+    install_index(db, config.BUILTIN_ENTRIES["australia"])
+
+
+def test_duplicate_passages_are_collapsed_and_the_limit_still_filled(
+    ready, fixture_db, tmp_path
+) -> None:
+    _with_duplicates(fixture_db, tmp_path)
+    ready.query_vectors["priority change"] = {1: 1.0, 6: 0.9, 5: 0.8, 7: 0.7, 0: 0.1}
+    ready.rerank_scores.update(
+        {"calculated from impact": 10.0, "Priority part two": 9.0, "zebrafish": 8.0, "": 1.0}
+    )
+    res = _call("snow_docs_search", {"query": "priority change", "limit": 3})
+    ids = [h["id"] for h in res["hits"]]
+    assert len(ids) == 3 and len(set(ids)) == 3, ids
+    assert ids[0] == "australia:markdown/itsm/incident.md::Incident management > Priority"
+    change_pages = [i for i in ids if i.endswith("::Change > Approval")]
+    assert len(change_pages) == 1, "the same page under two product folders is shown once"
+    assert "weak" not in res["message"]
+
+
+def test_weak_matches_suggest_searching_in_english(ready) -> None:
+    ready.rerank_scores[""] = -5.0  # nothing relevant, as for "katalogvariabel"
+    res = _call("snow_docs_search", {"query": "katalogvariabel"})
+    assert res["ok"] is True and res["hits"]
+    assert "look weak" in res["message"] and "English" in res["message"]
+
+
+def test_the_rules_ask_for_english_queries() -> None:
+    assert "English" in ANSWER_RULES and "translate" in ANSWER_RULES
+
+
+def test_near_copies_count_as_one_but_different_pages_do_not() -> None:
+    from snow_docs_mcp.server import SAME_TEXT, _words
+
+    def same(a: str, b: str) -> bool:
+        wa, wb = _words(a, None), _words(b, None)
+        return len(wa & wb) >= SAME_TEXT * len(wa | wb)
+
+    body = "Business rules run on the server when a record is inserted or updated. " * 3
+    copy_a = f"line\n\n---\ntitle: Business rules\nbreadcrumb: [Server-side scripting]\n---\n{body}"
+    copy_b = (
+        "line\n\n---\ntitle: Business rules\nbreadcrumb: [Build workflows]\n---\n"
+        + body.replace("record", "[record](https://raw.githubusercontent.com/x/r.md)")
+    )
+    assert same(copy_a, copy_b), "header and link targets differ: still the same page"
+    hr = "line\n\nHR service delivery lets employees open cases in the employee center."
+    itsm = "line\n\nIncident management restores normal service operation quickly."
+    assert not same(hr, itsm), "two index.md pages with different text stay separate"
