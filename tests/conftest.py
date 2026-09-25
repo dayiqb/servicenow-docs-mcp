@@ -143,6 +143,7 @@ def build_fixture_index(path: Path) -> Path:
         [
             ("snapshot", "2026-05-15"),
             ("corpus_commit", "0ba98cdaf706821d72ff79e92b18adc057e60e29"),
+            ("corpus_repo", "https://github.com/ServiceNow/ServiceNowDocs"),
             ("chunk_count", str(len(CHUNKS))),
         ],
     )
@@ -241,6 +242,8 @@ def fake_models_on_disk() -> None:
         d = config.models_dir() / name / "snapshots" / "abc"
         d.mkdir(parents=True, exist_ok=True)
         (d / "model.onnx").write_bytes(b"onnx")
+        for f in setup.MODEL_FILES:
+            (d / f).write_text("{}")
 
 
 @pytest.fixture(autouse=True)

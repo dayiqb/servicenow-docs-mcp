@@ -216,11 +216,20 @@ def index_ready(release: str) -> bool:
     return active_index(release) is not None
 
 
+MODEL_FILES = ("config.json", "special_tokens_map.json", "tokenizer.json", "tokenizer_config.json")
+
+
 def models_on_disk() -> bool:
+    """Every file both models need is in place and no download is half-finished (not just
+    the first model file, which appears while the rest are still downloading)."""
     base = config.models_dir()
     for name in MODEL_DIRS:
         snapshots = base / name / "snapshots"
         if not snapshots.is_dir() or not any(snapshots.rglob("*.onnx")):
+            return False
+        if not all(any(snapshots.glob(f"*/{f}")) for f in MODEL_FILES):
+            return False
+        if any((base / name).rglob("*.incomplete")):
             return False
     return True
 

@@ -100,9 +100,33 @@ def parse_id(doc_id: str) -> tuple[str | None, str, str, int] | None:
 _WS = re.compile(r"\s+")
 
 
+_HEADER_FIELD = re.compile(r"([A-Za-z_]+):\s*(.*)")
+
+
+def _readable_header(text: str) -> str:
+    """A page's metadata header as "title: description", then the text after it. Works on
+    a header the chunk boundary cut off too (long headers span two passages)."""
+    lines = text.split("\n")
+    end = next((i for i in range(1, len(lines)) if lines[i].strip() == "---"), len(lines))
+    fields = {}
+    for line in lines[1:end]:
+        m = _HEADER_FIELD.fullmatch(line.strip())
+        if m:
+            fields[m.group(1)] = m.group(2).strip().strip('"')
+    title, description = fields.get("title", ""), fields.get("description", "")
+    head = f"{title}: {description}" if title and description else title or description
+    rest = "\n".join(lines[end + 1 :])
+    return f"{head}\n{rest}" if head else (rest or text)
+
+
 def snippet(content: str, context_chars: int | None = None, max_chars: int = 600) -> str:
-    """Readable preview: context line removed, whitespace collapsed, cut on a word boundary."""
-    text = _WS.sub(" ", strip_blurb(content, context_chars)).strip()
+    """Readable preview: context line removed, whitespace collapsed, cut on a word boundary.
+    A page's opening passage starts with its metadata header: shown as "title: description"
+    followed by the text, instead of the raw header."""
+    text = strip_blurb(content, context_chars).lstrip()
+    if text.startswith("---"):
+        text = _readable_header(text)
+    text = _WS.sub(" ", text).strip()
     if len(text) <= max_chars:
         return text
     cut = text[:max_chars]

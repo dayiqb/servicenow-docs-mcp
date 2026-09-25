@@ -94,7 +94,9 @@ class Hit(BaseModel):
     id: str = Field(description="Pass to snow_docs_read; cite it as [id].")
     release: str
     page_title: str
-    url: str = Field("", description="The page on docs.servicenow.com, when known.")
+    url: str = Field(
+        "", description="The page on docs.servicenow.com when the docs name it, else its source."
+    )
     heading_path: str
     product: str
     snippet: str
@@ -217,7 +219,8 @@ def _distinct_hits(db, rel: str, hits: list, limit: int) -> list[Hit]:
                 id=hit_id,
                 release=rel,
                 page_title=sections.front_matter_value(page, "title"),
-                url=sections.front_matter_value(page, "canonical_url"),
+                url=sections.front_matter_value(page, "canonical_url")
+                or store.source_url(db, h.file_path),
                 heading_path=h.heading_path,
                 product=store.product_of(h.file_path),
                 snippet=snippet(h.content, h.context_chars),

@@ -2,7 +2,7 @@
   "manifest_version": "0.4",
   "name": "servicenow-docs",
   "display_name": "ServiceNow Docs",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Search the official ServiceNow product docs (Australia and Brazil releases) from Claude, with cited answers.",
   "long_description": "Gives Claude three read-only tools over the official ServiceNow product documentation (Australia and Brazil releases): **snow_docs_search** (semantic + keyword search with reranking, over an index where every passage carries a short context line — the retrieval setup that measured best), **snow_docs_read** (the full section behind a result) and **snow_docs_status**. Claude answers from the returned passages and cites them.\n\nEverything runs on your computer. The first launch downloads the docs index (~550 MB) from GitHub and two small search models (~1.2 GB) from Hugging Face; after that it works offline. Needs ~2.6 GB of disk and about 3 GB of RAM once it has answered a search. Runs on Windows 10/11 (x64), macOS 14+ on Apple silicon and Linux. Uses uv (https://docs.astral.sh/uv/) to set up Python; install it first if Claude Desktop reports that the server failed to start.",
   "author": {

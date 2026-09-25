@@ -88,7 +88,8 @@ memory until its first search, then about 3 GB.
 Ask ServiceNow questions normally: "How is incident priority calculated?", "What roles do I need
 to configure an email account?" Claude searches, reads the relevant sections, and answers with
 citations like `[australia:markdown/it-service-management/…md::Incident management > Priority]`,
-plus a link to the page on servicenow.com when the docs provide one.
+plus a link to each page: on docs.servicenow.com when the docs name it, otherwise its source
+page on GitHub.
 
 To narrow a search, ask Claude to limit it to one area, e.g. *"search only in
 platform-security"*. An unknown area name gets back the list of valid ones.

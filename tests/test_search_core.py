@@ -153,3 +153,20 @@ def test_matrices_of_deleted_snapshots_are_dropped(tmp_path) -> None:
     a.unlink()  # another app switched snapshots and deleted this one
     store.search(b, q, top_k=1)
     assert str(a.resolve()) not in store._matrix_cache
+
+
+def test_a_page_header_reads_as_title_and_description() -> None:
+    content = (
+        "A context line.\n\n---\ntitle: Classic Business rules\ndescription: A business rule "
+        "is a server-side script.\nbreadcrumb: [Build workflows]\n---\n\nBusiness rules run "
+        "when records change."
+    )
+    assert S.snippet(content, len("A context line.\n\n")) == (
+        "Classic Business rules: A business rule is a server-side script. "
+        "Business rules run when records change."
+    )
+    cut_off = (  # long headers span two passages: the first has no closing ---
+        "A context line.\n\n---\ntitle: Very long header\ndescription: Covers it all."
+    )
+    assert S.snippet(cut_off, len("A context line.\n\n")) == "Very long header: Covers it all."
+    assert S.snippet("---\nno fields here", 0) == "--- no fields here"

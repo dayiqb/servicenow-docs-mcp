@@ -34,6 +34,7 @@ import threading
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import quote
 
 import numpy as np
 
@@ -99,6 +100,7 @@ def forget(db_path: str | Path) -> None:
         _matrix_cache.pop(key, None)
     _has_context_col.pop(key, None)
     _products_cache.pop(key, None)
+    _source_cache.pop(key, None)
 
 
 def _l2_normalize(vectors: np.ndarray) -> np.ndarray:
@@ -389,3 +391,19 @@ def meta(db_path: str | Path) -> dict[str, str]:
         return {}
     finally:
         conn.close()
+
+
+_source_cache: dict[str, tuple[str, str]] = {}
+
+
+def source_url(db_path: str | Path, file_path: str) -> str:
+    """A permanent link to the page's source on GitHub, at the exact commit the index was
+    built from (the docs name no docs.servicenow.com address for every page)."""
+    key = str(Path(db_path).resolve())
+    if key not in _source_cache:
+        m = meta(db_path)
+        _source_cache[key] = (m.get("corpus_repo", ""), m.get("corpus_commit", ""))
+    repo, commit = _source_cache[key]
+    if not repo.startswith("https://github.com/") or not re.fullmatch(r"[0-9a-f]{7,40}", commit):
+        return ""
+    return f"{repo.rstrip('/')}/blob/{commit}/{quote(file_path)}"

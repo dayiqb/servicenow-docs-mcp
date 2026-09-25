@@ -361,3 +361,40 @@ def test_near_copies_count_as_one_but_different_pages_do_not() -> None:
     hr = "line\n\nHR service delivery lets employees open cases in the employee center."
     itsm = "line\n\nIncident management restores normal service operation quickly."
     assert not same(hr, itsm), "two index.md pages with different text stay separate"
+
+
+# --- feedback round 2: links, model readiness ----------------------------------------------
+
+SOURCE = "https://github.com/ServiceNow/ServiceNowDocs/blob/0ba98cdaf706821d72ff79e92b18adc057e60e29/"
+
+
+def test_every_hit_links_to_its_page(ready) -> None:
+    ready.query_vectors["hr and incidents"] = {1: 1.0, 3: 0.9}
+    res = _call("snow_docs_search", {"query": "hr and incidents", "limit": 2})
+    urls = {h["id"].split("::")[0].split(":", 1)[1]: h["url"] for h in res["hits"]}
+    assert urls["markdown/itsm/incident.md"] == "https://www.servicenow.com/docs/r/incident.html"
+    assert urls["markdown/hr/case.md"] == SOURCE + "markdown/hr/case.md", "source link otherwise"
+    read = _call("snow_docs_read", {"id": "australia:markdown/hr/case.md::HR case > Create"})
+    assert read["url"] == SOURCE + "markdown/hr/case.md"
+
+
+def test_status_is_not_ok_while_the_models_download(ready) -> None:
+    import shutil
+
+    from snow_docs_mcp import setup as s
+
+    shutil.rmtree(config.models_dir())
+    for name in s.MODEL_DIRS:  # the first model file arrived, the rest are still coming
+        d = config.models_dir() / name / "snapshots" / "abc"
+        d.mkdir(parents=True)
+        (d / "model.onnx").write_bytes(b"onnx")
+    s._set("models", "downloading", "Downloading the search models (one-time, about 1.2 GB).")
+    st = _call("snow_docs_status")
+    assert st["ok"] is False and "Downloading" in st["models"]
+    fake_models_on_disk()
+    blob = config.models_dir() / s.MODEL_DIRS[1] / "blobs"
+    blob.mkdir()
+    (blob / "abc123.incomplete").write_bytes(b"part")
+    assert not s.models_on_disk(), "a half-downloaded file means not ready"
+    (blob / "abc123.incomplete").unlink()
+    assert s.models_on_disk()

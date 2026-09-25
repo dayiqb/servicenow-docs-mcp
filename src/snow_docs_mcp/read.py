@@ -57,7 +57,7 @@ def read_section(
         )
 
     title = sections.front_matter_value(text, "title")
-    url = sections.front_matter_value(text, "canonical_url")
+    url = sections.front_matter_value(text, "canonical_url") or store.source_url(db_path, file_path)
     if heading_path:
         body = sections.extract_section(text, heading_path, occurrence)
         if body is None:
