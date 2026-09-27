@@ -207,6 +207,17 @@ def active_installed(release: str) -> Installed | None:
     return inst[0]
 
 
+def coverage_gaps(release: str) -> tuple[tuple[config.CoverageGap, ...], str]:
+    """Docs areas the installed snapshot of `release` lacks, and the release that has them,
+    as latest.json lists them for exactly that snapshot (else none)."""
+    with _state_lock:
+        entry = _latest.get(release)
+    act = active_installed(release)
+    if entry is None or act is None or entry.key != act.key:
+        return (), ""
+    return entry.coverage_gaps, entry.gaps_compared_with
+
+
 def active_index(release: str) -> Path | None:
     act = active_installed(release)
     return act.db_path if act else None

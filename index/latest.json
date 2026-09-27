@@ -11,7 +11,11 @@
       "db_bytes": 1692254208,
       "chunks": 302813,
       "context_lines": 302813,
-      "min_server_version": "0.1.0"
+      "min_server_version": "0.1.0",
+      "coverage_gaps": {
+        "compared_with": "brazil",
+        "products": []
+      }
     },
     "brazil": {
       "snapshot": "2026-09-24",
@@ -23,7 +27,30 @@
       "db_bytes": 1476583424,
       "chunks": 268538,
       "context_lines": 169078,
-      "min_server_version": "0.1.0"
+      "min_server_version": "0.1.0",
+      "coverage_gaps": {
+        "compared_with": "australia",
+        "products": [
+          {
+            "product": "api-reference",
+            "title": "API Reference",
+            "pages": 0,
+            "of": 1227
+          },
+          {
+            "product": "employee-service-management",
+            "title": "Employee Service Management",
+            "pages": 256,
+            "of": 5052
+          },
+          {
+            "product": "source-to-pay-operations",
+            "title": "Finance and Supply Chain",
+            "pages": 0,
+            "of": 1359
+          }
+        ]
+      }
     }
   }
 }

@@ -38,6 +38,8 @@ from urllib.parse import quote
 
 import numpy as np
 
+from snow_docs_mcp.sections import name_pattern, unescape_markdown
+
 EMBED_DIM = 384
 
 # Reciprocal Rank Fusion constant. 60 is the value from the original RRF paper and the
@@ -101,6 +103,8 @@ def forget(db_path: str | Path) -> None:
     _has_context_col.pop(key, None)
     _products_cache.pop(key, None)
     _source_cache.pop(key, None)
+    _paths_cache.pop(key, None)
+    _heading_words_cache.pop(key, None)
 
 
 def _l2_normalize(vectors: np.ndarray) -> np.ndarray:
@@ -135,8 +139,11 @@ def retain(db_paths: set[Path]) -> None:
     still on disk (in use elsewhere, or a delete that Windows refused)."""
     keep = {str(Path(p).resolve()) for p in db_paths}
     with _cache_lock:
-        stale = [k for k in _matrix_cache if k not in keep]
-    for k in stale:
+        cached = set(_matrix_cache)
+    for cache in (_has_context_col, _products_cache, _source_cache, _paths_cache,
+                  _heading_words_cache):
+        cached |= set(cache)  # an index only read, never searched, has no matrix
+    for k in cached - keep:
         forget(k)
 
 
@@ -354,6 +361,77 @@ def products(db_path: str | Path) -> list[str]:
     names = sorted({product_of(fp) for fp in file_paths} - {""})
     _products_cache[key] = (mtime, names)
     return names
+
+
+_paths_cache: dict[str, tuple[float, frozenset[str], dict[str, list[str]]]] = {}
+
+
+def page_paths(db_path: str | Path) -> tuple[frozenset[str], dict[str, list[str]]]:
+    """Every page's file_path in the index, and file name -> the paths that have it (links
+    between pages often name a folder the page has since moved out of)."""
+    key = str(Path(db_path).resolve())
+    mtime = _db_mtime(key)
+    cached = _paths_cache.get(key)
+    if cached and cached[0] == mtime:
+        return cached[1], cached[2]
+    conn = _connect(db_path)
+    try:
+        paths = [row[0] for row in conn.execute("SELECT file_path FROM documents")]
+    finally:
+        conn.close()
+    by_name: dict[str, list[str]] = {}
+    for fp in paths:
+        by_name.setdefault(fp.rsplit("/", 1)[-1], []).append(fp)
+    _paths_cache[key] = (mtime, frozenset(paths), by_name)
+    return _paths_cache[key][1], by_name
+
+
+_CODE_NAME_RE = re.compile(r"[$A-Za-z_][\w$]*")
+_heading_words_cache: dict[str, tuple[float, frozenset[str]]] = {}
+
+
+def heading_code_names(db_path: str | Path) -> frozenset[str]:
+    """Code-like names (camelCase, snake_case; 5+ characters) in any section heading of the
+    index, e.g. every API method: the vocabulary for "did you mean" suggestions."""
+    key = str(Path(db_path).resolve())
+    mtime = _db_mtime(key)
+    cached = _heading_words_cache.get(key)
+    if cached and cached[0] == mtime:
+        return cached[1]
+    conn = _connect(db_path)
+    try:
+        headings = [row[0] for row in conn.execute("SELECT DISTINCT heading_path FROM chunks")]
+    finally:
+        conn.close()
+    names = set()
+    for heading in headings:
+        for word in _CODE_NAME_RE.findall(re.sub(r"\\(.)", r"\1", heading)):
+            if len(word) >= 5 and (re.search(r"[a-z][A-Z]", word) or "_" in word.strip("_")):
+                names.add(word)
+    _heading_words_cache[key] = (mtime, frozenset(names))
+    return _heading_words_cache[key][1]
+
+
+def mentions(db_path: str | Path, term: str) -> bool:
+    """Whether `term` occurs as written anywhere in the index (whole word; case matters when
+    it has a capital). Keyword search finds the passages with its words; the text must then
+    contain it literally, so 'g_from' doesn't count for "e.g., from"."""
+    words = _FTS_TOKEN_RE.findall(term)
+    if not words:
+        return False
+    escaped = term.replace("_", "\\_").replace("$", "\\$")  # as the docs' markdown writes it
+    conn = _connect(db_path)
+    try:
+        rows = conn.execute(
+            "SELECT content FROM chunks WHERE id IN "
+            "(SELECT rowid FROM chunks_fts WHERE chunks_fts MATCH ?) "
+            "AND (instr(lower(content), lower(?)) OR instr(lower(content), lower(?))) LIMIT 50",
+            (f'"{" ".join(words)}"', term, escaped),
+        ).fetchall()
+    finally:
+        conn.close()
+    pattern = name_pattern(term)
+    return any(pattern.search(unescape_markdown(content)) for (content,) in rows)
 
 
 def product_of(file_path: str) -> str:

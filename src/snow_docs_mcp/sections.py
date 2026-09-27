@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from urllib.parse import unquote
 
 HEADING_RE = re.compile(r"^(#{1,6})\s+(.*?)\s*$")
 _FRONT_MATTER_RE = re.compile(r"\A---\r?\n.*?\r?\n---\r?\n", re.DOTALL)
@@ -133,16 +134,138 @@ def strip_front_matter(text: str) -> str:
     return _FRONT_MATTER_RE.sub("", text, count=1).lstrip("\n")
 
 
+# A backslash before a markdown punctuation character (CommonMark "backslash escapes").
+_MD_ESCAPE_RE = re.compile(r"\\([!\"#$%&'()*+,\-./:;<=>?@\[\\\]^_`{|}~])")
+
+
+def unescape_markdown(value: str) -> str:
+    r"""Drop markdown backslash escapes: 'c\_GlideRecordAPI.html' -> 'c_GlideRecordAPI.html'."""
+    return _MD_ESCAPE_RE.sub(r"\1", value)
+
+
+def name_pattern(name: str) -> re.Pattern:
+    """A code name as a whole word; case matters when it has a capital (JavaScript's does)."""
+    flags = 0 if any(c.isupper() for c in name) else re.IGNORECASE
+    return re.compile(rf"(?<![\w$]){re.escape(name)}(?![\w$])", flags)
+
+
+def plain_value(raw: str) -> str:
+    """A front-matter value as text: surrounding whitespace and one matching pair of quotes
+    removed (only a pair: "'Crawl' stage reports" keeps its quotes), escapes undone."""
+    v = raw.strip()
+    if len(v) >= 2 and v[0] == v[-1] and v[0] in "\"'":
+        v = v[1:-1]
+    return unescape_markdown(v)
+
+
 def front_matter_value(text: str, key: str) -> str:
-    """A top-level `key:` value from the front matter, or ''."""
+    r"""A top-level `key:` value from the front matter, or ''.
+
+    The docs' front matter is written by a markdown converter, so values carry markdown
+    escapes (canonical_url '.../c\_GlideRecordAPI.html' returns HTTP 400; title
+    'GlideForm \(g\_form\)'). Values are returned unescaped."""
     m = _FRONT_MATTER_RE.match(text)
     if not m:
         return ""
     prefix = f"{key}:"
     for line in m.group(0).splitlines():
         if line.startswith(prefix):
-            return line[len(prefix) :].strip().strip("\"'")
+            return plain_value(line[len(prefix) :])
     return ""
+
+
+# Site release folders: www.servicenow.com/docs/r/<release>/<product>/<page>.html.
+_SITE = "https://www.servicenow.com/docs/r/"
+_SITE_RELEASES = frozenset(
+    {"australia", "brazil", "zurich", "yokohama", "xanadu", "washingtondc", "vancouver"}
+)
+# Release-notes copies of older releases' notes shipped in the brazil docs with australia's
+# addresses minus the release folder: those pages only exist under /r/australia/.
+_AU_DELTA = re.compile(r"delta-(xanadu|yokohama|zurich)-australia")
+
+
+def site_url(page: str, release: str) -> str:
+    """The page's www.servicenow.com address, or '' when its front matter names none.
+
+    The newest release's pages carry addresses without a release folder (/docs/r/<product>/
+    ...); ServiceNow adds the folder once a newer release ships. Pinning the release keeps a
+    brazil link on the brazil page afterwards (today /r/brazil/... redirects to the same
+    page). `release` is the index's release, used when the page doesn't name its own."""
+    url = front_matter_value(page, "canonical_url")
+    if not url.startswith(_SITE):
+        return url
+    first = url[len(_SITE) :].split("/", 1)[0]
+    if first in _SITE_RELEASES:
+        return url
+    page_release = front_matter_value(page, "release") or release
+    if page_release == "brazil":
+        return f"{_SITE}brazil/{url[len(_SITE):]}"
+    if page_release == "australia" and _AU_DELTA.fullmatch(first):
+        return f"{_SITE}australia/{url[len(_SITE):]}"
+    return url
+
+
+_MD_LINK = re.compile(r"\[([^\[\]\n]*)\]\(([^()\s]*(?:\([^()\s]*\)[^()\s]*)*)\)")
+
+
+def unlink(text: str) -> str:
+    """Markdown links reduced to their text (search snippets: shorter, and no dead links)."""
+    return _MD_LINK.sub(r"\1", text)
+
+
+# Links between docs pages point at the upstream repo's raw markdown, and most are dead: the
+# release folder is repeated ('.../markdown/australia/<product>/...'), the page moved to a
+# subfolder, or it isn't in this release at all.
+_RAW_URL = re.compile(
+    r"https://raw\.githubusercontent\.com/ServiceNow/ServiceNowDocs/(?P<branch>[\w.-]+)/markdown"
+    r"(?:/(?:(?:australia|brazil)/)?(?P<path>[^\s)\]\[(#]+?\.md))?(?P<frag>#[^\s)\]\[(]*)?"
+)
+_RAW_LINK = re.compile(
+    r"\[(?P<text>(?:\\.|[^\[\]\n\\])*)\]\((?P<url>https://raw\.githubusercontent\.com/ServiceNow/"
+    r"ServiceNowDocs/[^)\s]*)\)"
+)
+
+
+def rewrite_doc_links(text: str, resolve) -> str:
+    """Point links to other docs pages at those pages' real addresses.
+
+    `resolve('markdown/<path>.md')` returns the page's address, or '' when the index has no
+    such page; then a link keeps only its text, and a bare address becomes the page's name.
+    Every other link is left alone."""
+    if "raw.githubusercontent.com/ServiceNow/ServiceNowDocs/" not in text:
+        return text
+
+    def target(m: re.Match) -> str:
+        path = m.group("path")
+        return resolve("markdown/" + unescape_markdown(unquote(path))) if path else ""
+
+    def bare(m: re.Match) -> str:
+        url = target(m)
+        if url:
+            return url
+        path = m.group("path")
+        return path.rsplit("/", 1)[-1][: -len(".md")] if path else ""
+
+    def link(m: re.Match) -> str:
+        label = _RAW_URL.sub(bare, m.group("text"))
+        um = _RAW_URL.fullmatch(m.group("url"))
+        url = target(um) if um else ""
+        return f"[{label}]({url})" if url else label
+
+    return _RAW_URL.sub(bare, _RAW_LINK.sub(link, text))
+
+
+# Some links in the docs repeat the release folder: '.../ServiceNowDocs/australia/markdown/
+# australia/api-reference/...' (HTTP 404). The repo has no 'australia' or 'brazil' product
+# folder, so the repeated segment is always wrong.
+_DOUBLED_RELEASE_RE = re.compile(
+    r"(ServiceNowDocs/[\w.-]+/markdown/)(?:australia|brazil)/", re.IGNORECASE
+)
+
+
+def fix_links(text: str) -> str:
+    """Repair the known-broken link pattern in docs text (see _DOUBLED_RELEASE_RE)."""
+    return _DOUBLED_RELEASE_RE.sub(r"\1", text)
 
 
 def front_matter_title(text: str) -> str:

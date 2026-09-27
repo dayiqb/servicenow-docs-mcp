@@ -23,6 +23,10 @@ Configuration (env vars):
     SNOW_DOCS_INDEX_SHA256  ... and expect this sha256 of the gzipped download.
     SNOW_DOCS_INDEX_DB_SHA256
                             ... and (optionally) this sha256 of the unpacked index.
+    SNOW_DOCS_RERANK        "standard" (default) or "fast" (also "true"; the Desktop extension's
+                            "Faster search" option sets it): for slow computers (e.g. 2 CPUs);
+                            the reranker scores 20 candidates on their first 500 characters
+                            instead of 25 on 800, about 45% less work per search.
 """
 
 from __future__ import annotations
@@ -30,18 +34,28 @@ from __future__ import annotations
 import logging
 import os
 import re
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-VERSION = "0.1.3"
+VERSION = "0.1.4"
 RELEASES = ("australia", "brazil")
 DEFAULT_RELEASE = "australia"
 
 REPO = "dayiqb/servicenow-docs-mcp"
 LATEST_URL = f"https://raw.githubusercontent.com/{REPO}/main/index/latest.json"
 README_URL = f"https://github.com/{REPO}#troubleshooting"
+
+
+@dataclass(frozen=True)
+class CoverageGap:
+    """A docs area this snapshot has (almost) none of, compared with another release."""
+
+    product: str  # folder name, e.g. "api-reference"
+    title: str  # e.g. "API Reference"
+    pages: int  # pages in this snapshot
+    of: int  # pages in the release compared with
 
 
 @dataclass(frozen=True)
@@ -59,6 +73,10 @@ class IndexEntry:
     chunks: int | None = None
     context_lines: int | None = None
     min_server_version: str = "0.1.0"
+    # Areas this snapshot lacks and the release that has them (written by the publisher;
+    # metadata, not part of the entry's identity).
+    coverage_gaps: tuple[CoverageGap, ...] = field(default=(), compare=False)
+    gaps_compared_with: str = field(default="", compare=False)
 
     @property
     def key(self) -> str:
@@ -96,7 +114,32 @@ class IndexEntry:
             chunks=opt_int("chunks"),
             context_lines=opt_int("context_lines"),
             min_server_version=str(raw.get("min_server_version", "0.1.0")),
+            coverage_gaps=_coverage_gaps(raw.get("coverage_gaps")),
+            gaps_compared_with=_compared_with(raw.get("coverage_gaps")),
         )
+
+
+def _coverage_gaps(raw: object) -> tuple[CoverageGap, ...]:
+    """latest.json's optional coverage_gaps.products; anything malformed is skipped."""
+    items = raw.get("products") if isinstance(raw, dict) else None
+    out = []
+    for item in items if isinstance(items, list) else []:
+        if not isinstance(item, dict):
+            continue
+        product, pages, of = item.get("product"), item.get("pages"), item.get("of")
+        if not (isinstance(product, str) and re.fullmatch(r"[a-z0-9][a-z0-9-]{0,80}", product)):
+            continue
+        if not (isinstance(pages, int) and isinstance(of, int) and 0 <= pages < of):
+            continue
+        title = item.get("title")
+        title = title.strip()[:80] if isinstance(title, str) and title.strip() else product
+        out.append(CoverageGap(product, title, pages, of))
+    return tuple(out)
+
+
+def _compared_with(raw: object) -> str:
+    other = raw.get("compared_with") if isinstance(raw, dict) else None
+    return other if other in RELEASES else ""
 
 
 # The index this version ships with: the measured contextual-retrieval index (ServiceNowDocs
@@ -157,6 +200,25 @@ def normalize_release(value: str | None) -> str | None:
         return default_release()
     v = str(value).strip().lower()
     return v if v in RELEASES else None
+
+
+RERANK_PROFILES = {"standard": (25, 800), "fast": (20, 500)}  # (candidates, chars read)
+
+
+_RERANK_WORDS = {"true": "fast", "1": "fast", "yes": "fast", "false": "standard", "0": "standard",
+                 "no": "standard", "": "standard"}
+
+
+def rerank_profile() -> str:
+    """SNOW_DOCS_RERANK: "standard" (default, the measured setting) or "fast"; the Desktop
+    extension's checkbox passes "true"/"false"."""
+    raw = os.environ.get("SNOW_DOCS_RERANK", "").strip().lower()
+    profile = raw if raw in RERANK_PROFILES else _RERANK_WORDS.get(raw)
+    if profile is None:
+        logger.warning("SNOW_DOCS_RERANK=%r is not one of %s; using standard", raw,
+                       "/".join(RERANK_PROFILES))
+        profile = "standard"
+    return profile
 
 
 def latest_url() -> str | None:

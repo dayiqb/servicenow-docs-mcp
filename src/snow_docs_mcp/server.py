@@ -46,9 +46,9 @@ from mcp.server import MCPServer
 from mcp.types import ToolAnnotations
 from pydantic import BaseModel, Field
 
-from snow_docs_mcp import config, models, sections, setup, store
+from snow_docs_mcp import config, identifiers, models, products, sections, setup, store
 from snow_docs_mcp.read import ReadResult as _ReadResult
-from snow_docs_mcp.read import not_an_id, read_section
+from snow_docs_mcp.read import not_an_id, page_url, read_section
 from snow_docs_mcp.search import make_id, parse_id, run_search, snippet, strip_blurb
 
 logger = logging.getLogger(__name__)
@@ -170,6 +170,160 @@ def _not_ready(release: str) -> str:
 WEAK_SCORE = -2.0
 
 
+# Code-like names in a query: camelCase (setMandatory), snake_case (sys_id) or dotted
+# (g_form.setMandatory, $sp.getParameter). A misspelt one ("setMandatroy") still scores
+# above WEAK_SCORE because the rest of the query ("client script") matches, so the score
+# alone can't catch it. Checked instead: does the name occur in any candidate passage?
+_NAME_RE = re.compile(r"[$A-Za-z_][\w$]*(?:\.[$A-Za-z_][\w$]*)*")
+_CAMEL_RE = re.compile(r"[a-z][A-Z]")
+
+
+def _code_names(query: str) -> list[str]:
+    """The code-like parts of a query, e.g. 'g_form.setMandatory' -> ['g_form', 'setMandatory'].
+    Names starting u_ or x_ are the customer's own (ServiceNow's convention): never in the docs."""
+    names: list[str] = []
+    for token in _NAME_RE.findall(query):
+        for part in token.split("."):
+            bare = part.lstrip("$")
+            code_like = _CAMEL_RE.search(bare) or "_" in bare.strip("_")
+            custom = bare.lower().startswith(("u_", "x_"))
+            if len(bare) >= 5 and code_like and not custom and part not in names:
+                names.append(part)
+    return names
+
+
+def _missing_names(query: str, candidates: list) -> list[str]:
+    """Code-like names from the query that occur, as written, in none of the candidates."""
+    names = _code_names(query)
+    if not names:
+        return []
+    text = sections.unescape_markdown(" ".join(c.content for c in candidates))
+    return [n for n in names if not sections.name_pattern(n).search(text)]
+
+
+_CODE_WORD_RE = re.compile(r"[$A-Za-z_][\w$]*")
+
+
+def _one_edit(a: str, b: str) -> bool:
+    """a and b differ by one insertion, deletion, substitution or swap of neighbours."""
+    if a == b or abs(len(a) - len(b)) > 1:
+        return False
+    if len(a) == len(b):
+        diff = [i for i in range(len(a)) if a[i] != b[i]]
+        return len(diff) == 1 or (
+            len(diff) == 2 and diff[1] == diff[0] + 1 and a[diff[0]] == b[diff[1]]
+            and a[diff[1]] == b[diff[0]]
+        )
+    short, long_ = sorted((a, b), key=len)
+    return any(long_[:i] + long_[i + 1 :] == short for i in range(len(long_)))
+
+
+def _closest(name: str, words) -> str:
+    """The word `name` most likely misspells: difflib ratio >= 0.85, or one edit away
+    ('g_from' -> 'g_form'). '' when nothing is that close."""
+    for word in difflib.get_close_matches(name, words, n=5, cutoff=0.75):
+        if word != name and (
+            difflib.SequenceMatcher(None, name, word).ratio() >= 0.85 or _one_edit(name, word)
+        ):
+            return word
+    return ""
+
+
+def _did_you_mean(names: list[str], candidates: list, more=lambda: ()) -> dict[str, str]:
+    """For each misspelt code name, the closest code-like word ('setMandatroy' ->
+    'setMandatory'): first from the candidate passages, then from `more()` (e.g. every code
+    name in the index's section headings)."""
+    words = {
+        w
+        for c in candidates
+        for w in _CODE_WORD_RE.findall(sections.unescape_markdown(c.content))
+        if len(w) >= 5 and (_CAMEL_RE.search(w) or "_" in w.strip("_"))
+    }
+    out = {}
+    for name in names:
+        close = _closest(name, words) or _closest(name, more())
+        if close:
+            out[name] = close
+    return out
+
+
+MAX_NAMED = 3  # a pasted script names every local variable: list at most this many
+
+
+def _names_message(rel: str, db, query: str, candidates: list, gap_note: bool) -> str:
+    """A note on code names in the query that none of the candidate passages contain: either
+    they appear nowhere in the release (a typo, or a custom name), or elsewhere in it."""
+    missing = _missing_names(query, candidates)
+    if not missing:
+        return ""
+    known = {n: store.mentions(db, n) for n in missing}
+    nowhere = [n for n in missing if not known[n]][:MAX_NAMED]
+    elsewhere = [n for n in missing if known[n]][:MAX_NAMED]
+    msg = ""
+    if nowhere:
+        close = _did_you_mean(nowhere, candidates, lambda: store.heading_code_names(db))
+        named = ", ".join(
+            f"'{n}'" + (f" (did you mean '{close[n]}'?)" if n in close else "") for n in nowhere
+        )
+        verb = "appears" if len(nowhere) == 1 else "appear"
+        why = "a typo, or a custom name?"
+        if gap_note:
+            why = "a typo, a custom name, or part of an area these docs lack (see the note)?"
+        msg += (
+            f" {named} {verb} nowhere in the {rel} docs: {why} These passages may be about "
+            "something else."
+        )
+    if elsewhere:
+        named = ", ".join(f"'{n}'" for n in elsewhere)
+        verb = "is" if len(elsewhere) == 1 else "are"
+        msg += (
+            f" {named} {verb} in the {rel} docs but not in these passages; if the question is "
+            "about it, search for it by name."
+        )
+    return msg
+
+
+def _product_problem(product: str, folder: str, rel: str, db, known: list[str]) -> str:
+    """Why a `product` value can't be searched in this release, and what to do instead."""
+    gaps, other = setup.coverage_gaps(rel)
+    gap = next((g for g in gaps if g.product == (folder or products.normalize(product))), None)
+    if gap and other:
+        have = "no" if gap.pages == 0 else f"only {gap.pages:,}"
+        return (
+            f"The {rel} docs snapshot has {have} {gap.title} pages ({gap.of:,} in {other}). "
+            f"Search with release '{other}' for these."
+        )
+    if folder:  # an abbreviation for a folder this release doesn't have
+        return (
+            f"'{product}' means the {folder} docs, which the {rel} docs don't include. Omit "
+            "`product` to search everything, or pick one of: " + ", ".join(known) + "."
+        )
+    close = products.suggestions(product, known, store.page_paths(db)[0])
+    hint = f"Did you mean: {', '.join(close)}? " if close else ""
+    return (
+        f"Unknown product '{product}' in the {rel} docs. {hint}Valid products: "
+        + ", ".join(known)
+        + ". Abbreviations such as itsm, csm, hrsd or cmdb work too. Or omit `product` to "
+        "search everything."
+    )
+
+
+def _gaps_note(rel: str, folder: str | None = None) -> str:
+    """Which docs areas this release's snapshot lacks (only `folder`'s, for a filtered
+    search), if latest.json lists any."""
+    gaps, other = setup.coverage_gaps(rel)
+    if folder is not None:
+        gaps = tuple(g for g in gaps if g.product == folder)
+    if not gaps or not other:
+        return ""
+    parts = [
+        g.title if g.pages == 0 else f"most of {g.title} ({g.pages:,} of {g.of:,} pages)"
+        for g in gaps
+    ]
+    lacks = parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + " and " + parts[-1]
+    return f"this {rel} docs snapshot lacks {lacks}; for those, search release '{other}'"
+
+
 _LINK_RE = re.compile(r"\[([^\]]*)\]\([^)]*\)")
 _WORD_RE = re.compile(r"\w+")
 SAME_TEXT = 0.8  # word overlap (Jaccard) above which two passages count as one
@@ -219,8 +373,7 @@ def _distinct_hits(db, rel: str, hits: list, limit: int) -> list[Hit]:
                 id=hit_id,
                 release=rel,
                 page_title=sections.front_matter_value(page, "title"),
-                url=sections.front_matter_value(page, "canonical_url")
-                or store.source_url(db, h.file_path),
+                url=page_url(db, rel, h.file_path, page),
                 heading_path=h.heading_path,
                 product=store.product_of(h.file_path),
                 snippet=snippet(h.content, h.context_chars),
@@ -254,8 +407,10 @@ def snow_docs_search(
     """Search the official ServiceNow product documentation.
 
     Use this for any question about how ServiceNow works, how to configure it, or what a
-    feature does. Returns the most relevant documentation passages, best first. Each hit's
-    `id` can be passed to snow_docs_read for the full section, and should be cited as [id].
+    feature does. Returns the most relevant documentation passages, best first (a section
+    whose own heading names a method or other code name from the query comes first even when
+    its score is a little lower). Each hit's `id` can be passed to snow_docs_read for the full
+    section, and should be cited as [id].
 
     Args:
         query: A question or keywords in English, using ServiceNow's terms, e.g. "how are
@@ -263,10 +418,12 @@ def snow_docs_search(
             asked in another language first (e.g. "katalogvariabel" -> "catalog variable").
         limit: Number of passages to return, 1-20 (default 5).
         product: Optional top-level docs area to search within, e.g.
-            "it-service-management", "now-platform", "platform-security". An unknown value
-            returns the list of valid ones.
+            "it-service-management", "servicenow-platform", "platform-security"; common
+            abbreviations work too ("itsm", "csm", "hrsd", "cmdb", "ui builder"). An unknown
+            value returns suggestions and the list of valid ones.
         release: ServiceNow release: "australia" or "brazil". Defaults to the configured
-            release (australia unless SNOW_DOCS_RELEASE says otherwise).
+            release (australia unless SNOW_DOCS_RELEASE says otherwise). The result says
+            when that release's docs lack an area (e.g. brazil's have no API reference yet).
     """
     try:
         q = (query or "").strip()
@@ -291,20 +448,17 @@ def snow_docs_search(
         if lim != limit:
             notes.append(f"limit adjusted to {lim} (allowed: 1-20)")
 
-        prefix = None
+        prefix = folder = None
         if product and product.strip():
-            wanted = product.strip().strip("/").lower()
             known = store.products(db)
-            if wanted not in known:
-                close = difflib.get_close_matches(wanted, known, n=3, cutoff=0.5)
-                hint = f"Did you mean: {', '.join(close)}? " if close else ""
+            folder, how = products.resolve(product, known)
+            if how not in ("exact", "alias"):
                 return SearchResult(
-                    ok=False,
-                    release=rel,
-                    message=f"Unknown product '{product}' in the {rel} docs. {hint}Valid "
-                    "products: " + ", ".join(known) + ". Or omit `product` to search everything.",
+                    ok=False, release=rel, message=_product_problem(product, folder, rel, db, known)
                 )
-            prefix = f"markdown/{wanted}/"
+            if how == "alias":
+                notes.append(f"searched the {folder} docs for '{product.strip()}'")
+            prefix = f"markdown/{folder}/"
 
         # Another Claude app may switch to a newer snapshot (and delete this one) mid-search:
         # re-resolve the index once and retry before giving up.
@@ -313,9 +467,12 @@ def snow_docs_search(
                 # The reranker always scores the whole pool, so taking all of it costs nothing
                 # extra and leaves room to drop duplicates and still return `lim` passages.
                 hits = run_search(
-                    db, q, top_k=max(lim, models.RERANK_POOL), source_filter=prefix, query_text=q
+                    db, q, top_k=max(lim + 5, models.RERANK_POOL), source_filter=prefix, query_text=q
                 )
+                hits = identifiers.prefer_exact(q, hits)
                 out = _distinct_hits(db, rel, hits, lim)
+                gaps = _gaps_note(rel, folder)
+                names_note = _names_message(rel, db, q, hits, bool(gaps)) if out else ""
                 break
             except FileNotFoundError:
                 newer = setup.active_index(rel)
@@ -337,6 +494,9 @@ def snow_docs_search(
                 " These matches look weak. The docs are in English: if the question isn't, "
                 "search again with English ServiceNow terms; otherwise try other wording."
             )
+        msg += names_note
+        if gaps:
+            notes.append(gaps)
         if notes:
             msg += " Note: " + "; ".join(notes) + "."
         return SearchResult(ok=True, message=msg, release=rel, snapshot=_snapshot_of(rel), hits=out)

@@ -16,7 +16,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from snow_docs_mcp import models
+from snow_docs_mcp import models, sections
 from snow_docs_mcp.store import SearchHit, search
 
 ID_SEPARATOR = "::"
@@ -114,7 +114,7 @@ def _readable_header(text: str) -> str:
     for line in lines[1:end]:
         m = _HEADER_FIELD.fullmatch(line.strip())
         if m:
-            fields[m.group(1)] = m.group(2).strip().strip('"')
+            fields[m.group(1)] = sections.plain_value(m.group(2))
     title, description = fields.get("title", ""), fields.get("description", "")
     head = f"{title}: {description}" if title and description else title or description
     rest = "\n".join(lines[end + 1 :])
@@ -122,10 +122,10 @@ def _readable_header(text: str) -> str:
 
 
 def snippet(content: str, context_chars: int | None = None, max_chars: int = 600) -> str:
-    """Readable preview: context line removed, whitespace collapsed, cut on a word boundary.
-    A page's opening passage starts with its metadata header: shown as "title: description"
-    followed by the text, instead of the raw header."""
-    text = strip_blurb(content, context_chars).lstrip()
+    """Readable preview: context line removed, links reduced to their text, whitespace
+    collapsed, cut on a word boundary. A page's opening passage starts with its metadata
+    header: shown as "title: description" followed by the text, instead of the raw header."""
+    text = sections.unlink(strip_blurb(content, context_chars).lstrip())
     if text.startswith("---"):
         text = _readable_header(text)
     text = _WS.sub(" ", text).strip()

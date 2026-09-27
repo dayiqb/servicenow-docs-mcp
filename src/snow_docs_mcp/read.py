@@ -27,6 +27,32 @@ class ReadResult:
     truncated: bool = False
 
 
+def page_url(db_path: str | Path, release: str, file_path: str, page: str) -> str:
+    """The address search hits and read results give for a page: its www.servicenow.com
+    page, or its source on GitHub when the docs name none."""
+    return sections.site_url(page, release) or store.source_url(db_path, file_path)
+
+
+def _link_resolver(db_path: str | Path, release: str):
+    """'markdown/<path>.md' -> that page's address ('' when the index has no such page).
+    A path that no longer exists still resolves when exactly one page has its file name
+    (upstream links often miss a subfolder the page moved into)."""
+    paths, by_name = store.page_paths(db_path)
+    seen: dict[str, str] = {}
+
+    def resolve(file_path: str) -> str:
+        if file_path not in seen:
+            target = file_path if file_path in paths else None
+            if target is None:
+                same = by_name.get(file_path.rsplit("/", 1)[-1], [])
+                target = same[0] if len(same) == 1 else None
+            page = store.get_document(db_path, target) if target else None
+            seen[file_path] = page_url(db_path, release, target, page) if page is not None else ""
+        return seen[file_path]
+
+    return resolve
+
+
 def not_an_id(doc_id: str) -> ReadResult:
     return ReadResult(
         ok=False,
@@ -57,7 +83,7 @@ def read_section(
         )
 
     title = sections.front_matter_value(text, "title")
-    url = sections.front_matter_value(text, "canonical_url") or store.source_url(db_path, file_path)
+    url = page_url(db_path, release, file_path, text)
     if heading_path:
         body = sections.extract_section(text, heading_path, occurrence)
         if body is None:
@@ -81,6 +107,7 @@ def read_section(
     else:
         body = sections.strip_front_matter(text)
 
+    body = sections.rewrite_doc_links(body, _link_resolver(db_path, release))
     max_chars = max(500, min(int(max_chars), 100_000))
     truncated = len(body) > max_chars
     if truncated:

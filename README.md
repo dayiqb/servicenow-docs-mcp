@@ -59,8 +59,8 @@ the server failed to start the first time, restart Claude once.
 
 ## First run
 
-The first time a release is used, the server downloads its docs index (about 550 MB, from this
-repo's GitHub releases), and once per computer two search models (about 1.2 GB, from Hugging
+The first time a release is used, the server downloads its docs index (about 600-660 MB, from
+this repo's GitHub releases), and once per computer two search models (about 1.2 GB, from Hugging
 Face). That takes a few minutes. Until it's done, the tools reply "still being set up" with a
 percentage; ask Claude to run `snow_docs_status` to check progress.
 
@@ -69,7 +69,8 @@ Everything is stored in one folder, shared by all Claude apps on the computer:
 - Windows: `%USERPROFILE%\.servicenow-docs-mcp`
 - macOS / Linux: `~/.servicenow-docs-mcp`
 
-About 2.6 GB per release plus the models. After the first run it works offline. Each running
+About 1.7 GB per release once unpacked (2.4 GB free space needed while it unpacks), plus the
+models. After the first run it works offline. Each running
 copy of the server (Claude Desktop, plus one per open Claude Code session) uses under 100 MB of
 memory until its first search, then about 3 GB.
 
@@ -79,6 +80,9 @@ memory until its first search, then about 3 GB.
   passes `release: "brazil"`. To make Brazil the default, set the environment variable
   `SNOW_DOCS_RELEASE=brazil`.
 - Only releases you actually use are downloaded.
+- The Brazil docs don't yet cover every area: the current snapshot has no API reference and no
+  Finance and Supply Chain pages, and only part of Employee Service Management. Brazil search
+  results say so, and Claude searches the Australia docs for questions in those areas.
 - **Updates are automatic.** The server checks for a newer docs snapshot when it starts and once
   a day, downloads it in the background, verifies it, and switches over. Searches keep working
   on the current snapshot meanwhile. Older snapshots are deleted.
@@ -88,11 +92,17 @@ memory until its first search, then about 3 GB.
 Ask ServiceNow questions normally: "How is incident priority calculated?", "What roles do I need
 to configure an email account?" Claude searches, reads the relevant sections, and answers with
 citations like `[australia:markdown/it-service-management/…md::Incident management > Priority]`,
-plus a link to each page: on docs.servicenow.com when the docs name it, otherwise its source
-page on GitHub.
+plus a link to each page on www.servicenow.com (for the release you searched), or its source
+page on GitHub when the docs name no site page. Links between docs pages inside a section point
+at those pages too.
 
 To narrow a search, ask Claude to limit it to one area, e.g. *"search only in
-platform-security"*. An unknown area name gets back the list of valid ones.
+platform-security"*. Common abbreviations work too (ITSM, CSM, HRSD, CMDB, UI Builder, Service
+Portal, ...); an unknown area name gets back suggestions and the list of valid ones.
+
+When a question names a method or other code name (`addEncodedQuery`, `g_form.setMandatory`),
+the section with exactly that name comes first. A misspelt name gets a note, with the closest
+name the docs have (*"did you mean 'setMandatory'?"*).
 
 **Docs first, automatically.** The plugin includes a small hook: when a message is clearly
 about ServiceNow, Claude is reminded to search the docs and cite them before answering. One
@@ -108,6 +118,7 @@ Claude Code; in Claude Desktop the extension's built-in instructions do the same
 | Problem | Fix |
 |---|---|
 | The server fails to start | Check uv is installed (`uv --version` in a terminal), then quit and reopen Claude. |
+| Searches are slow (6+ seconds, e.g. a 2-CPU computer or container) | Claude Desktop: Settings → Extensions → ServiceNow Docs → turn on "Faster search on slow computers". Claude Code: set the environment variable `SNOW_DOCS_RERANK=fast`. The ranking step then reads less of each candidate: about 45% less work per search, slightly different results, same measured quality (nDCG@10 −.007, not significant). |
 | "HTTP 404" | The docs index release isn't published yet, or the link moved. Tell the maintainer. |
 | "not enough free disk space" | Free about 3 GB, or set `SNOW_DOCS_HOME` to a folder on a bigger disk. |
 | "DLL load failed" (Windows) | Install the Visual C++ Redistributable (link above), then restart Claude. |
