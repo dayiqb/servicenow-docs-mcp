@@ -77,13 +77,27 @@ def test_plugin_skill_exists_and_names_the_tools() -> None:
         assert tool in skill
 
 
-def test_latest_json_seed_matches_the_builtin_entry() -> None:
-    from snow_docs_mcp import config
+def test_latest_json_is_well_formed_and_never_behind_the_builtin_entry() -> None:
+    """A new docs index is published by editing latest.json alone, so it moves ahead of the
+    server's built-in entry (which stays as the known-good fallback); it must never point
+    behind it, and every entry must be usable by this server version."""
+    from snow_docs_mcp import config, setup
 
     latest = json.loads((ROOT / "index" / "latest.json").read_text(encoding="utf-8"))
     assert latest["schema"] == 1
-    au = config.IndexEntry.from_json("australia", latest["indexes"]["australia"])
-    assert au == config.BUILTIN_ENTRIES["australia"]
+    assert set(config.BUILTIN_ENTRIES) <= set(latest["indexes"])
+    for release, raw in latest["indexes"].items():
+        entry = config.IndexEntry.from_json(release, raw)
+        builtin = config.BUILTIN_ENTRIES.get(release)
+        if builtin is not None:
+            assert entry.snapshot >= builtin.snapshot
+            if entry.snapshot == builtin.snapshot:
+                assert entry == builtin
+        assert entry.url.startswith(f"https://github.com/{config.REPO}/releases/download/")
+        assert entry.url.endswith(f"-{entry.gz_sha256[:12]}.db.gz"), "content-addressed name"
+        assert len(entry.gz_sha256) == 64 and len(entry.db_sha256) == 64
+        assert entry.gz_bytes and entry.db_bytes and entry.chunks
+        assert setup._compatible(entry)
 
 
 def test_prompt_hook_is_wired_in_exec_form() -> None:
