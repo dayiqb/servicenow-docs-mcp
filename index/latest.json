@@ -12,6 +12,18 @@
       "chunks": 302813,
       "context_lines": 302813,
       "min_server_version": "0.1.0"
+    },
+    "brazil": {
+      "snapshot": "2026-09-24",
+      "corpus_commit": "1911a1db112f2aa07745c715dcf40832d79de005",
+      "url": "https://github.com/dayiqb/servicenow-docs-mcp/releases/download/index-brazil-2026-09-24/servicenow-docs-index-brazil-2026-09-24-e9d66548f50a.db.gz",
+      "gz_sha256": "e9d66548f50aafee67fa3af1c90176ffb9e943e32abb090f192b1711146d8e03",
+      "gz_bytes": 577114038,
+      "db_sha256": "0914396cf9fd8ceb2623468620a0e3b6c32c1baab66a752ee048b60dac1ab0e9",
+      "db_bytes": 1476583424,
+      "chunks": 268538,
+      "context_lines": 169078,
+      "min_server_version": "0.1.0"
     }
   }
 }
