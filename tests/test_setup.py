@@ -879,7 +879,10 @@ def test_a_newer_view_saved_by_another_app_is_picked_up(home, fixture_db, srv, m
     saved = json.loads((home / setup.LATEST_CACHE).read_text())
     saved["doc"]["indexes"]["australia"]["snapshot"] = b.snapshot
     saved["doc"]["indexes"]["australia"]["gz_sha256"] = b.gz_sha256
+    stamp = (home / setup.LATEST_CACHE).stat()
     (home / setup.LATEST_CACHE).write_text(json.dumps(saved))  # another process read it
+    # ...within the same timestamp tick (Windows: two quick writes can share an mtime)
+    os.utime(home / setup.LATEST_CACHE, ns=(stamp.st_atime_ns, stamp.st_mtime_ns))
     n = len(s.requests)
     setup.refresh_latest()  # not due yet: no network, but the saved view is newer
     assert len(s.requests) == n

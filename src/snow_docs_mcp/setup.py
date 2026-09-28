@@ -111,7 +111,9 @@ _latest_ok = False
 _update_note = ""
 _last_error_at: dict[str, float] = {}
 _bad_memory: dict[tuple[str, str, str], float] = {}  # in case the .bad file can't be written
-_cache_mtime: float | None = None  # the saved latest.json this process last read or wrote
+# The saved latest.json this process last read or wrote, as text: compared by content, since
+# two writes a few ms apart can share one modification time (Windows).
+_cache_seen: str | None = None
 _last_logged: dict[str, tuple[str, int]] = {}
 _queue: queue.Queue[str] = queue.Queue()
 _pending: set[str] = set()
@@ -310,35 +312,36 @@ def _apply_latest(doc: object) -> None:
 
 def _save_latest(url: str, doc: dict) -> None:
     """Share this latest.json with the other processes using the folder (atomic write)."""
-    global _cache_mtime
+    global _cache_seen
     home = config.data_home()
     cache = home / LATEST_CACHE
+    text = json.dumps({"schema": 1, "url": url, "doc": doc})
     try:
         fd, tmp = tempfile.mkstemp(prefix=".latest-", suffix=".tmp", dir=home)
         with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump({"schema": 1, "url": url, "doc": doc}, f)
+            f.write(text)
         os.replace(tmp, cache)
         with _state_lock:
-            _cache_mtime = cache.stat().st_mtime
+            _cache_seen = text
     except OSError as e:
         logger.warning("could not save %s (%s)", cache, e)
 
 
 def _load_saved_latest(url: str) -> None:
     """Adopt the latest.json another process saved, if it is new to this process."""
-    global _cache_mtime
+    global _cache_seen
     cache = config.data_home() / LATEST_CACHE
     try:
-        mtime = cache.stat().st_mtime
+        text = cache.read_text(encoding="utf-8")
         with _state_lock:
-            if mtime == _cache_mtime:
+            if text == _cache_seen:
                 return
-        saved = json.loads(cache.read_text(encoding="utf-8"))
+        saved = json.loads(text)
         if not isinstance(saved, dict) or saved.get("schema") != 1 or saved.get("url") != url:
             return
         _apply_latest(saved.get("doc"))
         with _state_lock:
-            _cache_mtime = mtime
+            _cache_seen = text
     except (OSError, ValueError) as e:
         if not isinstance(e, FileNotFoundError):
             logger.warning("ignoring the saved %s (%s)", cache, e)
@@ -974,7 +977,7 @@ def _update_loop() -> None:
 
 def _reset_for_tests() -> None:
     global _worker, _updater, _latest_checked_at, _latest_ok, _update_note, _queue, _models
-    global _cache_mtime
+    global _cache_seen
     with _state_lock:
         _status.clear()
         _models = SetupStatus("idle", "")
@@ -982,7 +985,7 @@ def _reset_for_tests() -> None:
         _latest_checked_at = None
         _latest_ok = False
         _update_note = ""
-        _cache_mtime = None
+        _cache_seen = None
         _last_error_at.clear()
         _bad_memory.clear()
         _last_logged.clear()
