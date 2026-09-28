@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
-  "name": "servicenow-docs",
+  "name": "servicenow-docs-mcp",
   "description": "ServiceNow product documentation search for Claude.",
   "owner": {
     "name": "Dayan Iqbal"
@@ -10,7 +10,7 @@
       "name": "servicenow-docs",
       "source": "./",
       "description": "Search the official ServiceNow product docs (Australia and Brazil releases) from Claude, with cited answers. Runs locally; needs uv.",
-      "version": "0.1.4",
+      "version": "0.1.5",
       "category": "productivity"
     }
   ]

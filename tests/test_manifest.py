@@ -9,6 +9,7 @@ from pathlib import Path
 import anyio
 from mcp import Client
 
+from snow_docs_mcp import config
 from snow_docs_mcp.server import ANSWER_RULES, __version__, mcp
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -56,6 +57,10 @@ MARKET = json.loads((ROOT / ".claude-plugin" / "marketplace.json").read_text(enc
 
 def test_plugin_and_marketplace_describe_this_version() -> None:
     assert PLUGIN["name"] == "servicenow-docs" and PLUGIN["version"] == __version__
+    # the marketplace is named like its repo: Claude Desktop names a marketplace added by repo
+    # after the repo, and its Update button then asks for that name (0.1.4's differed:
+    # "Couldn't check for updates", MARKETPLACE_ERROR:NOT_REGISTERED)
+    assert MARKET["name"] == "servicenow-docs-mcp" == config.REPO.split("/")[1]
     (entry,) = MARKET["plugins"]
     assert entry["name"] == PLUGIN["name"] and entry["version"] == __version__
     assert entry["source"] == "./", "the repo root is the plugin"
@@ -65,7 +70,7 @@ def test_plugin_launches_the_server_from_its_own_folder() -> None:
     server = PLUGIN["mcpServers"]["servicenow-docs"]
     assert server["command"] == "uv"
     args = server["args"]
-    assert args[:2] == ["run", "--frozen"]
+    assert args[0] == "run" and "--frozen" in args  # the locked dependencies, never re-resolved
     assert "${CLAUDE_PLUGIN_ROOT}" in args
     assert (ROOT / args[-1]).is_file(), "the launcher script exists"
 
@@ -108,3 +113,27 @@ def test_prompt_hook_is_wired_in_exec_form() -> None:
     assert "args" in hook, "exec form: no shell, so Windows quoting/profiles can't break it"
     assert "${CLAUDE_PLUGIN_ROOT}" in hook["args"]
     assert (ROOT / hook["args"][-1]).is_file()
+
+
+# Claude Desktop runs plugin servers on the host (and bridges them into Cowork) only if their
+# `env` avoids the names it reserves; one reserved name and the server never starts (2026-09-28:
+# 'env declares reserved variable name "UV_SYSTEM_CERTS"'). Desktop's rule, as shipped then:
+DESKTOP_RESERVED_PREFIXES = ("CLAUDE_", "ANTHROPIC_", "OTEL_", "LD_", "DYLD_", "BASH_FUNC_",
+                             "GIT_", "NPM_CONFIG_", "UV_")
+DESKTOP_RESERVED_NAMES = {"PATH", "HOME", "PYTHONPATH", "PYTHONHOME", "SSL_CERT_FILE",
+                          "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY", "TMPDIR",
+                          "USERPROFILE", "APPDATA", "LOCALAPPDATA", "NODE_EXTRA_CA_CERTS"}
+
+
+def test_plugin_server_and_hooks_avoid_desktop_reserved_env_names() -> None:
+    plugin = json.loads((ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
+    hooks = json.loads((ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8"))
+    envs = [srv.get("env", {}) for srv in plugin["mcpServers"].values()]
+    envs += [h.get("env", {}) for g in hooks["hooks"].values() for e in g for h in e["hooks"]]
+    for env in envs:
+        for name in env:
+            upper = name.upper()
+            assert upper not in DESKTOP_RESERVED_NAMES, name
+            assert not upper.startswith(DESKTOP_RESERVED_PREFIXES), name
+    # system certificates for uv's own downloads, as a flag instead (any uv version)
+    assert plugin["mcpServers"]["servicenow-docs"]["args"][:2] == ["run", "--native-tls"]

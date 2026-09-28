@@ -48,7 +48,7 @@ available in chat, in Cowork and in the Code tab.
 
 ```
 /plugin marketplace add dayiqb/servicenow-docs-mcp
-/plugin install servicenow-docs@servicenow-docs
+/plugin install servicenow-docs@servicenow-docs-mcp
 ```
 
 Using both (the extension in Desktop, the plugin in the terminal) is fine: they share one data
