@@ -1,0 +1,12 @@
+# pnpm settings. pnpm 11 and later read them only from this file.
+# minimumReleaseAge: use only package versions that are at least 1 day old (minutes).
+minimumReleaseAge: 1440
+onlyBuiltDependencies:
+  - '@parcel/watcher'
+  - '@servicenow/aiux-components-condition-builder'
+  - '@servicenow/aiux-document-viewer'
+  - '@swc/core'
+  - core-js
+  - isolated-vm
+  - libxmljs2
+  - sn-http-request

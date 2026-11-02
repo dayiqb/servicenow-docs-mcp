@@ -34,7 +34,7 @@ Aggregates: count, sum, average, minimum, maximum. Line and bar charts can group
 ## Requirements
 
 - Instance: Zurich Patch 12 or later, or Australia Patch 5 or later.
-- Node 24.14.1 or later, pnpm 10 or later.
+- Node 24.14.1 or later, pnpm 10 or later. pnpm settings are in `pnpm-workspace.yaml`. It also makes pnpm use only package versions that are at least 1 day old.
 
 ## Install
 
