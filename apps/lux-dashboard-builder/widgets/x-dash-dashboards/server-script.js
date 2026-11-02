@@ -7,7 +7,7 @@ export default function server(data, _options, input) {
     if (action === 'list') list();
     else if (action === 'create') create();
   } catch (e) {
-    gs.error('x_dash dashboards ' + action + ': ' + e.message);
+    gs.error('x_steas_dash dashboards ' + action + ': ' + e.message);
     fail(data, gs.getMessage('Something went wrong') + ': ' + e.message);
   }
 

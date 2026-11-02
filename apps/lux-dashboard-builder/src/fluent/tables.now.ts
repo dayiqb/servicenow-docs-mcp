@@ -11,8 +11,8 @@ import {
 import { viewerRole, builderRole, adminRole } from './roles.now'
 
 // One row per dashboard. Ownership checks run in the widget server scripts.
-export const x_dash_dashboard = Table({
-    name: 'x_dash_dashboard',
+export const x_steas_dash_dashboard = Table({
+    name: 'x_steas_dash_dashboard',
     label: 'Dashboard',
     display: 'name',
     audit: true,
@@ -30,8 +30,8 @@ export const x_dash_dashboard = Table({
 })
 
 // One row per chart on a dashboard.
-export const x_dash_chart = Table({
-    name: 'x_dash_chart',
+export const x_steas_dash_chart = Table({
+    name: 'x_steas_dash_chart',
     label: 'Dashboard chart',
     display: 'title',
     audit: true,
@@ -42,7 +42,7 @@ export const x_dash_chart = Table({
     schema: {
         dashboard: ReferenceColumn({
             label: 'Dashboard',
-            referenceTable: 'x_dash_dashboard',
+            referenceTable: 'x_steas_dash_dashboard',
             mandatory: true,
             cascadeRule: 'delete',
         }),
@@ -77,6 +77,7 @@ export const x_dash_chart = Table({
                 donut: { label: 'Donut', sequence: 7 },
                 heatmap: { label: 'Heat map', sequence: 8 },
                 list: { label: 'List', sequence: 9 },
+                filter: { label: 'Filter element', sequence: 10 },
             },
         }),
         trend: ChoiceColumn({
@@ -95,12 +96,15 @@ export const x_dash_chart = Table({
         max_groups: IntegerColumn({ label: 'Max groups', default: 10 }),
         width: IntegerColumn({ label: 'Width (1 to 4 columns)', default: 2 }),
         order: IntegerColumn({ label: 'Order', default: 100 }),
+        grid_props: StringColumn({ label: 'Grid position', maxLength: 200 }),
+        follow_filters: BooleanColumn({ label: 'Follow filters', default: true }),
+        apply_as_filter: BooleanColumn({ label: 'Apply as filter', default: false }),
     },
 })
 
 // Tables that builders may use. Admins manage this list.
-export const x_dash_allowed_table = Table({
-    name: 'x_dash_allowed_table',
+export const x_steas_dash_allowed_table = Table({
+    name: 'x_steas_dash_allowed_table',
     label: 'Dashboard allowed table',
     display: 'source_table',
     audit: true,
@@ -116,5 +120,5 @@ export const x_dash_allowed_table = Table({
         }),
         active: BooleanColumn({ label: 'Active', default: true }),
     },
-    index: [{ name: 'x_dash_allowed_table_unique', unique: true, element: 'source_table' }],
+    index: [{ name: 'x_steas_dash_allowed_table_unique', unique: true, element: 'source_table' }],
 })

@@ -5,14 +5,14 @@ import { Record } from '@servicenow/sdk/core'
 Record({
     $id: Now.ID['allowed-incident'],
     $meta: { installMethod: 'first install' },
-    table: 'x_dash_allowed_table',
+    table: 'x_steas_dash_allowed_table',
     data: { source_table: 'incident', secure_count: true, active: true },
 })
 
 Record({
     $id: Now.ID['allowed-task'],
     $meta: { installMethod: 'first install' },
-    table: 'x_dash_allowed_table',
+    table: 'x_steas_dash_allowed_table',
     data: { source_table: 'task', secure_count: true, active: true },
 })
 
@@ -20,7 +20,7 @@ Record({
 export const sampleDashboard = Record({
     $id: Now.ID['sample-dashboard'],
     $meta: { installMethod: 'first install' },
-    table: 'x_dash_dashboard',
+    table: 'x_steas_dash_dashboard',
     data: {
         name: 'Incident overview',
         description: 'Sample dashboard. Shows open incidents.',
@@ -32,7 +32,7 @@ export const sampleDashboard = Record({
 Record({
     $id: Now.ID['sample-chart-open'],
     $meta: { installMethod: 'first install' },
-    table: 'x_dash_chart',
+    table: 'x_steas_dash_chart',
     data: {
         dashboard: sampleDashboard,
         title: 'Open incidents',
@@ -52,7 +52,7 @@ Record({
 Record({
     $id: Now.ID['sample-chart-priority'],
     $meta: { installMethod: 'first install' },
-    table: 'x_dash_chart',
+    table: 'x_steas_dash_chart',
     data: {
         dashboard: sampleDashboard,
         title: 'Open incidents by priority',
@@ -72,7 +72,7 @@ Record({
 Record({
     $id: Now.ID['sample-chart-state'],
     $meta: { installMethod: 'first install' },
-    table: 'x_dash_chart',
+    table: 'x_steas_dash_chart',
     data: {
         dashboard: sampleDashboard,
         title: 'Open incidents by state',
@@ -92,7 +92,7 @@ Record({
 Record({
     $id: Now.ID['sample-chart-category'],
     $meta: { installMethod: 'first install' },
-    table: 'x_dash_chart',
+    table: 'x_steas_dash_chart',
     data: {
         dashboard: sampleDashboard,
         title: 'Open incidents by category',
@@ -112,7 +112,7 @@ Record({
 Record({
     $id: Now.ID['sample-chart-heat'],
     $meta: { installMethod: 'first install' },
-    table: 'x_dash_chart',
+    table: 'x_steas_dash_chart',
     data: {
         dashboard: sampleDashboard,
         title: 'Priority by state',

@@ -8,7 +8,7 @@ Design: [Lit dashboard builder for Lux: design](https://claude.ai/artifact/BfbvD
 
 | Part | Files |
 | --- | --- |
-| Roles: `x_dash.viewer`, `x_dash.builder`, `x_dash.admin` | `src/fluent/roles.now.ts` |
+| Roles: `x_steas_dash.viewer`, `x_steas_dash.builder`, `x_steas_dash.admin` | `src/fluent/roles.now.ts` |
 | Tables: dashboards, charts, allowed tables | `src/fluent/tables.now.ts` |
 | Record ACLs for the three tables | `src/fluent/acls.now.ts` |
 | Allow list (incident, task) and a sample dashboard | `src/fluent/seed-data.now.ts` (first install only) |
@@ -45,12 +45,12 @@ npx now-sdk auth --list            # find the alias of your instance
 npx now-sdk install --auth <alias>
 ```
 
-Then give users a role (`x_dash.viewer`, `x_dash.builder`, or `x_dash.admin`) and open:
+Then give users a role (`x_steas_dash.viewer`, `x_steas_dash.builder`, or `x_steas_dash.admin`) and open:
 `https://<instance>.service-now.com/aiux/lux-dashboard-builder/home`
 
 ### If the install fails on the scope name
 
-Some instances require the company prefix in the scope, for example `x_12345_dash`. Then replace `x_dash` with the new scope in every file (tables, roles, ACLs, decorators), and set the new scope in `now.config.json`. Delete `src/fluent/generated/keys.ts`, then build again.
+Some instances require the company prefix in the scope, for example `x_12345_dash`. Then replace `x_steas_dash` with the new scope in every file (tables, roles, ACLs, decorators), and set the new scope in `now.config.json`. Delete `src/fluent/generated/keys.ts`, then build again.
 
 ## Not tested yet
 
@@ -59,4 +59,4 @@ The app builds without errors (`now-sdk build`, SDK 4.14.0) and lint passes. It 
 - The data format that the Lux chart components read (`toDataResponse` in `lib/server/engine.js`).
 - `GlideAggregate.addTrend()` and the `timeref` value for date trends.
 - The stacked bar setting (`axes.stacking`).
-- Cross-scope access to `incident` and `task` from the `x_dash` scope.
+- Cross-scope access to `incident` and `task` from the `x_steas_dash` scope.

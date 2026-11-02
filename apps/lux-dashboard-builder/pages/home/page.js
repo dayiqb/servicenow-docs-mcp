@@ -8,7 +8,7 @@ import '../../widgets/x-dash-dashboards/index.js';
 const {acl} = decorators;
 
 @customElement('x-dash-home-page')
-@acl([{decision: 'allow_if', roles: ['x_dash.viewer']}])
+@acl([{decision: 'allow_if', roles: ['x_steas_dash.viewer']}])
 export default class HomePage extends AIUXElement {
   static styles = css`
     :host {

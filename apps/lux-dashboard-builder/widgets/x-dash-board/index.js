@@ -1,6 +1,6 @@
 import {html, css, nothing} from 'lit';
 import {customElement} from 'lit/decorators.js';
-import {repeat} from 'lit/directives/repeat.js';
+import {keyed} from 'lit/directives/keyed.js';
 import {
   AIUXWidgetElement,
   decorators
@@ -8,7 +8,9 @@ import {
 import {i18n} from '@servicenow/aiux/aiux-services';
 import {navigate} from '@servicenow/aiux/aiux-client';
 import '@servicenow/aiux/aiux-components-condition-builder';
+import '@servicenow/aiux/aiux-components-layout-renderer';
 import '../../components/x-dash-chart.js';
+import '../../components/x-dash-grid-tile.js';
 
 const {name, description, bestFor, chatCompatible, category, server, discoverable} = decorators;
 
@@ -22,8 +24,10 @@ const CHART_TYPES = [
   {id: 'pie', label: () => i18n.getMessage('Pie'), group: 1},
   {id: 'donut', label: () => i18n.getMessage('Donut'), group: 1},
   {id: 'heatmap', label: () => i18n.getMessage('Heat map'), group: 2},
-  {id: 'list', label: () => i18n.getMessage('List'), group: 0}
+  {id: 'list', label: () => i18n.getMessage('List'), group: 0},
+  {id: 'filter', label: () => i18n.getMessage('Filter element'), group: 1}
 ];
+const CLICKABLE_TYPES = ['column', 'bar', 'pie', 'donut'];
 const AGGREGATES = [
   {id: 'COUNT', label: () => i18n.getMessage('Count')},
   {id: 'SUM', label: () => i18n.getMessage('Sum')},
@@ -39,11 +43,25 @@ const TRENDS = [
   {id: 'Quarter', label: () => i18n.getMessage('Quarter')},
   {id: 'Year', label: () => i18n.getMessage('Year')}
 ];
-const WIDTH_CLASS = {
-  1: 'md:col-span-1 xl:col-span-1',
-  2: 'md:col-span-2 xl:col-span-2',
-  3: 'md:col-span-2 xl:col-span-3',
-  4: 'md:col-span-2 xl:col-span-4'
+const GRID_ID = 'x-dash-board-grid';
+// Turns on the grid's drag and resize features only. The server checks edit rights.
+const GRID_ROLES = ['admin'];
+const GRID_ACTIONS = ['settings', 'delete'];
+const GRID_COLUMNS = 12;
+const DEFAULT_TILE_HEIGHT = 14;
+const FILTER_TILE_HEIGHT = 6;
+const GRID_OPTIONS = {
+  columns: GRID_COLUMNS,
+  cellHeight: 20,
+  margin: 8,
+  columnOpts: {
+    breakpoints: [
+      {w: 900, c: 12},
+      {w: 640, c: 6},
+      {w: 376, c: 4}
+    ],
+    layout: 'moveScale'
+  }
 };
 
 function newChart(tables) {
@@ -60,7 +78,9 @@ function newChart(tables) {
     trend: 'none',
     list_fields: '',
     max_groups: 10,
-    width: 2
+    width: 2,
+    follow_filters: true,
+    apply_as_filter: false
   };
 }
 
@@ -90,6 +110,8 @@ export default class DashBoard extends AIUXWidgetElement {
     _editorError: {state: true},
     _saving: {state: true},
     _boardForm: {state: true},
+    _gridKey: {state: true},
+    _filters: {state: true},
     _toast: {state: true}
   };
 
@@ -118,22 +140,66 @@ export default class DashBoard extends AIUXWidgetElement {
     this._previewLoading = false;
     this._editorError = '';
     this._saving = false;
+    this._items = [];
+    this._gridKey = 0;
+    this._filters = [];
     this._boardForm = null;
     this._toast = '';
     this._previewTimer = null;
-    this._layoutTimer = null;
+    this._gridLayout = null;
     this._toastTimer = null;
     this._fetching = false;
+    // Tiles live deep inside the grid. They find the board with this event.
+    this.addEventListener('x-dash-tile-connect', e => {
+      e.stopPropagation();
+      e.composedPath()[0].board = this;
+    });
   }
 
   updated(changed) {
     if (changed.has('dashboardId') && this.dashboardId) this._load();
+    if (changed.has('_charts') || changed.has('_runs') || changed.has('_editMode') || changed.has('_filters')) {
+      this.dispatchEvent(new CustomEvent('x-dash-board-state'));
+    }
   }
+
+  /* ---------------------------------------------------- tile interface */
+
+  chartById(id) {
+    return this._charts.find(c => c.sys_id === id);
+  }
+
+  runFor(id) {
+    return this._runs[id] || {loading: true};
+  }
+
+  filterValue(chart) {
+    return this._filters.find(f => f.chartId === chart.sys_id)?.value || '';
+  }
+
+  setFilter(chart, value, label) {
+    const rest = this._filters.filter(f => f.chartId !== chart.sys_id);
+    this._applyFilters(
+      value
+        ? [...rest, {chartId: chart.sys_id, field: chart.group_by, value, label, title: chart.title}]
+        : rest
+    );
+  }
+
+  toggleFilter(chart, value, label) {
+    this.setFilter(chart, this.filterValue(chart) === value ? '' : value, label);
+  }
+
+  _applyFilters(filters) {
+    this._filters = filters;
+    this._charts.filter(c => c.chart_type !== 'filter' && c.follow_filters).forEach(c => this._runChart(c.sys_id));
+    this._say(filters.length ? i18n.getMessage('Filters applied') : i18n.getMessage('Filters cleared'));
+  }
+
 
   disconnectedCallback() {
     super.disconnectedCallback();
     clearTimeout(this._previewTimer);
-    clearTimeout(this._layoutTimer);
     clearTimeout(this._toastTimer);
   }
 
@@ -162,11 +228,16 @@ export default class DashBoard extends AIUXWidgetElement {
     try {
       const res = await this._call({action: 'getBoard'});
       this._board = res.dashboard;
+      const positions = this._editMode ? this._currentPositions() : {};
       this._charts = res.charts || [];
       this._canEdit = !!res.canEdit;
       this._tables = res.tables || [];
       this._runs = {};
       this._charts.forEach(c => this._runChart(c.sys_id));
+      this._items = this._buildItems(positions);
+      this._gridLayout = null;
+      await this.updateComplete;
+      this._grid()?.resetItems(this._items);
     } catch (e) {
       this._error = e.message;
     } finally {
@@ -178,7 +249,8 @@ export default class DashBoard extends AIUXWidgetElement {
   async _runChart(id) {
     this._runs = {...this._runs, [id]: {loading: true}};
     try {
-      const res = await this._call({action: 'runChart', chartId: id});
+      const filters = this._filters.filter(f => f.chartId !== id).map(f => ({field: f.field, value: f.value}));
+      const res = await this._call({action: 'runChart', chartId: id, filters});
       this._runs = {...this._runs, [id]: {run: res.run}};
     } catch (e) {
       this._runs = {...this._runs, [id]: {run: {ok: false, reason: e.message}}};
@@ -187,43 +259,121 @@ export default class DashBoard extends AIUXWidgetElement {
 
   /* ------------------------------------------------------------- layout */
 
-  _move(index, delta) {
-    const target = index + delta;
-    if (target < 0 || target >= this._charts.length) return;
-    const list = [...this._charts];
-    const [item] = list.splice(index, 1);
-    list.splice(target, 0, item);
-    this._charts = list;
-    this._queueLayout();
-    this._say(i18n.getMessage('Chart moved'));
+  _grid() {
+    return this.renderRoot.querySelector('sn-layout-renderer');
   }
 
-  _setWidth(index, width) {
-    const list = [...this._charts];
-    list[index] = {...list[index], width};
-    this._charts = list;
-    this._queueLayout();
-  }
-
-  _queueLayout() {
-    clearTimeout(this._layoutTimer);
-    this._layoutTimer = setTimeout(async () => {
-      try {
-        await this._call({
-          action: 'saveLayout',
-          items: this._charts.map(c => ({id: c.sys_id, width: c.width}))
-        });
-      } catch (e) {
-        this._say(e.message);
+  // Live position during an edit, else the saved position, else the next free row.
+  _buildItems(positions) {
+    let x = 0;
+    let rowHeight = 0;
+    const placed = this._charts.map(c => {
+      let pos = positions[c.sys_id];
+      if (!pos && c.grid_props) {
+        try {
+          pos = JSON.parse(c.grid_props);
+        } catch {
+          pos = null;
+        }
       }
-    }, 600);
+      return {chart: c, pos};
+    });
+    let y = placed.reduce((max, p) => (p.pos ? Math.max(max, p.pos.y + p.pos.h) : max), 0);
+    return placed.map(({chart, pos}) => {
+      if (!pos) {
+        const w = chart.chart_type === 'filter' ? 3 : Math.min(GRID_COLUMNS, (chart.width || 2) * 3);
+        if (x + w > GRID_COLUMNS) {
+          x = 0;
+          y += rowHeight;
+          rowHeight = 0;
+        }
+        pos = {x, y, w, h: chart.chart_type === 'filter' ? FILTER_TILE_HEIGHT : DEFAULT_TILE_HEIGHT};
+        x += w;
+        rowHeight = Math.max(rowHeight, pos.h);
+      }
+      return {
+        id: chart.sys_id,
+        content: 'x-dash-grid-tile',
+        properties: {chartId: chart.sys_id},
+        x: pos.x,
+        y: pos.y,
+        w: pos.w,
+        h: pos.h,
+        minWidth: 2,
+        minHeight: chart.chart_type === 'filter' ? 4 : 6
+      };
+    });
+  }
+
+  _currentPositions() {
+    const out = {};
+    (this._gridLayout || this._items || []).forEach(i => {
+      out[i.id] = {x: i.x, y: i.y, w: i.w, h: i.h};
+    });
+    return out;
+  }
+
+  _onGridChange(e) {
+    if (e.detail?.items) this._gridLayout = e.detail.items;
+  }
+
+  _onTileSettings(e) {
+    const chart = this.chartById(e.detail?.itemId || e.detail?.id);
+    if (chart) this._openEditor(chart);
+  }
+
+  _onTileDeleted(e) {
+    const chart = this.chartById(e.detail?.itemId);
+    if (chart) this._deleteChart(chart);
+  }
+
+  _setGridEditable(on) {
+    const grid = this._grid();
+    grid?.enableMove(on);
+    grid?.enableResize(on);
+  }
+
+  _startEdit() {
+    this._editMode = true;
+    this._setGridEditable(true);
+  }
+
+  async _cancelEdit() {
+    this._editMode = false;
+    this._setGridEditable(false);
+    await this._load();
+    // resetItems adds and removes tiles but does not move them, so rebuild the grid.
+    this._gridKey += 1;
+  }
+
+  async _saveLayout() {
+    if (this._saving) return;
+    this._saving = true;
+    try {
+      const positions = this._currentPositions();
+      await this._call({
+        action: 'saveLayout',
+        items: this._charts.map(c => ({id: c.sys_id, ...positions[c.sys_id]}))
+      });
+      this._editMode = false;
+      this._setGridEditable(false);
+      await this._load();
+      this._say(i18n.getMessage('Layout saved'));
+    } catch (e) {
+      this._say(e.message);
+    } finally {
+      this._saving = false;
+    }
   }
 
   async _deleteChart(chart) {
-    if (!globalThis.confirm?.(i18n.getMessage('Remove this chart?'))) return;
+    if (!globalThis.confirm?.(i18n.getMessage('Remove this chart?'))) {
+      await this._load();
+      return;
+    }
     try {
       await this._call({action: 'deleteChart', chartId: chart.sys_id});
-      this._charts = this._charts.filter(c => c.sys_id !== chart.sys_id);
+      await this._load();
       this._say(i18n.getMessage('Chart removed'));
     } catch (e) {
       this._say(e.message);
@@ -346,7 +496,7 @@ export default class DashBoard extends AIUXWidgetElement {
     if (!globalThis.confirm?.(i18n.getMessage('Delete this dashboard and all its charts?'))) return;
     try {
       await this._call({action: 'deleteBoard'});
-      navigate('/home');
+      navigate('/dashboards');
     } catch (err) {
       this._say(err.message);
     }
@@ -369,8 +519,17 @@ export default class DashBoard extends AIUXWidgetElement {
     const groupField = this._fields.find(f => f.name === c.group_by);
     const listSelected = c.list_fields ? c.list_fields.split(',') : [];
     return html`
-      <form class="flex flex-col gap-4 lg:flex-row" aria-label=${i18n.getMessage('Chart settings')} @submit=${this._saveEditor}>
-        <div class="flex min-w-0 flex-col gap-3 lg:w-1/2">
+      <form class="flex flex-col gap-4" aria-label=${i18n.getMessage('Chart settings')} @submit=${this._saveEditor}>
+        <section class="rounded-lg border border-base-300 p-3" aria-label=${i18n.getMessage('Preview')}>
+          <p class="aiux-label mb-2">${i18n.getMessage('Preview')}</p>
+          <x-dash-chart
+            .run=${this._preview}
+            chart-type=${c.chart_type}
+            .loading=${this._previewLoading}
+            height="240"
+          ></x-dash-chart>
+        </section>
+        <div class="flex min-w-0 flex-col gap-3">
           <label class="aiux-fieldset">
             <span class="aiux-label">${i18n.getMessage('Title')}</span>
             <input
@@ -424,7 +583,9 @@ export default class DashBoard extends AIUXWidgetElement {
                 </select>
               </label>`
             : nothing}
-          ${c.chart_type !== 'list'
+          ${c.chart_type === 'filter'
+            ? nothing
+            : c.chart_type !== 'list'
             ? html`<div class="flex gap-2">
                 <label class="aiux-fieldset w-1/2">
                   <span class="aiux-label">${i18n.getMessage('Aggregate')}</span>
@@ -461,7 +622,29 @@ export default class DashBoard extends AIUXWidgetElement {
                   )}
                 </select>
               </fieldset>`}
-          ${type.group >= 1
+          ${c.chart_type !== 'filter'
+            ? html`<label class="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  class="aiux-toggle"
+                  .checked=${c.follow_filters}
+                  @change=${e => this._set('follow_filters', e.target.checked)}
+                />
+                <span>${i18n.getMessage('Follow filters')}</span>
+              </label>`
+            : nothing}
+          ${CLICKABLE_TYPES.includes(c.chart_type)
+            ? html`<label class="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  class="aiux-toggle"
+                  .checked=${c.apply_as_filter}
+                  @change=${e => this._set('apply_as_filter', e.target.checked)}
+                />
+                <span>${i18n.getMessage('Apply as filter')}</span>
+              </label>`
+            : nothing}
+          ${type.group >= 1 && c.chart_type !== 'filter'
             ? html`<label class="aiux-fieldset">
                 <span class="aiux-label">${i18n.getMessage('Max number of groups')}</span>
                 <input
@@ -474,16 +657,8 @@ export default class DashBoard extends AIUXWidgetElement {
                 />
               </label>`
             : nothing}
-          <label class="aiux-fieldset">
-            <span class="aiux-label">${i18n.getMessage('Width')}</span>
-            <select class="aiux-select w-full" @change=${e => this._set('width', parseInt(e.target.value, 10))}>
-              ${[1, 2, 3, 4].map(
-                w => html`<option value=${w} ?selected=${w === c.width}>${i18n.getMessage('{0} of 4 columns', [w])}</option>`
-              )}
-            </select>
-          </label>
         </div>
-        <div class="flex min-w-0 flex-col gap-3 lg:w-1/2">
+        <div class="flex min-w-0 flex-col gap-3">
           <div
             class="rounded-lg border border-base-300 p-3"
             @cb-encoded-query-updated=${e => {
@@ -499,15 +674,6 @@ export default class DashBoard extends AIUXWidgetElement {
                 ></aiux-condition-builder>`
               : nothing}
           </div>
-          <section class="rounded-lg border border-base-300 p-3" aria-label=${i18n.getMessage('Preview')}>
-            <p class="aiux-label mb-2">${i18n.getMessage('Preview')}</p>
-            <x-dash-chart
-              .run=${this._preview}
-              chart-type=${c.chart_type}
-              .loading=${this._previewLoading}
-              height="240"
-            ></x-dash-chart>
-          </section>
           ${this._editorError
             ? html`<div class="aiux-alert aiux-alert-error aiux-alert-soft text-sm" role="alert">${this._editorError}</div>`
             : nothing}
@@ -571,62 +737,6 @@ export default class DashBoard extends AIUXWidgetElement {
     </form>`;
   }
 
-  _renderCard(chart, index) {
-    const state = this._runs[chart.sys_id] || {loading: true};
-    const title = chart.title || i18n.getMessage('Untitled chart');
-    return html`
-      <article
-        class="aiux-card col-span-1 border border-base-300 bg-base-100 shadow-sm ${WIDTH_CLASS[chart.width] || WIDTH_CLASS[2]}"
-        aria-label=${title}
-      >
-        <div class="aiux-card-body gap-2 p-4">
-          <div class="flex items-start justify-between gap-2">
-            <h2 class="aiux-card-title min-w-0 break-words text-base">${title}</h2>
-            ${this._editMode
-              ? html`<div class="flex flex-wrap justify-end gap-1">
-                  <button
-                    class="aiux-btn aiux-btn-ghost aiux-btn-xs"
-                    aria-label=${i18n.getMessage('Move {0} earlier', [title])}
-                    ?disabled=${index === 0}
-                    @click=${() => this._move(index, -1)}
-                  >
-                    ←
-                  </button>
-                  <button
-                    class="aiux-btn aiux-btn-ghost aiux-btn-xs"
-                    aria-label=${i18n.getMessage('Move {0} later', [title])}
-                    ?disabled=${index === this._charts.length - 1}
-                    @click=${() => this._move(index, 1)}
-                  >
-                    →
-                  </button>
-                  <select
-                    class="aiux-select aiux-select-xs w-auto"
-                    aria-label=${i18n.getMessage('Width of {0}', [title])}
-                    @change=${e => this._setWidth(index, parseInt(e.target.value, 10))}
-                  >
-                    ${[1, 2, 3, 4].map(w => html`<option value=${w} ?selected=${w === chart.width}>${w}/4</option>`)}
-                  </select>
-                  <button class="aiux-btn aiux-btn-ghost aiux-btn-xs" @click=${() => this._openEditor(chart)}>
-                    ${i18n.getMessage('Edit')}
-                  </button>
-                  <button class="aiux-btn aiux-btn-ghost aiux-btn-xs text-error" @click=${() => this._deleteChart(chart)}>
-                    ${i18n.getMessage('Remove')}
-                  </button>
-                </div>`
-              : nothing}
-          </div>
-          <x-dash-chart
-            .run=${state.run}
-            .loading=${!!state.loading}
-            chart-type=${chart.chart_type}
-            height=${chart.chart_type === 'score' ? 140 : 260}
-          ></x-dash-chart>
-        </div>
-      </article>
-    `;
-  }
-
   render() {
     if (this._loading && !this._board) {
       return html`<div class="p-6" role="status">
@@ -651,7 +761,7 @@ export default class DashBoard extends AIUXWidgetElement {
       <div class="mx-auto flex max-w-screen-2xl flex-col gap-4 p-4 lg:p-6">
         <header class="flex flex-wrap items-start justify-between gap-3">
           <div class="min-w-0">
-            <button class="aiux-btn aiux-btn-ghost aiux-btn-xs mb-1" @click=${() => navigate('/home')}>
+            <button class="aiux-btn aiux-btn-ghost aiux-btn-xs mb-1" @click=${() => navigate('/dashboards')}>
               ← ${i18n.getMessage('All dashboards')}
             </button>
             <h1 class="break-words text-2xl font-bold text-text-primary">${b.name}</h1>
@@ -668,31 +778,65 @@ export default class DashBoard extends AIUXWidgetElement {
                     <button class="aiux-btn aiux-btn-outline aiux-btn-sm" @click=${this._openBoardForm}>
                       ${i18n.getMessage('Dashboard settings')}
                     </button>
-                    <button class="aiux-btn aiux-btn-primary aiux-btn-sm" @click=${() => (this._editMode = false)}>
-                      ${i18n.getMessage('Done')}
+                    <button class="aiux-btn aiux-btn-ghost aiux-btn-sm" @click=${this._cancelEdit}>
+                      ${i18n.getMessage('Cancel')}
+                    </button>
+                    <button class="aiux-btn aiux-btn-primary aiux-btn-sm" ?disabled=${this._saving} @click=${this._saveLayout}>
+                      ${i18n.getMessage('Save')}
                     </button>
                   `
-                : html`<button class="aiux-btn aiux-btn-primary aiux-btn-sm" @click=${() => (this._editMode = true)}>
+                : html`<button class="aiux-btn aiux-btn-primary aiux-btn-sm" @click=${this._startEdit}>
                     ${i18n.getMessage('Edit')}
                   </button>`
               : nothing}
           </div>
         </header>
 
-        ${this._charts.length
-          ? html`<div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-              ${repeat(
-                this._charts,
-                c => c.sys_id,
-                (c, i) => this._renderCard(c, i)
+        ${this._filters.length
+          ? html`<div class="flex flex-wrap items-center gap-2" role="group" aria-label=${i18n.getMessage('Active filters')}>
+              ${this._filters.map(
+                f => html`<button
+                  class="aiux-btn aiux-btn-outline aiux-btn-xs"
+                  aria-label=${i18n.getMessage('Remove filter {0}: {1}', [f.title, f.label])}
+                  @click=${() => this._applyFilters(this._filters.filter(x => x !== f))}
+                >
+                  ${f.title}: ${f.label} ×
+                </button>`
               )}
+              <button class="aiux-btn aiux-btn-ghost aiux-btn-xs" @click=${() => this._applyFilters([])}>
+                ${i18n.getMessage('Clear filters')}
+              </button>
             </div>`
+          : nothing}
+        <div ?hidden=${!this._charts.length}>
+          ${keyed(this._gridKey, html`<sn-layout-renderer
+            id=${GRID_ID}
+            instance-id=${GRID_ID}
+            is-adapter
+            .canUndo=${false}
+            .canRedo=${false}
+            .enableGridStack=${true}
+            .enableAddToolbar=${false}
+            .enableWidgetToolbar=${false}
+            .externalHistoryManager=${true}
+            .gridItems=${this._items}
+            .userRoles=${GRID_ROLES}
+            .actionButton=${GRID_ACTIONS}
+            .gridStackOptions=${GRID_OPTIONS}
+            @SN_LAYOUT_ITEM_MOVED=${this._onGridChange}
+            @SN_LAYOUT_ITEM_RESIZED=${this._onGridChange}
+            @SN_LAYOUT_OPEN_WIDGET_SETTINGS=${this._onTileSettings}
+            @SN_LAYOUT_ITEM_DELETED=${this._onTileDeleted}
+          ></sn-layout-renderer>`)}
+        </div>
+        ${this._charts.length
+          ? nothing
           : html`<div class="aiux-card border border-dashed border-base-300 bg-base-100">
               <div class="aiux-card-body items-center text-center">
                 <p class="text-text-secondary">${i18n.getMessage('This dashboard has no charts yet.')}</p>
                 ${this._canEdit
                   ? html`<button class="aiux-btn aiux-btn-primary" @click=${() => {
-                      this._editMode = true;
+                      this._startEdit();
                       this._openEditor(null);
                     }}>
                       ${i18n.getMessage('Add chart')}
@@ -708,9 +852,9 @@ export default class DashBoard extends AIUXWidgetElement {
         aria-labelledby="chart-editor-title"
         @close=${() => (this._editor = null)}
       >
-        <div class="aiux-modal-box w-11/12 max-w-6xl">
+        <div class="aiux-modal-box fixed inset-y-0 right-0 h-full max-h-full w-full max-w-xl rounded-none">
           <h2 id="chart-editor-title" class="mb-4 text-lg font-bold">
-            ${this._editor?.sys_id ? i18n.getMessage('Edit chart') : i18n.getMessage('Add chart')}
+            ${this._editor?.sys_id ? i18n.getMessage('Configure chart') : i18n.getMessage('Add chart')}
           </h2>
           ${this._renderEditor()}
         </div>

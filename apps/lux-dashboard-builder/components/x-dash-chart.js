@@ -20,7 +20,8 @@ export class DashChart extends AIUXElement {
     run: {type: Object, attribute: false},
     chartType: {type: String, attribute: 'chart-type'},
     height: {type: Number},
-    loading: {type: Boolean}
+    loading: {type: Boolean},
+    filterValue: {type: String, attribute: false}
   };
 
   static styles = css`
@@ -36,6 +37,7 @@ export class DashChart extends AIUXElement {
     this.chartType = 'column';
     this.height = 260;
     this.loading = false;
+    this.filterValue = '';
   }
 
   _renderViz(result) {
@@ -90,6 +92,24 @@ export class DashChart extends AIUXElement {
     `;
   }
 
+  _renderFilter(result) {
+    return html`<select
+      class="aiux-select w-full"
+      aria-label=${i18n.getMessage('Filter')}
+      @change=${e => {
+        const option = e.target.selectedOptions[0];
+        this.dispatchEvent(
+          new CustomEvent('x-dash-filter-change', {
+            detail: {value: e.target.value, label: option ? option.textContent.trim() : ''}
+          })
+        );
+      }}
+    >
+      <option value="" ?selected=${!this.filterValue}>${i18n.getMessage('All')}</option>
+      ${result.options.map(o => html`<option value=${o.value} ?selected=${o.value === this.filterValue}>${o.label}</option>`)}
+    </select>`;
+  }
+
   _renderEmpty() {
     return html`<div class="flex h-full items-center justify-center text-sm text-text-secondary">
       ${i18n.getMessage('No data matches this filter')}
@@ -126,6 +146,7 @@ export class DashChart extends AIUXElement {
       </div>`;
     }
     const result = run.result;
+    if (result.kind === 'filter') return this._renderFilter(result);
     const body =
       result.kind === 'list'
         ? this._renderList(result)

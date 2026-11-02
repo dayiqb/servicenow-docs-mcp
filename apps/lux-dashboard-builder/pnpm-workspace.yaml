@@ -1,0 +1,13 @@
+overrides:
+  '@fastify/reply-from': 12.8.0
+  'fast-json-stringify@^7': 7.2.0
+
+allowBuilds:
+  '@parcel/watcher': true
+  '@servicenow/aiux-components-condition-builder': true
+  '@servicenow/aiux-document-viewer': true
+  '@swc/core': true
+  core-js: true
+  isolated-vm: true
+  libxmljs2: true
+  sn-http-request: true

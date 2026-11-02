@@ -39,7 +39,7 @@ export default function server(data, _options, input) {
   try {
     handler();
   } catch (e) {
-    gs.error('x_dash board ' + action + ': ' + e.message);
+    gs.error('x_steas_dash board ' + action + ': ' + e.message);
     fail(data, gs.getMessage('Something went wrong') + ': ' + e.message);
   }
 
@@ -76,7 +76,7 @@ export default function server(data, _options, input) {
       fail(data, gs.getMessage('You cannot see this data'));
       return;
     }
-    data.run = runChart(row.c);
+    data.run = runChart(row.c, Array.isArray(input.filters) ? input.filters : []);
   }
 
   function previewChart() {
@@ -157,9 +157,16 @@ export default function server(data, _options, input) {
       var gr = new GlideRecordSecure(TABLES.CHART);
       if (!gr.get(String(items[i].id || ''))) continue;
       if (gr.getValue('dashboard') !== dash.d.sys_id) continue;
-      var width = Math.max(1, Math.min(4, parseInt(items[i].width, 10) || 2));
       gr.setValue('order', (i + 1) * 10);
-      gr.setValue('width', width);
+      gr.setValue(
+        'grid_props',
+        JSON.stringify({
+          x: Math.max(0, Math.min(11, parseInt(items[i].x, 10) || 0)),
+          y: Math.max(0, Math.min(1000, parseInt(items[i].y, 10) || 0)),
+          w: Math.max(1, Math.min(12, parseInt(items[i].w, 10) || 6)),
+          h: Math.max(4, Math.min(60, parseInt(items[i].h, 10) || 14))
+        })
+      );
       gr.update();
     }
     data.saved = true;

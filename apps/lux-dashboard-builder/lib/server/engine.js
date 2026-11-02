@@ -12,13 +12,13 @@
  *   (except the "list" chart, which uses GlideRecordSecure).
  */
 
-export var ROLE_VIEWER = 'x_dash.viewer';
-export var ROLE_BUILDER = 'x_dash.builder';
-export var ROLE_ADMIN = 'x_dash.admin';
+export var ROLE_VIEWER = 'x_steas_dash.viewer';
+export var ROLE_BUILDER = 'x_steas_dash.builder';
+export var ROLE_ADMIN = 'x_steas_dash.admin';
 
-var T_DASHBOARD = 'x_dash_dashboard';
-var T_CHART = 'x_dash_chart';
-var T_ALLOWED = 'x_dash_allowed_table';
+var T_DASHBOARD = 'x_steas_dash_dashboard';
+var T_CHART = 'x_steas_dash_chart';
+var T_ALLOWED = 'x_steas_dash_allowed_table';
 
 var MAX_GROUPS_LIMIT = 50;
 var SECURE_ROW_CAP = 10000;
@@ -35,8 +35,13 @@ var CHART_TYPES = {
   pie: true,
   donut: true,
   heatmap: true,
-  list: true
+  list: true,
+  filter: true
 };
+var MAX_FILTERS = 10;
+var MAX_FILTER_OPTIONS = 200;
+var EMPTY_KEY = '__empty__';
+var OTHER_KEY = '__other__';
 var AGGREGATES = {COUNT: true, SUM: true, AVG: true, MIN: true, MAX: true};
 var TRENDS = {none: true, Day: true, Week: true, Month: true, Quarter: true, Year: true};
 var NUMERIC_TYPES = {
@@ -148,6 +153,11 @@ export function tableInfo(table) {
 
 /* ------------------------------------------------------- field security */
 
+// A GlideElement with an empty value is falsy, so test for null, not truthiness.
+function canReadElement(el) {
+  return el !== null && el !== undefined && el.canRead();
+}
+
 /**
  * Resolves a field path (dot-walk allowed, up to 4 levels) on a table.
  * Checks read access on every element in the path.
@@ -165,12 +175,12 @@ export function fieldInfo(table, path) {
     if (!gr.isValidField(parts[i])) return null;
     gr.initialize();
     var el = gr.getElement(parts[i]);
-    if (!el || !el.canRead()) return null;
+    if (!canReadElement(el)) return null;
     var ed = el.getED();
     type = ed ? str(ed.getInternalType()) : '';
     labels.push(str(el.getLabel()) || parts[i]);
     if (i < parts.length - 1) {
-      var ref = str(el.getReferenceTable());
+      var ref = type === 'reference' ? str(el.getReferenceTable()) : '';
       if (!ref) return null;
       current = ref;
     }
@@ -199,7 +209,7 @@ export function listFields(table) {
       groupable: !BLOCKED_GROUP_TYPES[type],
       numeric: !!NUMERIC_TYPES[type],
       date: !!DATE_TYPES[type],
-      reference: str(el.getReferenceTable())
+      reference: type === 'reference' ? str(el.getReferenceTable()) : ''
     });
   }
   out.sort(function (a, b) {
@@ -273,7 +283,9 @@ export function validateChart(def) {
     list_fields: str(def.list_fields),
     max_groups: parseInt(def.max_groups, 10) || 10,
     width: parseInt(def.width, 10) || 2,
-    order: parseInt(def.order, 10) || 100
+    order: parseInt(def.order, 10) || 100,
+    follow_filters: def.follow_filters !== false && def.follow_filters !== 'false',
+    apply_as_filter: def.apply_as_filter === true || def.apply_as_filter === 'true'
   };
 
   if (!CHART_TYPES[c.chart_type]) return {ok: false, reason: 'Unknown chart type'};
@@ -289,7 +301,7 @@ export function validateChart(def) {
   }
 
   // Which fields does this chart type need?
-  var needsGroup = {column: 1, bar: 1, stacked: 1, line: 1, area: 1, pie: 1, donut: 1, heatmap: 1};
+  var needsGroup = {column: 1, bar: 1, stacked: 1, line: 1, area: 1, pie: 1, donut: 1, heatmap: 1, filter: 1};
   var needsTwo = {stacked: 1, heatmap: 1};
   if (c.chart_type === 'score' || c.chart_type === 'list') {
     c.group_by = '';
@@ -306,10 +318,15 @@ export function validateChart(def) {
   if (c.aggregate !== 'COUNT' && !c.aggregate_field) {
     return {ok: false, reason: 'Pick a number field to aggregate'};
   }
-  if (c.chart_type === 'list') {
+  if (c.chart_type === 'list' || c.chart_type === 'filter') {
     c.aggregate = 'COUNT';
     c.aggregate_field = '';
     c.trend = 'none';
+  }
+  if (c.chart_type === 'filter') {
+    c.follow_filters = false;
+    c.apply_as_filter = false;
+    c.max_groups = MAX_GROUPS_LIMIT;
   }
 
   var fields = {};
@@ -425,7 +442,7 @@ function runSecure(c) {
   function keyOf(field) {
     if (!field) return {k: '', l: ''};
     var el = gr.getElement(field);
-    if (!el || !el.canRead()) return {k: '__restricted__', l: restricted};
+    if (!canReadElement(el)) return {k: '__restricted__', l: restricted};
     if (c.trend !== 'none' && field === c.group_by) {
       var raw = str(gr.getValue(field));
       var k = trendKey(raw, c.trend);
@@ -452,7 +469,7 @@ function runSecure(c) {
     g.count++;
     if (c.aggregate !== 'COUNT') {
       var el = gr.getElement(c.aggregate_field);
-      if (el && el.canRead()) {
+      if (canReadElement(el)) {
         var num = parseFloat(str(gr.getValue(c.aggregate_field)));
         if (!isNaN(num)) {
           g.sum += num;
@@ -559,7 +576,7 @@ function toDataResponse(c, rows, fields) {
       groupedBy: [],
       label: metricLabel
     };
-    rendering.value = {role: 'value'};
+    rendering.value = {role: 'value', formatting: {type: 'number', options: {}}, rules: []};
     data.push([String(rows.length ? rows[0].value : 0)]);
     return {metadata: {columns: columns}, data: data, rendering: {columns: rendering}, interactions: {}};
   }
@@ -626,7 +643,7 @@ function runList(c, fields, listFieldNames) {
     var cells = [];
     for (var j = 0; j < listFieldNames.length; j++) {
       var el = gr.getElement(listFieldNames[j]);
-      cells.push(el && el.canRead() ? str(el.getDisplayValue()) : '');
+      cells.push(canReadElement(el) ? str(el.getDisplayValue()) : '');
     }
     rows.push({sys_id: gr.getUniqueValue(), cells: cells});
   }
@@ -638,11 +655,55 @@ function runList(c, fields, listFieldNames) {
  * Runs a chart definition as the current user. Never throws.
  * Returns {ok, result, reason}.
  */
-export function runChart(def) {
+/**
+ * Adds dashboard filters to a chart's query. A filter on a field that the chart's
+ * table does not have, or that the user can not read, does not apply to that chart.
+ */
+function withFilters(def, filters) {
+  var query = str(def.query);
+  var added = '';
+  for (var i = 0; filters && i < filters.length && i < MAX_FILTERS; i++) {
+    var field = str(filters[i].field);
+    var value = str(filters[i].value);
+    if (value.length > 256 || value === OTHER_KEY) continue;
+    if (value.indexOf('^') > -1 || value.toLowerCase().indexOf('javascript:') > -1) continue;
+    if (!fieldInfo(str(def.source_table), field)) continue;
+    added += '^' + (value === EMPTY_KEY ? field + 'ISEMPTY' : field + '=' + value);
+  }
+  if (!added) return def;
+  // Each ^NQ part is its own query, so the filter must go on all of them.
+  var copy = {};
+  for (var key in def) copy[key] = def[key];
+  copy.query = query
+    ? query.split('^NQ').join(added + '^NQ') + added
+    : added.substring(1);
+  return copy;
+}
+
+/** Choices for a filter element, from the values in its table. */
+function filterOptions(rows) {
+  var empty = gs.getMessage('(empty)');
+  var out = [];
+  for (var i = 0; i < rows.length && out.length < MAX_FILTER_OPTIONS; i++) {
+    if (rows[i].k1 === OTHER_KEY) continue;
+    out.push({value: rows[i].k1 || EMPTY_KEY, label: rows[i].l1 || empty});
+  }
+  out.sort(function (a, b) {
+    return a.label.toLowerCase() < b.label.toLowerCase() ? -1 : 1;
+  });
+  return out;
+}
+
+export function runChart(def, filters) {
   try {
-    var v = validateChart(def);
+    var ignoresFilters = def.follow_filters === false || def.follow_filters === 'false';
+    var v = validateChart(ignoresFilters ? def : withFilters(def, filters));
     if (!v.ok) return {ok: false, reason: gs.getMessage(v.reason)};
     var c = v.chart;
+    if (c.chart_type === 'filter') {
+      var found = v.allowed.secure ? runSecure(c) : runAggregate(c);
+      return {ok: true, chart: c, result: {kind: 'filter', options: filterOptions(found.rows), truncated: found.truncated}};
+    }
     if (c.chart_type === 'list') {
       return {ok: true, chart: c, result: runList(c, v.fields, v.listFields)};
     }
@@ -661,7 +722,7 @@ export function runChart(def) {
       }
     };
   } catch (e) {
-    gs.error('x_dash runChart: ' + e.message);
+    gs.error('x_steas_dash runChart: ' + e.message);
     return {ok: false, reason: gs.getMessage('The chart could not run') + ': ' + e.message};
   }
 }
@@ -695,7 +756,10 @@ export function readChart(gr) {
     list_fields: str(gr.getValue('list_fields')),
     max_groups: parseInt(gr.getValue('max_groups'), 10) || 10,
     width: parseInt(gr.getValue('width'), 10) || 2,
-    order: parseInt(gr.getValue('order'), 10) || 100
+    order: parseInt(gr.getValue('order'), 10) || 100,
+    grid_props: str(gr.getValue('grid_props')),
+    follow_filters: str(gr.getValue('follow_filters')) !== '0' && str(gr.getValue('follow_filters')) !== 'false',
+    apply_as_filter: str(gr.getValue('apply_as_filter')) === '1' || str(gr.getValue('apply_as_filter')) === 'true'
   };
 }
 
@@ -752,6 +816,8 @@ export function writeChartFields(gr, c) {
   gr.setValue('list_fields', c.list_fields);
   gr.setValue('max_groups', c.max_groups);
   gr.setValue('width', c.width);
+  gr.setValue('follow_filters', c.follow_filters);
+  gr.setValue('apply_as_filter', c.apply_as_filter);
 }
 
 export var TABLES = {DASHBOARD: T_DASHBOARD, CHART: T_CHART, ALLOWED: T_ALLOWED};

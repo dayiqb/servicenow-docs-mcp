@@ -4,15 +4,15 @@ import { viewerRole, builderRole, adminRole } from './roles.now'
 
 // Record-level ACLs. The widget server scripts check the same rules in code.
 
-const canSeeDashboard = `answer = gs.hasRole('x_dash.admin') || current.owner == gs.getUserID() || current.shared == true;`
-const canChangeDashboard = `answer = gs.hasRole('x_dash.admin') || current.owner == gs.getUserID();`
-const canSeeChart = `answer = gs.hasRole('x_dash.admin') || current.dashboard.owner == gs.getUserID() || current.dashboard.shared == true;`
-const canChangeChart = `answer = gs.hasRole('x_dash.admin') || current.dashboard.owner == gs.getUserID();`
+const canSeeDashboard = `answer = gs.hasRole('x_steas_dash.admin') || current.owner == gs.getUserID() || current.shared == true;`
+const canChangeDashboard = `answer = gs.hasRole('x_steas_dash.admin') || current.owner == gs.getUserID();`
+const canSeeChart = `answer = gs.hasRole('x_steas_dash.admin') || current.dashboard.owner == gs.getUserID() || current.dashboard.shared == true;`
+const canChangeChart = `answer = gs.hasRole('x_steas_dash.admin') || current.dashboard.owner == gs.getUserID();`
 
 Acl({
     $id: Now.ID['acl-dashboard-read'],
     type: 'record',
-    table: 'x_dash_dashboard',
+    table: 'x_steas_dash_dashboard',
     operation: 'read',
     decisionType: 'allow',
     roles: [viewerRole],
@@ -23,7 +23,7 @@ Acl({
 Acl({
     $id: Now.ID['acl-dashboard-create'],
     type: 'record',
-    table: 'x_dash_dashboard',
+    table: 'x_steas_dash_dashboard',
     operation: 'create',
     decisionType: 'allow',
     roles: [builderRole],
@@ -33,7 +33,7 @@ Acl({
 Acl({
     $id: Now.ID['acl-dashboard-write'],
     type: 'record',
-    table: 'x_dash_dashboard',
+    table: 'x_steas_dash_dashboard',
     operation: 'write',
     decisionType: 'allow',
     roles: [builderRole],
@@ -44,7 +44,7 @@ Acl({
 Acl({
     $id: Now.ID['acl-dashboard-delete'],
     type: 'record',
-    table: 'x_dash_dashboard',
+    table: 'x_steas_dash_dashboard',
     operation: 'delete',
     decisionType: 'allow',
     roles: [builderRole],
@@ -55,7 +55,7 @@ Acl({
 Acl({
     $id: Now.ID['acl-chart-read'],
     type: 'record',
-    table: 'x_dash_chart',
+    table: 'x_steas_dash_chart',
     operation: 'read',
     decisionType: 'allow',
     roles: [viewerRole],
@@ -66,7 +66,7 @@ Acl({
 Acl({
     $id: Now.ID['acl-chart-create'],
     type: 'record',
-    table: 'x_dash_chart',
+    table: 'x_steas_dash_chart',
     operation: 'create',
     decisionType: 'allow',
     roles: [builderRole],
@@ -77,7 +77,7 @@ Acl({
 Acl({
     $id: Now.ID['acl-chart-write'],
     type: 'record',
-    table: 'x_dash_chart',
+    table: 'x_steas_dash_chart',
     operation: 'write',
     decisionType: 'allow',
     roles: [builderRole],
@@ -88,7 +88,7 @@ Acl({
 Acl({
     $id: Now.ID['acl-chart-delete'],
     type: 'record',
-    table: 'x_dash_chart',
+    table: 'x_steas_dash_chart',
     operation: 'delete',
     decisionType: 'allow',
     roles: [builderRole],
@@ -99,7 +99,7 @@ Acl({
 Acl({
     $id: Now.ID['acl-allowed-read'],
     type: 'record',
-    table: 'x_dash_allowed_table',
+    table: 'x_steas_dash_allowed_table',
     operation: 'read',
     decisionType: 'allow',
     roles: [viewerRole],
@@ -109,7 +109,7 @@ Acl({
 Acl({
     $id: Now.ID['acl-allowed-create'],
     type: 'record',
-    table: 'x_dash_allowed_table',
+    table: 'x_steas_dash_allowed_table',
     operation: 'create',
     decisionType: 'allow',
     roles: [adminRole],
@@ -119,7 +119,7 @@ Acl({
 Acl({
     $id: Now.ID['acl-allowed-write'],
     type: 'record',
-    table: 'x_dash_allowed_table',
+    table: 'x_steas_dash_allowed_table',
     operation: 'write',
     decisionType: 'allow',
     roles: [adminRole],
@@ -129,7 +129,7 @@ Acl({
 Acl({
     $id: Now.ID['acl-allowed-delete'],
     type: 'record',
-    table: 'x_dash_allowed_table',
+    table: 'x_steas_dash_allowed_table',
     operation: 'delete',
     decisionType: 'allow',
     roles: [adminRole],
