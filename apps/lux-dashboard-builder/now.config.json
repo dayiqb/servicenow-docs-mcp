@@ -1,0 +1,15 @@
+{
+  "scope": "x_dash",
+  "scopeId": "53ae42d67b9e475196301f467a1762fa",
+  "name": "Lux Dashboard Builder",
+  "metadataDir": "src/plugin-xmls",
+  "appOutputDir": "dist-metadata/app",
+  "packageSourceCodeOnInstance": true,
+  "staticContent": {
+    "assets": {
+      "./public/**": {
+        "publicPath": "[$config.aiux.basename]/public"
+      }
+    }
+  }
+}

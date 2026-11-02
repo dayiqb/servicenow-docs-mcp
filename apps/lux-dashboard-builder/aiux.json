@@ -1,0 +1,11 @@
+{
+  "name": "Lux Dashboard Builder",
+  "basename": "lux-dashboard-builder",
+  "landing": "/home",
+  "development": {
+    "token": ""
+  },
+  "build": {
+    "exclude": ["**/*.test.js", "**/test/**"]
+  }
+}
