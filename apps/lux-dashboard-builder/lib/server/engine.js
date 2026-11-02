@@ -168,12 +168,13 @@ export function fieldInfo(table, path) {
     if (!gr.isValidField(parts[i])) return null;
     gr.initialize();
     var el = gr.getElement(parts[i]);
-    if (!el || !el.canRead()) return null;
+    // A GlideElement with an empty value is falsy, so test for null only.
+    if (el === null || el === undefined || !el.canRead()) return null;
     var ed = el.getED();
     type = ed ? str(ed.getInternalType()) : '';
     labels.push(str(el.getLabel()) || parts[i]);
     if (i < parts.length - 1) {
-      var ref = refTable(el);
+      var ref = type === 'reference' ? refTable(el) : '';
       if (!ref) return null;
       current = ref;
     }
@@ -396,17 +397,21 @@ function runSecure(c) {
   var seen = 0;
   var truncated = false;
   var restricted = gs.getMessage('(restricted)');
+  var empty = gs.getMessage('(empty)');
 
   function keyOf(field) {
     if (!field) return {k: '', l: ''};
     var el = gr.getElement(field);
-    if (!el || !el.canRead()) return {k: '__restricted__', l: restricted};
+    if (el === null || el === undefined || !el.canRead()) {
+      return {k: '__restricted__', l: restricted};
+    }
     if (c.trend !== 'none' && field === c.group_by) {
       var raw = str(gr.getValue(field));
       var k = trendKey(raw, c.trend);
       return {k: k, l: k};
     }
-    return {k: str(el.toString()), l: str(el.getDisplayValue())};
+    var value = str(el.toString());
+    return {k: value, l: value ? str(el.getDisplayValue()) : empty};
   }
 
   while (gr.next()) {
@@ -534,7 +539,7 @@ function toDataResponse(c, rows, fields) {
       groupedBy: [],
       label: metricLabel
     };
-    rendering.value = {role: 'value'};
+    rendering.value = {role: 'value', formatting: {type: 'number', options: {}}, rules: []};
     data.push([String(rows.length ? rows[0].value : 0)]);
     return {metadata: {columns: columns}, data: data, rendering: {columns: rendering}, interactions: {}};
   }
@@ -574,7 +579,7 @@ function toDataResponse(c, rows, fields) {
     groupedBy: groupedBy,
     label: metricLabel
   };
-  rendering.value = {role: 'value'};
+  rendering.value = {role: 'value', formatting: {type: 'number', options: {}}, rules: []};
 
   for (var i = 0; i < rows.length; i++) {
     var row = [rows[i].k1 || '__empty__'];
