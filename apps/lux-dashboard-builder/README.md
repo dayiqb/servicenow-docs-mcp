@@ -6,38 +6,28 @@ Design: [Lit dashboard builder for Lux: design](https://claude.ai/artifact/BfbvD
 
 ## How it works
 
-The home page is a native Lux canvas (a page that extends `AIUXDashboard`). The canvas gives drag, resize, a widget library, user personalization, and the admin canvas editor.
+The app works like the Platform Analytics dashboard editor in Next Experience.
 
-Each chart is one **Chart** widget on the canvas. Set the chart in the canvas side panel. The side panel shows plain text fields:
-
-| Setting | Example |
-| --- | --- |
-| Chart title | Open incidents by priority |
-| Source table | incident |
-| Filter (encoded query) | active=true^priority=1 |
-| Chart type | score, column, bar, stacked, line, area, pie, donut, heatmap, list |
-| Group by | priority |
-| Second group by | state (only stacked and heatmap) |
-| Aggregate | COUNT, SUM, AVG, MIN, MAX |
-| Aggregate field | reassignment_count (only SUM, AVG, MIN, MAX) |
-| Date trend | none, day, week, month, quarter, year (group by must be a date field) |
-| List fields | number,short_description,priority (only list) |
-| Max groups | 10 |
-
-If a setting is wrong, the chart shows what to fix.
+- `/home` lists your dashboards and the shared ones. Builders create new dashboards there.
+- `/dashboard/<id>` shows one dashboard on a 12-column grid (GridStack, the grid library that the Lux canvas uses).
+- **Edit** turns on edit mode: drag a visualization to move it, drag a corner to resize it, and use **Add visualization**, **Duplicate**, and **Remove**.
+- **Configure** opens a side panel: title, visualization gallery, data source (table), filter (condition builder), metric (count, sum, average, minimum, maximum), group by, stack by, trend by date, and the maximum number of groups. The tile on the canvas shows a live preview.
+- **Save** stores all changes at once for everyone who can see the dashboard. **Cancel** drops them.
+- `/settings` (admins only) sets which tables can be used.
 
 ## What is in the app
 
 | Part | Files |
 | --- | --- |
 | Roles: `x_steas_dash.viewer`, `x_steas_dash.builder`, `x_steas_dash.admin` | `src/fluent/roles.now.ts` |
-| Allowed tables (table and ACLs) | `src/fluent/tables.now.ts`, `src/fluent/acls.now.ts` |
-| Starting allow list (incident, task) | `src/fluent/seed-data.now.ts` (first install only) |
+| Tables: dashboards, charts (with grid position), allowed tables | `src/fluent/tables.now.ts` |
+| Record ACLs | `src/fluent/acls.now.ts` |
+| Allow list (incident, task) and a sample dashboard | `src/fluent/seed-data.now.ts` (first install only) |
 | Query engine with the security checks | `lib/server/engine.js` |
-| Chart widget for the canvas | `widgets/x-dash-chart-widget/` |
+| Dashboard editor | `widgets/x-dash-board/`, `components/x-dash-tile.js`, `components/x-dash-viz-panel.js` |
+| Dashboard list | `widgets/x-dash-dashboards/` |
 | Chart renderer (Lux visualization components) | `components/x-dash-chart.js` |
-| Canvas home page with sample charts | `pages/home/page.js` |
-| Admin page for the allow list | `pages/settings/page.js`, `widgets/x-dash-settings/` |
+| Admin page for the allow list | `widgets/x-dash-settings/` |
 
 ## Chart types
 
@@ -72,14 +62,14 @@ Then give users a role (`x_steas_dash.viewer`, `x_steas_dash.builder`, or `x_ste
 
 ### Scope name
 
-The scope is `x_steas_dash`, because the target instance requires the company prefix `steas`. For an instance with another prefix, replace `x_steas_dash` in every file (tables, roles, ACLs, decorators, the widget import in `pages/home/page.js`) and in `now.config.json`. Delete `src/fluent/generated/keys.ts`, then build again.
+The scope is `x_steas_dash`, because the target instance requires the company prefix `steas`. For an instance with another prefix, replace `x_steas_dash` in every file (tables, roles, ACLs, decorators) and in `now.config.json`. Delete `src/fluent/generated/keys.ts`, then build again.
 
 ## Not tested yet
 
-The app builds without errors (`now-sdk build`, SDK 4.14.0) and lint passes. The canvas version is not tested on an instance yet. Check these first:
+The app builds without errors (`now-sdk build`, SDK 4.14.0) and lint passes. The editor is not tested on an instance yet. Check these first:
 
-- The Chart widget gets its settings from the canvas item (`widget_properties`).
-- Who can open the canvas editor, and if users can personalize the canvas.
+- Drag and resize with GridStack inside the widget's shadow DOM.
+- Save in edit mode (new, changed, moved, and removed visualizations).
 
 - The data format that the Lux chart components read (`toDataResponse` in `lib/server/engine.js`).
 - `GlideAggregate.addTrend()` and the `timeref` value for date trends.

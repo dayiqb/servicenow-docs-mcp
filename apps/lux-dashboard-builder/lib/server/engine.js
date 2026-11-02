@@ -16,6 +16,8 @@ export var ROLE_VIEWER = 'x_steas_dash.viewer';
 export var ROLE_BUILDER = 'x_steas_dash.builder';
 export var ROLE_ADMIN = 'x_steas_dash.admin';
 
+var T_DASHBOARD = 'x_steas_dash_dashboard';
+var T_CHART = 'x_steas_dash_chart';
 var T_ALLOWED = 'x_steas_dash_allowed_table';
 
 var MAX_GROUPS_LIMIT = 50;
@@ -65,6 +67,10 @@ var BLOCKED_GROUP_TYPES = {
 
 function str(v) {
   return v === null || v === undefined ? '' : String(v);
+}
+
+function isSysId(v) {
+  return /^[0-9a-f]{32}$/.test(str(v));
 }
 
 function isName(v) {
@@ -180,6 +186,36 @@ export function fieldInfo(table, path) {
     }
   }
   return {name: path, label: labels.join(' > '), type: type};
+}
+
+/** All readable fields on a table, for the chart editor. */
+export function listFields(table) {
+  var gr = new GlideRecord(table);
+  if (!gr.isValid() || !gr.canRead()) return [];
+  gr.initialize();
+  var out = [];
+  var elements = gr.getElements();
+  for (var i = 0; i < elements.length; i++) {
+    var el = elements[i];
+    var name = str(el.getName());
+    if (!name || name.indexOf('sys_tags') === 0) continue;
+    if (!el.canRead()) continue;
+    var ed = el.getED();
+    var type = ed ? str(ed.getInternalType()) : '';
+    out.push({
+      name: name,
+      label: str(el.getLabel()) || name,
+      type: type,
+      groupable: !BLOCKED_GROUP_TYPES[type],
+      numeric: !!NUMERIC_TYPES[type],
+      date: !!DATE_TYPES[type],
+      reference: type === 'reference' ? refTable(el) : ''
+    });
+  }
+  out.sort(function (a, b) {
+    return a.label.toLowerCase() < b.label.toLowerCase() ? -1 : 1;
+  });
+  return out;
 }
 
 /* ------------------------------------------------- encoded query checks */
@@ -646,5 +682,116 @@ export function runChart(def) {
   }
 }
 
-export var TABLES = {ALLOWED: T_ALLOWED};
+/* --------------------------------------------------- dashboards / charts */
+
+export function readDashboard(gr) {
+  return {
+    sys_id: gr.getUniqueValue(),
+    name: str(gr.getValue('name')),
+    description: str(gr.getValue('description')),
+    owner: str(gr.getValue('owner')),
+    owner_name: str(gr.getDisplayValue('owner')),
+    shared: gr.getValue('shared') === '1',
+    updated: str(gr.getDisplayValue('sys_updated_on'))
+  };
+}
+
+export function readChart(gr) {
+  return {
+    sys_id: gr.getUniqueValue(),
+    title: str(gr.getValue('title')),
+    source_table: str(gr.getValue('source_table')),
+    query: str(gr.getValue('query')),
+    group_by: str(gr.getValue('group_by')),
+    group_by_2: str(gr.getValue('group_by_2')),
+    aggregate: str(gr.getValue('aggregate')) || 'COUNT',
+    aggregate_field: str(gr.getValue('aggregate_field')),
+    chart_type: str(gr.getValue('chart_type')) || 'column',
+    trend: str(gr.getValue('trend')) || 'none',
+    list_fields: str(gr.getValue('list_fields')),
+    max_groups: parseInt(gr.getValue('max_groups'), 10) || 10,
+    grid: {
+      x: parseInt(gr.getValue('grid_x'), 10) || 0,
+      y: parseInt(gr.getValue('grid_y'), 10) || 0,
+      w: parseInt(gr.getValue('grid_w'), 10) || 6,
+      h: parseInt(gr.getValue('grid_h'), 10) || 4
+    }
+  };
+}
+
+/** Can the current user see this dashboard? */
+export function canView(d) {
+  return isAdmin() || d.owner === userId() || (d.shared && isViewer());
+}
+
+/** Can the current user change this dashboard? */
+export function canEdit(d) {
+  return isAdmin() || (isBuilder() && d.owner === userId());
+}
+
+/** Loads a dashboard row by sys_id. Returns {gr, d} or null. */
+export function loadDashboard(id) {
+  if (!isSysId(id)) return null;
+  var gr = new GlideRecordSecure(T_DASHBOARD);
+  if (!gr.get(id)) return null;
+  if (gr.getValue('active') !== '1') return null;
+  return {gr: gr, d: readDashboard(gr)};
+}
+
+/** Loads a chart row and its dashboard. Returns {gr, c, dash} or null. */
+export function loadChart(id) {
+  if (!isSysId(id)) return null;
+  var gr = new GlideRecordSecure(T_CHART);
+  if (!gr.get(id)) return null;
+  var dash = loadDashboard(gr.getValue('dashboard'));
+  if (!dash) return null;
+  return {gr: gr, c: readChart(gr), dash: dash};
+}
+
+export function listCharts(dashboardId) {
+  var out = [];
+  var gr = new GlideRecordSecure(T_CHART);
+  gr.addQuery('dashboard', dashboardId);
+  gr.orderBy('grid_y');
+  gr.orderBy('grid_x');
+  gr.setLimit(48);
+  gr.query();
+  while (gr.next()) out.push(readChart(gr));
+  return out;
+}
+
+export function writeChartFields(gr, c) {
+  gr.setValue('title', c.title);
+  gr.setValue('source_table', c.source_table);
+  gr.setValue('query', c.query);
+  gr.setValue('group_by', c.group_by);
+  gr.setValue('group_by_2', c.group_by_2);
+  gr.setValue('aggregate', c.aggregate);
+  gr.setValue('aggregate_field', c.aggregate_field);
+  gr.setValue('chart_type', c.chart_type);
+  gr.setValue('trend', c.trend);
+  gr.setValue('list_fields', c.list_fields);
+  gr.setValue('max_groups', c.max_groups);
+}
+
+/** Cleans a grid position from the client. */
+export function cleanGrid(g) {
+  g = g || {};
+  var w = Math.max(1, Math.min(12, parseInt(g.w, 10) || 6));
+  return {
+    x: Math.max(0, Math.min(12 - w, parseInt(g.x, 10) || 0)),
+    y: Math.max(0, Math.min(500, parseInt(g.y, 10) || 0)),
+    w: w,
+    h: Math.max(1, Math.min(12, parseInt(g.h, 10) || 4))
+  };
+}
+
+export function writeGrid(gr, g) {
+  gr.setValue('grid_x', g.x);
+  gr.setValue('grid_y', g.y);
+  gr.setValue('grid_w', g.w);
+  gr.setValue('grid_h', g.h);
+}
+
+export var TABLES = {DASHBOARD: T_DASHBOARD, CHART: T_CHART, ALLOWED: T_ALLOWED};
 export var LIMITS = {SECURE_ROW_CAP: SECURE_ROW_CAP, MAX_GROUPS: MAX_GROUPS_LIMIT};

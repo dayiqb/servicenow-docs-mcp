@@ -15,7 +15,8 @@
   },
   "dependencies": {
     "@servicenow/aiux": "latest",
-    "lit": "^3.2.1"
+    "lit": "^3.2.1",
+    "gridstack": "12.4.2"
   },
   "devDependencies": {
     "@babel/eslint-parser": "^7.28.0",
