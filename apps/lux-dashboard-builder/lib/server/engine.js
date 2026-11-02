@@ -12,13 +12,11 @@
  *   (except the "list" chart, which uses GlideRecordSecure).
  */
 
-export var ROLE_VIEWER = 'x_dash.viewer';
-export var ROLE_BUILDER = 'x_dash.builder';
-export var ROLE_ADMIN = 'x_dash.admin';
+export var ROLE_VIEWER = 'x_steas_dash.viewer';
+export var ROLE_BUILDER = 'x_steas_dash.builder';
+export var ROLE_ADMIN = 'x_steas_dash.admin';
 
-var T_DASHBOARD = 'x_dash_dashboard';
-var T_CHART = 'x_dash_chart';
-var T_ALLOWED = 'x_dash_allowed_table';
+var T_ALLOWED = 'x_steas_dash_allowed_table';
 
 var MAX_GROUPS_LIMIT = 50;
 var SECURE_ROW_CAP = 10000;
@@ -67,10 +65,6 @@ var BLOCKED_GROUP_TYPES = {
 
 function str(v) {
   return v === null || v === undefined ? '' : String(v);
-}
-
-function isSysId(v) {
-  return /^[0-9a-f]{32}$/.test(str(v));
 }
 
 function isName(v) {
@@ -148,6 +142,15 @@ export function tableInfo(table) {
 
 /* ------------------------------------------------------- field security */
 
+/** The table a reference field points to, or '' (never throws). */
+function refTable(el) {
+  try {
+    return str(el.getReferenceTable());
+  } catch (e) {
+    return '';
+  }
+}
+
 /**
  * Resolves a field path (dot-walk allowed, up to 4 levels) on a table.
  * Checks read access on every element in the path.
@@ -170,42 +173,12 @@ export function fieldInfo(table, path) {
     type = ed ? str(ed.getInternalType()) : '';
     labels.push(str(el.getLabel()) || parts[i]);
     if (i < parts.length - 1) {
-      var ref = str(el.getReferenceTable());
+      var ref = refTable(el);
       if (!ref) return null;
       current = ref;
     }
   }
   return {name: path, label: labels.join(' > '), type: type};
-}
-
-/** All readable fields on a table, for the chart editor. */
-export function listFields(table) {
-  var gr = new GlideRecord(table);
-  if (!gr.isValid() || !gr.canRead()) return [];
-  gr.initialize();
-  var out = [];
-  var elements = gr.getElements();
-  for (var i = 0; i < elements.length; i++) {
-    var el = elements[i];
-    var name = str(el.getName());
-    if (!name || name.indexOf('sys_tags') === 0) continue;
-    if (!el.canRead()) continue;
-    var ed = el.getED();
-    var type = ed ? str(ed.getInternalType()) : '';
-    out.push({
-      name: name,
-      label: str(el.getLabel()) || name,
-      type: type,
-      groupable: !BLOCKED_GROUP_TYPES[type],
-      numeric: !!NUMERIC_TYPES[type],
-      date: !!DATE_TYPES[type],
-      reference: str(el.getReferenceTable())
-    });
-  }
-  out.sort(function (a, b) {
-    return a.label.toLowerCase() < b.label.toLowerCase() ? -1 : 1;
-  });
-  return out;
 }
 
 /* ------------------------------------------------- encoded query checks */
@@ -271,21 +244,21 @@ export function validateChart(def) {
     chart_type: str(def.chart_type) || 'column',
     trend: str(def.trend) || 'none',
     list_fields: str(def.list_fields),
-    max_groups: parseInt(def.max_groups, 10) || 10,
-    width: parseInt(def.width, 10) || 2,
-    order: parseInt(def.order, 10) || 100
+    max_groups: parseInt(def.max_groups, 10) || 10
   };
 
-  if (!CHART_TYPES[c.chart_type]) return {ok: false, reason: 'Unknown chart type'};
-  if (!AGGREGATES[c.aggregate]) return {ok: false, reason: 'Unknown aggregate'};
-  if (!TRENDS[c.trend]) return {ok: false, reason: 'Unknown date trend'};
+  if (!CHART_TYPES[c.chart_type]) return {ok: false, reason: 'Chart type must be one of: ' + Object.keys(CHART_TYPES).join(', ')};
+  if (!AGGREGATES[c.aggregate]) return {ok: false, reason: 'Aggregate must be one of: COUNT, SUM, AVG, MIN, MAX'};
+  if (!TRENDS[c.trend]) return {ok: false, reason: 'Date trend must be one of: none, day, week, month, quarter, year'};
   c.max_groups = Math.max(1, Math.min(MAX_GROUPS_LIMIT, c.max_groups));
-  c.width = Math.max(1, Math.min(4, c.width));
 
   var allowed = allowedTable(c.source_table);
-  if (!allowed) return {ok: false, reason: 'This table is not on the allow list'};
+  if (!c.source_table) return {ok: false, reason: 'Set the source table (for example incident)'};
+  if (!allowed) {
+    return {ok: false, reason: 'This table is not on the allow list: ' + c.source_table};
+  }
   if (!tableInfo(c.source_table)) {
-    return {ok: false, reason: 'You cannot see this data'};
+    return {ok: false, reason: 'You cannot read this table: ' + c.source_table};
   }
 
   // Which fields does this chart type need?
@@ -297,14 +270,14 @@ export function validateChart(def) {
   }
   if (!needsTwo[c.chart_type]) c.group_by_2 = '';
   if (needsGroup[c.chart_type] && !c.group_by) {
-    return {ok: false, reason: 'Pick a group-by field'};
+    return {ok: false, reason: 'Set the group by field (for example priority)'};
   }
   if (needsTwo[c.chart_type] && !c.group_by_2) {
-    return {ok: false, reason: 'Pick a second group-by field'};
+    return {ok: false, reason: 'Set the second group by field for this chart type'};
   }
   if (c.aggregate === 'COUNT') c.aggregate_field = '';
   if (c.aggregate !== 'COUNT' && !c.aggregate_field) {
-    return {ok: false, reason: 'Pick a number field to aggregate'};
+    return {ok: false, reason: 'Set the aggregate field (a number field) for SUM, AVG, MIN or MAX'};
   }
   if (c.chart_type === 'list') {
     c.aggregate = 'COUNT';
@@ -335,7 +308,9 @@ export function validateChart(def) {
 
   for (var i = 0; i < toCheck.length; i++) {
     var info = fieldInfo(c.source_table, toCheck[i]);
-    if (!info) return {ok: false, reason: 'You cannot see this data'};
+    if (!info) {
+      return {ok: false, reason: 'Unknown field, or you cannot read it: ' + toCheck[i]};
+    }
     fields[toCheck[i]] = info;
   }
 
@@ -641,7 +616,7 @@ function runList(c, fields, listFieldNames) {
 export function runChart(def) {
   try {
     var v = validateChart(def);
-    if (!v.ok) return {ok: false, reason: gs.getMessage(v.reason)};
+    if (!v.ok) return {ok: false, reason: v.reason};
     var c = v.chart;
     if (c.chart_type === 'list') {
       return {ok: true, chart: c, result: runList(c, v.fields, v.listFields)};
@@ -661,98 +636,10 @@ export function runChart(def) {
       }
     };
   } catch (e) {
-    gs.error('x_dash runChart: ' + e.message);
+    gs.error('x_steas_dash runChart: ' + e.message);
     return {ok: false, reason: gs.getMessage('The chart could not run') + ': ' + e.message};
   }
 }
 
-/* --------------------------------------------------- dashboards / charts */
-
-export function readDashboard(gr) {
-  return {
-    sys_id: gr.getUniqueValue(),
-    name: str(gr.getValue('name')),
-    description: str(gr.getValue('description')),
-    owner: str(gr.getValue('owner')),
-    owner_name: str(gr.getDisplayValue('owner')),
-    shared: gr.getValue('shared') === '1',
-    updated: str(gr.getDisplayValue('sys_updated_on'))
-  };
-}
-
-export function readChart(gr) {
-  return {
-    sys_id: gr.getUniqueValue(),
-    title: str(gr.getValue('title')),
-    source_table: str(gr.getValue('source_table')),
-    query: str(gr.getValue('query')),
-    group_by: str(gr.getValue('group_by')),
-    group_by_2: str(gr.getValue('group_by_2')),
-    aggregate: str(gr.getValue('aggregate')) || 'COUNT',
-    aggregate_field: str(gr.getValue('aggregate_field')),
-    chart_type: str(gr.getValue('chart_type')) || 'column',
-    trend: str(gr.getValue('trend')) || 'none',
-    list_fields: str(gr.getValue('list_fields')),
-    max_groups: parseInt(gr.getValue('max_groups'), 10) || 10,
-    width: parseInt(gr.getValue('width'), 10) || 2,
-    order: parseInt(gr.getValue('order'), 10) || 100
-  };
-}
-
-/** Can the current user see this dashboard? */
-export function canView(d) {
-  return isAdmin() || d.owner === userId() || (d.shared && isViewer());
-}
-
-/** Can the current user change this dashboard? */
-export function canEdit(d) {
-  return isAdmin() || (isBuilder() && d.owner === userId());
-}
-
-/** Loads a dashboard row by sys_id. Returns {gr, d} or null. */
-export function loadDashboard(id) {
-  if (!isSysId(id)) return null;
-  var gr = new GlideRecordSecure(T_DASHBOARD);
-  if (!gr.get(id)) return null;
-  if (gr.getValue('active') !== '1') return null;
-  return {gr: gr, d: readDashboard(gr)};
-}
-
-/** Loads a chart row and its dashboard. Returns {gr, c, dash} or null. */
-export function loadChart(id) {
-  if (!isSysId(id)) return null;
-  var gr = new GlideRecordSecure(T_CHART);
-  if (!gr.get(id)) return null;
-  var dash = loadDashboard(gr.getValue('dashboard'));
-  if (!dash) return null;
-  return {gr: gr, c: readChart(gr), dash: dash};
-}
-
-export function listCharts(dashboardId) {
-  var out = [];
-  var gr = new GlideRecordSecure(T_CHART);
-  gr.addQuery('dashboard', dashboardId);
-  gr.orderBy('order');
-  gr.setLimit(24);
-  gr.query();
-  while (gr.next()) out.push(readChart(gr));
-  return out;
-}
-
-export function writeChartFields(gr, c) {
-  gr.setValue('title', c.title);
-  gr.setValue('source_table', c.source_table);
-  gr.setValue('query', c.query);
-  gr.setValue('group_by', c.group_by);
-  gr.setValue('group_by_2', c.group_by_2);
-  gr.setValue('aggregate', c.aggregate);
-  gr.setValue('aggregate_field', c.aggregate_field);
-  gr.setValue('chart_type', c.chart_type);
-  gr.setValue('trend', c.trend);
-  gr.setValue('list_fields', c.list_fields);
-  gr.setValue('max_groups', c.max_groups);
-  gr.setValue('width', c.width);
-}
-
-export var TABLES = {DASHBOARD: T_DASHBOARD, CHART: T_CHART, ALLOWED: T_ALLOWED};
+export var TABLES = {ALLOWED: T_ALLOWED};
 export var LIMITS = {SECURE_ROW_CAP: SECURE_ROW_CAP, MAX_GROUPS: MAX_GROUPS_LIMIT};

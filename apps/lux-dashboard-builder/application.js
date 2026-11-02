@@ -10,7 +10,7 @@ export default {
     const items = [
       {
         icon: 'home',
-        title: i18n.getMessage('Dashboards'),
+        title: i18n.getMessage('Dashboard'),
         action: {type: 'navigate', path: '/home'}
       },
       {

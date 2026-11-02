@@ -13,7 +13,7 @@ export default function server(data, _options, input) {
     else if (action === 'remove') remove();
     list();
   } catch (e) {
-    gs.error('x_dash settings ' + action + ': ' + e.message);
+    gs.error('x_steas_dash settings ' + action + ': ' + e.message);
     fail(data, gs.getMessage('Something went wrong') + ': ' + e.message);
   }
 

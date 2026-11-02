@@ -8,7 +8,7 @@ import '../../widgets/x-dash-settings/index.js';
 const {acl} = decorators;
 
 @customElement('x-dash-settings-page')
-@acl([{decision: 'allow_if', roles: ['x_dash.admin']}])
+@acl([{decision: 'allow_if', roles: ['x_steas_dash.admin']}])
 export default class SettingsPage extends AIUXElement {
   static styles = css`
     :host {
