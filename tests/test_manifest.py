@@ -78,7 +78,13 @@ def test_plugin_launches_the_server_from_its_own_folder() -> None:
 def test_plugin_skill_exists_and_names_the_tools() -> None:
     skill = (ROOT / "skills" / "servicenow-docs" / "SKILL.md").read_text(encoding="utf-8")
     assert skill.startswith("---\nname: servicenow-docs\ndescription: ")
-    for tool in ("snow_docs_search", "snow_docs_read", "snow_docs_compare", "snow_docs_status"):
+    for tool in (
+        "snow_docs_search",
+        "snow_docs_read",
+        "snow_docs_compare",
+        "snow_docs_api",
+        "snow_docs_status",
+    ):
         assert tool in skill
 
 
@@ -188,3 +194,9 @@ def test_upgrade_review_text_is_the_same_in_prompt_manifest_and_skill() -> None:
         assert needed in UPGRADE_REVIEW_RULES
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     assert "upgrade_review" in readme and "servicenow-upgrade-review" in readme
+
+
+def test_instructions_and_readme_name_the_api_tool() -> None:
+    assert "snow_docs_api" in ANSWER_RULES
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "snow_docs_api" in readme and "## API lookup" in readme

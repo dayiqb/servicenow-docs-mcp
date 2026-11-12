@@ -5,6 +5,7 @@ Tools (all read-only):
                        product docs, per release (australia, brazil)
     snow_docs_read     the full section behind a search hit
     snow_docs_compare  what changed between the australia and brazil docs for a topic or page
+    snow_docs_api      a class's methods, or a method's parameters and return type, exactly
     snow_docs_status   setup/update progress per release, and where data lives
 
 Prompt:
@@ -49,7 +50,7 @@ from mcp.server import MCPServer
 from mcp.types import ToolAnnotations
 from pydantic import BaseModel, Field
 
-from snow_docs_mcp import config, identifiers, models, products, sections, setup, store
+from snow_docs_mcp import api_table, config, identifiers, models, products, sections, setup, store
 from snow_docs_mcp.compare import compare_pages
 from snow_docs_mcp.read import ReadResult as _ReadResult
 from snow_docs_mcp.read import not_an_id, page_url, read_section
@@ -73,7 +74,10 @@ When answering a ServiceNow question with them:
 6. If two sources disagree, point out the conflict and cite both.
 7. For a question about what changes between Australia and Brazil (an upgrade, what's new),
    call snow_docs_compare first. Lead with its release notes, then the changed sections; cite
-   ids as usual, and say that small rewordings are not listed."""
+   ids as usual, and say that small rewordings are not listed.
+8. Before writing or reviewing ServiceNow script code, check each class and method with
+   snow_docs_api. If it answers not_found, do not use that method; say so, and offer the
+   closest documented one."""
 
 # The upgrade review recipe: the `upgrade_review` prompt, manifest.json and the
 # servicenow-upgrade-review skill carry this text word for word (tests keep them in step).
@@ -222,6 +226,43 @@ class CompareResult(BaseModel):
     changed_pages: list[ChangedPage] = []
     only_in_australia: list[str] = []
     only_in_brazil: list[str] = []
+
+
+class ApiParam(BaseModel):
+    name: str
+    type: str
+    description: str
+
+
+class ApiClass(BaseModel):
+    class_name: str = Field(description='As the docs write it, e.g. "Scoped GlideRecord".')
+    members: list[str] = Field(description="Signatures of its methods; properties by name.")
+    page_ids: list[str] = Field(description="The class's page(s); pass to snow_docs_read.")
+
+
+class ApiMethod(BaseModel):
+    class_name: str
+    name: str
+    kind: str
+    signature: str
+    parameters: list[ApiParam] = []
+    returns: str = ""
+    returns_description: str = ""
+    description: str = ""
+    example: str = ""
+    id: str = Field(description="Pass to snow_docs_read for the full section; cite it as [id].")
+    url: str = ""
+
+
+class ApiResult(BaseModel):
+    ok: bool
+    message: str
+    release: str = ""
+    snapshot: str = ""
+    kind: str = Field("", description="class, method or not_found")
+    classes: list[ApiClass] = []
+    methods: list[ApiMethod] = []
+    suggestions: list[str] = []
 
 
 def _not_ready(release: str) -> str:
@@ -1116,6 +1157,120 @@ def snow_docs_compare(
         if not setup.models_on_disk():
             setup.request(config.default_release())
         return CompareResult(ok=False, message=f"Compare failed: {e}")
+
+
+# --- API table -----------------------------------------------------------------------------
+
+API_METHODS_SHOWN = 12  # methods returned in full for one name (overloads, several classes)
+_API_EXAMPLE_CHARS = 1500
+_api_tables: dict[str, api_table.ApiTable] = {}
+
+
+def _api_table(db) -> api_table.ApiTable:
+    """The index's API reference as a table, parsed once per index file (well under a second)."""
+    key = str(db)
+    if key not in _api_tables:
+        pages = store.documents(db, api_table.API_PREFIX)
+        members = [m for path, text in pages for m in api_table.parse_page(path, text)]
+        _api_tables.clear()  # one index at a time is enough; a new snapshot replaces the old
+        _api_tables[key] = api_table.ApiTable(members)
+    return _api_tables[key]
+
+
+def _member_id(rel: str, m: api_table.Member) -> str:
+    return make_id(rel, m.file_path, m.heading_path, m.occurrence)
+
+
+@mcp.tool(name="snow_docs_api", annotations=READ_ONLY)
+def snow_docs_api(name: str, release: str | None = None) -> ApiResult:
+    """Look up a ServiceNow scripting class or method in the API reference, exactly.
+
+    Use this to check that a method exists before writing or reviewing script code, to get its
+    parameters and return type, or to list what a class offers. Unlike snow_docs_search it
+    answers from a table of every documented method, so "not_found" means the API reference of
+    that release does not document it. Covers the server and client scripting APIs (GlideRecord,
+    GlideSystem, GlideForm, ...), not REST endpoints; for how to use an API, search instead.
+
+    Args:
+        name: A class ("GlideRecord", "Scoped GlideRecord", or the variable it is usually in:
+            "gs", "g_form", "g_user"), a method with its class ("GlideRecord.addEncodedQuery",
+            "g_form.setMandatory"), or a method name alone ("addEncodedQuery").
+        release: "australia" or "brazil". Defaults to the configured release.
+    """
+    try:
+        wanted = (name or "").strip()
+        if not wanted:
+            return ApiResult(ok=False, message="The name is empty. Pass a class or method name.")
+        rel = config.normalize_release(release)
+        if rel is None:
+            return ApiResult(ok=False, message=_unknown_release(str(release)))
+        db = setup.active_index(rel)
+        if db is None:
+            setup.request(rel)
+            return ApiResult(ok=False, release=rel, message=_not_ready(rel))
+        _release_unused_indexes()
+        table = _api_table(db)
+        kind, found = table.find(wanted)
+        result = ApiResult(ok=True, message="", release=rel, snapshot=_snapshot_of(rel), kind=kind)
+        if kind == "class":
+            for class_name in sorted(found):
+                listed = found[class_name]
+                pages = list(dict.fromkeys(make_id(rel, m.file_path, "") for m in listed))
+                result.classes.append(
+                    ApiClass(
+                        class_name=class_name,
+                        members=[m.signature for m in listed],
+                        page_ids=pages,
+                    )
+                )
+            total = sum(len(c.members) for c in result.classes)
+            result.message = (
+                f"{_count(len(result.classes), 'class')} named '{wanted}' with "
+                f"{_count(total, 'member')} in the {rel} API reference. Look up "
+                "Class.method for a method's parameters and return type."
+            ).replace("classs", "classes")
+        elif kind == "method":
+            for m in sorted(found, key=lambda m: (m.class_name, m.name))[:API_METHODS_SHOWN]:
+                example = m.example
+                if len(example) > _API_EXAMPLE_CHARS:
+                    example = example[:_API_EXAMPLE_CHARS].rstrip() + "\n…"
+                page = store.get_document(db, m.file_path) or ""
+                result.methods.append(
+                    ApiMethod(
+                        class_name=m.class_name,
+                        name=m.name,
+                        kind=m.kind,
+                        signature=m.signature,
+                        parameters=[ApiParam(**asdict(p)) for p in m.params],
+                        returns=m.returns,
+                        returns_description=m.returns_description,
+                        description=m.description,
+                        example=example,
+                        id=_member_id(rel, m),
+                        url=page_url(db, rel, m.file_path, page),
+                    )
+                )
+            result.message = (
+                f"{_count(len(found), 'entry')} for '{wanted}' in the {rel} API reference"
+                + (
+                    f" (the first {API_METHODS_SHOWN} shown)"
+                    if len(found) > API_METHODS_SHOWN
+                    else ""
+                )
+                + ". Cite ids as [id]; snow_docs_read(id) gives the full section."
+            ).replace("entrys", "entries")
+        else:
+            result.suggestions = list(found)
+            hint = f" Closest names: {', '.join(result.suggestions)}." if result.suggestions else ""
+            result.message = (
+                f"'{wanted}' is not in the {rel} API reference ({len(table):,} documented "
+                f"methods and properties).{hint} Do not use it in code unless another source "
+                "confirms it; snow_docs_search may find it outside the API reference."
+            )
+        return result
+    except Exception as e:  # tools report errors, never raise
+        logger.exception("snow_docs_api failed")
+        return ApiResult(ok=False, message=f"API lookup failed: {e}")
 
 
 @mcp.tool(name="snow_docs_status", annotations=READ_ONLY)

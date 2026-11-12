@@ -4,13 +4,14 @@ Ask Claude questions about ServiceNow and get answers taken from the **official 
 documentation**, for the **Australia** and **Brazil** releases, each claim with a citation you can
 open.
 
-It adds four read-only tools to Claude:
+It adds five read-only tools to Claude:
 
 | Tool | What it does |
 |---|---|
 | `snow_docs_search` | Finds the most relevant documentation passages for a question |
 | `snow_docs_read` | Opens the full section behind a search result |
 | `snow_docs_compare` | Shows what changed between the Australia and Brazil docs for a topic or page |
+| `snow_docs_api` | Looks up a scripting class or method exactly: its methods, parameters and return type |
 | `snow_docs_status` | Shows download/update progress and which docs snapshot is loaded |
 
 Claude writes the answer from the passages and cites them. The server itself runs no AI model
@@ -140,6 +141,19 @@ so.
 
 In Claude Code this is the `servicenow-upgrade-review` skill, used automatically. In Claude
 Desktop, pick the `upgrade_review` prompt and enter the product name, or just ask.
+
+## API lookup
+
+Ask what a class offers or what a method takes, for example *"Which parameters does
+GlideRecord.addEncodedQuery take?"* or *"List the methods of GlideAggregate."* Claude calls
+`snow_docs_api`, which answers from a table of every method in the API reference (about 4,500
+methods in 520 classes): the signature, each parameter with its type, the return type, a short
+description and the first code example. A class name lists its methods, with the global and
+scoped variants apart; `gs`, `g_form` and `g_user` work as class names too.
+
+A name the API reference does not have gets a clear "not found" with the closest names, so
+Claude checks its methods before it writes script code instead of guessing. REST endpoints are
+not in the table; search finds those.
 
 ## Troubleshooting
 

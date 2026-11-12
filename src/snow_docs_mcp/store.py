@@ -391,6 +391,19 @@ def page_paths(db_path: str | Path) -> tuple[frozenset[str], dict[str, list[str]
     return _paths_cache[key][1], by_name
 
 
+def documents(db_path: str | Path, prefix: str) -> list[tuple[str, str]]:
+    """(file_path, content) of every page under a folder, in path order."""
+    conn = _connect(db_path)
+    try:
+        return conn.execute(
+            "SELECT file_path, content FROM documents WHERE file_path >= ? AND file_path < ? "
+            "ORDER BY file_path",
+            (prefix, prefix + "\uffff"),
+        ).fetchall()
+    finally:
+        conn.close()
+
+
 _TITLE_RE = re.compile(r"^title:[ \t]*(.*)$", re.MULTILINE)
 
 

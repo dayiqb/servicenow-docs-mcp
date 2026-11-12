@@ -24,6 +24,10 @@ Answer ServiceNow questions from the official product documentation, not from me
    new), call `snow_docs_compare` with the topic, or with `page` for one page. Lead with
    the release notes it returns, then the changed sections, and say that small
    rewordings are not listed.
+7. Before writing or reviewing ServiceNow script code, check each class and method with
+   `snow_docs_api` (for example `GlideRecord.addEncodedQuery`, or `gs` for all of
+   GlideSystem). If it answers `not_found`, do not use that method; say so, and offer
+   the closest documented one.
 
 If a tool says the docs are still being set up, tell the user it's a one-time download
 and to try again in a minute or two; `snow_docs_status` shows progress.
