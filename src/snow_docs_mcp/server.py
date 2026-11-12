@@ -747,8 +747,12 @@ def _size(result: CompareResult) -> int:
     return len(json.dumps(result.model_dump()))
 
 
-MORE_RELEASE_NOTES = 10
+MORE_RELEASE_NOTES = 15
 _NOTES_TITLE = re.compile(r"^Combined (.+) release notes for upgrades from Australia to Brazil$")
+_NOTES_FOLDER = "markdown/release-notes/"
+_BREADCRUMB = re.compile(r"^breadcrumb: \[(.*)\]\s*$", re.MULTILINE)
+_FAMILY = re.compile(r"(.+?) release notes(?:, |$)")
+_PARENS = re.compile(r"\s*\(([^()]*)\)")
 # Words too common in application names to identify one.
 _GENERIC_WORDS = frozenset(
     [
@@ -774,37 +778,112 @@ _GENERIC_WORDS = frozenset(
         "applications",
     ]
 )
+_notes_cache: dict[str, tuple[dict, dict, dict]] = {}
+
+
+def _phrase(text: str) -> str:
+    return " ".join(_WORD_RE.findall(text.lower()))
+
+
+def _notes_index(
+    db,
+) -> tuple[dict[str, tuple[str, str]], dict[str, set[str]], dict[str, set[str]]]:
+    """(application phrase -> (page path, application name), family phrase -> application
+    phrases, application phrase -> the product areas its own docs are in) for the
+    release-notes pages. An application's own docs are the pages titled with its name; their
+    top folder is the product area. Families come from the breadcrumb of the
+    per-application release notes: "<application> release notes" under "<family> release
+    notes" (more than one level, e.g. Workflow Studio under App development and low-code)."""
+    key = str(db)
+    if key not in _notes_cache:
+        apps: dict[str, tuple[str, str]] = {}
+        chains: list[list[str]] = []
+        for path in store.page_paths(db)[0]:
+            if path.startswith(RELEASE_NOTES_PREFIX):
+                page = store.get_document(db, path) or ""
+                m = _NOTES_TITLE.match(sections.front_matter_value(page, "title"))
+                if m:
+                    name = sections.unescape_markdown(m.group(1))
+                    apps[_phrase(_PARENS.sub("", name))] = (path, name)
+            elif path.startswith(_NOTES_FOLDER):
+                page = (store.get_document(db, path) or "")[:3000]
+                crumbs = _BREADCRUMB.search(page)
+                if crumbs:
+                    # family crumbs come first; the generic ones start at "Features and changes"
+                    head = crumbs.group(1).split("Features and changes", 1)[0]
+                    title = sections.unescape_markdown(sections.front_matter_value(page, "title"))
+                    chain = _FAMILY.findall(f"{title}, {head}")
+                    chains.append([_phrase(_PARENS.sub("", c)) for c in chain])
+        families: dict[str, set[str]] = {}
+        for chain in chains:
+            for i, name in enumerate(chain):
+                if name in apps:
+                    for family in chain[i + 1 :]:
+                        families.setdefault(family, set()).add(name)
+        areas: dict[str, set[str]] = {}
+        for title, paths in store.page_titles(db, "markdown/delta-").items():
+            name = _phrase(_PARENS.sub("", sections.unescape_markdown(title)))
+            if name in apps:
+                found = {store.product_of(p) for p in paths if not p.startswith(_NOTES_FOLDER)}
+                areas.setdefault(name, set()).update(found - {""})
+        _notes_cache[key] = (apps, families, areas)
+    return _notes_cache[key]
 
 
 def _notes_by_name(db, q: str, already: set[str]) -> list[NotesPage]:
-    """Release-notes pages found by application name: search misses a page when the docs
-    call the product something else ("Flow Designer" is under "Flows, subflows, and
-    actions"), and one product often has several pages. A query word matches a name word it
-    begins (hr -> HRSD, flow -> Flows). A page must contain the rarest query word that occurs
-    in any name: in "HR Service Delivery", "hr" names the product, "delivery" would also bring
-    in Legal and Workplace Service Delivery. Pages with more matching words come first."""
-    words = {w for w in _WORD_RE.findall(q.lower()) if len(w) > 1 and w not in _GENERIC_WORDS}
-    if not words:
+    """Release-notes pages found by name rather than by search: search misses a page when
+    the docs call the product something else ("Flow Designer" is under "Flows, subflows, and
+    actions"), and one product often has several pages.
+
+    - The query names a product family (HR Service Delivery, Workflow Studio, or an
+      abbreviation such as ITSM): the family's applications.
+    - The query names one application (or its abbreviation in brackets): only pages whose name
+      has the whole query, so "Document Intelligence" does not bring in "Document Services".
+    - Otherwise: pages that contain the rarest query word found in any name. A query word
+      matches a name word it begins (hr -> HRSD, flow -> Flows).
+    With a family, pages are also taken by word or by the family's initials (HRSD), since the
+    breadcrumbs do not list every application, but never a page that belongs to another family
+    or whose own docs are in another product area than the family's.
+    """
+    apps, families, areas = _notes_index(db)
+    phrase = _phrase(q)
+    if not phrase:
         return []
-    pages: list[tuple[str, str, set[str]]] = []  # (path, application, the query words it has)
-    for path in store.page_paths(db)[0]:
-        if not path.startswith(RELEASE_NOTES_PREFIX):
-            continue
-        title = sections.front_matter_value(store.get_document(db, path) or "", "title")
-        m = _NOTES_TITLE.match(title)
-        if m:
-            name_words = _WORD_RE.findall(m.group(1).lower())
-            has = {w for w in words if any(n.startswith(w) for n in name_words)}
-            pages.append((path, m.group(1), has))
-    in_names = {w: sum(w in has for _, _, has in pages) for w in words}
-    counts = [n for n in in_names.values() if n]
-    if not counts:
-        return []
-    rarest = {w for w, n in in_names.items() if n == min(counts)}
+    folder, how = products.resolve(q, store.products(db))
+    family_names = {phrase} | ({_phrase(folder)} if how in ("exact", "alias") and folder else set())
+    members = {a for f in family_names for a in families.get(f, ())}
+
+    def abbreviations(name: str) -> set[str]:
+        return {_phrase(x) for x in _PARENS.findall(name)}
+
+    names_one = phrase in apps or any(phrase in abbreviations(n) for _, n in apps.values())
+    words = {w for w in phrase.split() if len(w) > 1 and w not in _GENERIC_WORDS}
+    has = {
+        a: {w for w in words if any(n.startswith(w) for n in _phrase(name).split())}
+        for a, (_, name) in apps.items()
+    }
+    if names_one and not members:
+        named = {
+            a
+            for a, (_, name) in apps.items()
+            if f" {phrase} " in f" {a} " or phrase in abbreviations(name)
+        }
+    else:
+        in_names = {w: sum(w in h for h in has.values()) for w in words}
+        counts = [n for n in in_names.values() if n]
+        rarest = {w for w, n in in_names.items() if counts and n == min(counts)}
+        named = {a for a, h in has.items() if h & rarest}
+    if members:
+        initials = "".join(w[0] for w in phrase.split())
+        named |= {a for a in apps if len(initials) > 2 and initials in a.split()}
+        elsewhere = {a for f, group in families.items() if f not in family_names for a in group}
+        home = {area for a in members for area in areas.get(a, ())}
+        elsewhere |= {a for a in named if home and areas.get(a) and not areas[a] & home}
+        named -= elsewhere - members
     found = sorted(
-        (-len(has), name, path)
-        for path, name, has in pages
-        if has & rarest and f"{TO_RELEASE}:{path}" not in already
+        (-len(has[a]), apps[a][1], apps[a][0])
+        for a in members | named
+        if f"{TO_RELEASE}:{apps[a][0]}" not in already
     )
     return [
         NotesPage(id=make_id(TO_RELEASE, path, ""), application=name)

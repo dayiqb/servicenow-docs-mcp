@@ -140,8 +140,13 @@ def retain(db_paths: set[Path]) -> None:
     keep = {str(Path(p).resolve()) for p in db_paths}
     with _cache_lock:
         cached = set(_matrix_cache)
-    for cache in (_has_context_col, _products_cache, _source_cache, _paths_cache,
-                  _heading_words_cache):
+    for cache in (
+        _has_context_col,
+        _products_cache,
+        _source_cache,
+        _paths_cache,
+        _heading_words_cache,
+    ):
         cached |= set(cache)  # an index only read, never searched, has no matrix
     for k in cached - keep:
         forget(k)
@@ -384,6 +389,24 @@ def page_paths(db_path: str | Path) -> tuple[frozenset[str], dict[str, list[str]
         by_name.setdefault(fp.rsplit("/", 1)[-1], []).append(fp)
     _paths_cache[key] = (mtime, frozenset(paths), by_name)
     return _paths_cache[key][1], by_name
+
+
+_TITLE_RE = re.compile(r"^title:[ \t]*(.*)$", re.MULTILINE)
+
+
+def page_titles(db_path: str | Path, exclude_prefix: str = "") -> dict[str, list[str]]:
+    """Front-matter title -> the pages that have it (read from each page's first lines)."""
+    conn = _connect(db_path)
+    try:
+        rows = conn.execute("SELECT file_path, substr(content, 1, 400) FROM documents").fetchall()
+    finally:
+        conn.close()
+    out: dict[str, list[str]] = {}
+    for path, head in rows:
+        m = _TITLE_RE.search(head) if head.startswith("---") else None
+        if m and not (exclude_prefix and path.startswith(exclude_prefix)):
+            out.setdefault(m.group(1).strip().strip("\"'"), []).append(path)
+    return out
 
 
 _CODE_NAME_RE = re.compile(r"[$A-Za-z_][\w$]*")

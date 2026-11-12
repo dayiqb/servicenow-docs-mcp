@@ -61,11 +61,42 @@ for _path, _app in (
     (_DELTA + "agentworkspaceforhr-release-notes.md", "Agent Workspace for HR Case Handling"),
     (_DELTA + "legaldelivery-release-notes.md", "Legal Service Delivery"),
     (_DELTA + "workplacedelivery-release-notes.md", "Workplace Service Delivery"),
+    (_DELTA + "incidentmanagement-release-notes.md", "Incident Management"),
+    (_DELTA + "documentservices-release-notes.md", "Document Services"),
+    (_DELTA + "documentintelligence-release-notes.md", "Document Intelligence \\(DocIntel\\)"),
+    (_DELTA + "nowassistdocintel-release-notes.md", "Now Assist in Document Intelligence"),
+    (_DELTA + "playbooks-release-notes.md", "Playbooks"),
+    (_DELTA + "workflowstudioinsights-release-notes.md", "Workflow Studio Insights"),
+    (_DELTA + "workflowstudiotemplates-release-notes.md", "Workflow Studio Templates"),
+    (_DELTA + "recommendedws-release-notes.md", "Recommended Actions for WS"),
+    (_DELTA + "workflowstudioreports-release-notes.md", "Workflow Studio Reports"),
+    (_DELTA + "predictiveintelligence-release-notes.md", "Predictive Intelligence"),
+    (_DELTA + "threatintelligence-release-notes.md", "Threat Intelligence Center"),
 ):
     BR_DOCS[_path] = (
         f"---\ntitle: Combined {_app} release notes for upgrades from Australia to Brazil\n---\n\n"
         f"# Combined {_app} release notes\n\n## New features\n\nNothing here.\n"
     )
+
+# The per-application release notes carry the product family in their breadcrumb.
+for _file, _title, _crumbs in (
+    ("flows-rn", "Flows, subflows, and actions release notes", "Workflow Studio release notes, "),
+    ("playbooks-rn", "Playbooks release notes", "Workflow Studio release notes, "),
+    ("incident-rn-2026", "Brazil Early Availability", "Incident Management release notes, "),
+    ("studio-rn", "Workflow Studio Insights release notes", "Platform Analytics release notes, "),
+):
+    BR_DOCS[f"markdown/release-notes/{_file}.md"] = (
+        f"---\ntitle: {_title}\nbreadcrumb: [{_crumbs}App development, and low-code release "
+        "notes, Features and changes by product, Brazil release notes]\n---\n\n# Notes\n\nText.\n"
+    )
+
+# Each application's own docs: the product area (top folder) they are in.
+for _docs_path, _title in (
+    ("markdown/build-workflows/flows/flows.md", "Flows, subflows, and actions"),
+    ("markdown/build-workflows/templates/templates.md", "Workflow Studio Templates"),
+    ("markdown/analytics/reports/reports.md", "Workflow Studio Reports"),
+):
+    BR_DOCS[_docs_path] = f"---\ntitle: {_title}\n---\n\n# {_title}\n\nAbout it.\n"
 
 BR_CHUNKS = [
     CHUNKS[0],
@@ -356,10 +387,10 @@ def test_release_notes_give_one_passage_per_page(both):
 def test_release_notes_pages_are_also_found_by_application_name(both):
     r = call("snow_docs_compare", query="incident priority")
     more = r["more_release_notes"]
-    assert [m["application"] for m in more] == ["Incident Workspace"]
-    assert more[0]["id"] == f"brazil:{WORKSPACE_NOTES}::"
-    assert "1 more release-notes page by name" in r["message"]
-    assert "Nothing here" in call("snow_docs_read", id=more[0]["id"])["content"]
+    assert [m["application"] for m in more] == ["Incident Management", "Incident Workspace"]
+    assert more[1]["id"] == f"brazil:{WORKSPACE_NOTES}::"
+    assert "2 more release-notes pages by name" in r["message"]
+    assert "Nothing here" in call("snow_docs_read", id=more[1]["id"])["content"]
 
 
 def test_a_name_that_search_misses_still_finds_its_release_notes_page(both):
@@ -379,4 +410,35 @@ def test_by_name_matches_must_contain_the_rarest_query_word(both):
     r = call("snow_docs_compare", query="HR Service Delivery")
     assert [m["application"] for m in r["more_release_notes"]] == [
         "Agent Workspace for HR Case Handling"
+    ]
+
+
+def test_a_query_that_names_one_application_only_lists_pages_with_that_whole_name(both):
+    both.rerank_scores = {"": -5.0}
+    r = call("snow_docs_compare", query="Document Intelligence")
+    assert [m["application"] for m in r["more_release_notes"]] == [
+        "Document Intelligence (DocIntel)",
+        "Now Assist in Document Intelligence",
+    ]
+    r = call("snow_docs_compare", query="docintel")  # the abbreviation names it too
+    assert [m["application"] for m in r["more_release_notes"]] == [
+        "Document Intelligence (DocIntel)"
+    ]
+
+
+def test_a_query_that_names_a_product_family_lists_its_applications(both):
+    both.rerank_scores = {"": -5.0}
+    r = call("snow_docs_compare", query="Workflow Studio")
+    # its applications and a page with the family's name that no breadcrumb lists; not the
+    # page of another family (Insights), nor the one documented in another product area (Reports)
+    assert [m["application"] for m in r["more_release_notes"]] == [
+        "Workflow Studio Templates",
+        "Flows, subflows, and actions",
+        "Playbooks",
+    ]
+    r = call("snow_docs_compare", query="app development and low-code")  # a family with a comma
+    assert sorted(m["application"] for m in r["more_release_notes"]) == [
+        "Flows, subflows, and actions",
+        "Playbooks",
+        "Workflow Studio Insights",
     ]
