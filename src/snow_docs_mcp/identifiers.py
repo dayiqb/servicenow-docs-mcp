@@ -66,7 +66,7 @@ def plain_heading(heading_path: str) -> str:
 
 
 def _kind(name: str) -> str:
-    """ "member" (addEncodedQuery), "anchor" (a class, GlideRecord, or a table/field name,
+    """"member" (addEncodedQuery), "anchor" (a class, GlideRecord, or a table/field name,
     cmdb_ci_computer: counts only next to a member), or "other" (dotted, $sp)."""
     if "." in name or name.startswith("$"):
         return "other"

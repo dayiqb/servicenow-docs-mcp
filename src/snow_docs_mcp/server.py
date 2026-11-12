@@ -689,28 +689,29 @@ def _size(result: CompareResult) -> int:
     return len(json.dumps(result.model_dump()))
 
 
-def _fit(result: CompareResult) -> bool:
-    """Shrink `result` to COMPARE_MAX_CHARS: shorter excerpts first, then fewer sections.
-    True when sections were dropped."""
+def _fit(result: CompareResult) -> tuple[bool, int]:
+    """Shrink `result` to the size limit: shorter excerpts first, then fewer sections per
+    page, then fewer pages (the least-changed last). Returns (sections were dropped, pages
+    dropped)."""
     if _size(result) <= _FIT_CHARS:
-        return False
+        return False, 0
     for page in result.changed_pages:
         for sec in page.sections:
             for field in ("australia_excerpt", "brazil_excerpt"):
                 text = getattr(sec, field)
                 if len(text) > _SHORT_EXCERPT:
                     setattr(sec, field, text[:_SHORT_EXCERPT].rstrip() + "…")
-    dropped = False
-    while _size(result) > _FIT_CHARS:
-        page = max(result.changed_pages, key=lambda p: len(p.sections), default=None)
-        if page is None or len(page.sections) <= 1:
-            break
-        over = _size(result) - _FIT_CHARS
-        while over > 0 and len(page.sections) > 1:
-            over -= len(json.dumps(page.sections.pop().model_dump())) + 2
+    sections_dropped, pages_dropped = False, 0
+    while _size(result) > _FIT_CHARS and result.changed_pages:
+        page = max(result.changed_pages, key=lambda p: len(p.sections))
+        if len(page.sections) > 1:
+            page.sections.pop()
             page.sections_left_out += 1
-        dropped = True
-    return dropped
+            sections_dropped = True
+        else:
+            result.changed_pages.pop()
+            pages_dropped += 1
+    return sections_dropped, pages_dropped
 
 
 def _count(n: int, what: str) -> str:
@@ -782,7 +783,7 @@ def _compare(q: str, page: str, product: str | None, limit: int, dbs: dict) -> C
 
     result.changed_pages = [p for p in pages if p.sections]
     minor = sum(p.minor_changes for p in pages)
-    left_out = _fit(result)
+    left_out, pages_left_out = _fit(result)
 
     parts = []
     if not page:
@@ -806,6 +807,11 @@ def _compare(q: str, page: str, product: str | None, limit: int, dbs: dict) -> C
             msg += f" {_count(len(only), 'page')} only in the {rel} docs."
     if minor:
         msg += f" {_count(minor, 'small rewording')} not listed."
+    if pages_left_out:
+        msg += (
+            f" {_count(pages_left_out, 'more changed page')} left out to keep this short; "
+            "narrow the topic or use `product`."
+        )
     if left_out:
         msg += (
             " Some sections were left out to keep this short; compare a single page to see "

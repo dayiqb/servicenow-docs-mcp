@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import difflib
 import re
+from collections import Counter
 from dataclasses import dataclass
 
 from snow_docs_mcp import sections
@@ -17,8 +18,9 @@ from snow_docs_mcp import sections
 # A changed section with fewer changed words than this is a small rewording: counted, not
 # listed. Most of them are link text that one release renders and the other drops.
 MINOR_WORDS = 8
-# Above this many words in a section, compare lines instead of words (API reference pages).
-LINE_MODE_WORDS = 5000
+# Word-by-word comparison is exact up to this many (words x words) after the shared start and
+# end are set aside; above it, words are counted instead.
+EXACT_CELLS = 250_000
 
 _LINK = re.compile(r"!?\[[^\[\]\n]*\]\([^()\s]*(?:\([^()\s]*\)[^()\s]*)*\)")
 _URL = re.compile(r"https?://\S+")
@@ -72,42 +74,36 @@ def _keyed(page: str) -> dict[tuple[str, int], str]:
     return out
 
 
+def _first_difference(wa: list[str], wb: list[str]) -> int:
+    n = min(len(wa), len(wb))
+    for i in range(n):
+        if wa[i] != wb[i]:
+            return i
+    return n
+
+
 def _changed_words(a: str, b: str) -> int:
+    """How many words differ between two texts. The shared start and end are set aside
+    first; what is left is compared exactly when it is small, and otherwise counted as the
+    words one side has and the other lacks (difflib takes minutes on long repetitive text
+    such as tables and JSON schemas)."""
     wa, wb = a.split(), b.split()
-    if max(len(wa), len(wb)) > LINE_MODE_WORDS:
-        return _changed_words_by_line(a, b)
-    ops = difflib.SequenceMatcher(None, wa, wb, autojunk=False).get_opcodes()
-    return sum(max(i2 - i1, j2 - j1) for tag, i1, i2, j1, j2 in ops if tag != "equal")
-
-
-def _changed_words_by_line(a: str, b: str) -> int:
-    la, lb = a.splitlines(), b.splitlines()
-    ops = difflib.SequenceMatcher(None, la, lb, autojunk=False).get_opcodes()
-    total = 0
-    for tag, i1, i2, j1, j2 in ops:
-        if tag != "equal":
-            total += max(
-                sum(len(x.split()) for x in la[i1:i2]), sum(len(x.split()) for x in lb[j1:j2])
-            )
-    return total
-
-
-def _line_comparable(body: str, link_text: bool) -> str:
-    """Like `comparable`, but keeping line breaks (for the by-line comparison)."""
-    lines = (comparable(line, link_text=link_text) for line in body.splitlines())
-    return "\n".join(c for c in lines if c)
+    start = _first_difference(wa, wb)
+    wa, wb = wa[start:], wb[start:]
+    end = _first_difference(wa[::-1], wb[::-1])
+    if end:
+        wa, wb = wa[:-end], wb[:-end]
+    if len(wa) * len(wb) <= EXACT_CELLS:
+        ops = difflib.SequenceMatcher(None, wa, wb, autojunk=False).get_opcodes()
+        return sum(max(i2 - i1, j2 - j1) for tag, i1, i2, j1, j2 in ops if tag != "equal")
+    ca, cb = Counter(wa), Counter(wb)
+    return max(sum((ca - cb).values()), sum((cb - ca).values()))
 
 
 def _section_change(a: str, b: str, link_text: bool) -> int:
     """Changed words between two versions of a section body (0 = the same)."""
     ca, cb = comparable(a, link_text=link_text), comparable(b, link_text=link_text)
-    if ca == cb:
-        return 0
-    if max(len(ca.split()), len(cb.split())) > LINE_MODE_WORDS:
-        return _changed_words_by_line(
-            _line_comparable(a, link_text), _line_comparable(b, link_text)
-        )
-    return _changed_words(ca, cb)
+    return 0 if ca == cb else max(1, _changed_words(ca, cb))
 
 
 def _excerpt(words: list[str], start: int, max_chars: int) -> str:
@@ -117,14 +113,6 @@ def _excerpt(words: list[str], start: int, max_chars: int) -> str:
     if cut:
         text = text[:max_chars].rsplit(" ", 1)[0]
     return ("…" if start else "") + text + ("…" if cut else "")
-
-
-def _first_difference(wa: list[str], wb: list[str]) -> int:
-    n = min(len(wa), len(wb))
-    for i in range(n):
-        if wa[i] != wb[i]:
-            return i
-    return n
 
 
 def compare_pages(

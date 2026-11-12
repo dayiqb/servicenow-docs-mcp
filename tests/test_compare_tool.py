@@ -193,3 +193,32 @@ def test_result_stays_under_the_size_limit(both):
     assert r["ok"], r
     assert len(json.dumps(r)) <= 12000
     assert r["changed_pages"][0]["sections_left_out"] > 0 and "left out" in r["message"]
+
+
+def test_many_one_section_pages_still_fit_the_size_limit():
+    from snow_docs_mcp import server
+
+    def page(i: int) -> server.ChangedPage:
+        path = f"markdown/it-service-management/a-rather-long-folder-name/page-number-{i}.md"
+        sec = server.SectionDiff(
+            heading_path="A long page title > A long section heading " * 2,
+            change="changed",
+            changed_words=20,
+            australia_id=f"australia:{path}::" + "A long page title > A long section heading " * 2,
+            brazil_id=f"brazil:{path}::" + "A long page title > A long section heading " * 2,
+            australia_excerpt="old " * 75,
+            brazil_excerpt="new " * 75,
+        )
+        return server.ChangedPage(
+            page=path,
+            page_title="A long page title",
+            product="it-service-management",
+            australia_url="https://www.servicenow.com/docs/r/australia/" + path,
+            brazil_url="https://www.servicenow.com/docs/r/" + path,
+            sections=[sec],
+        )
+
+    result = server.CompareResult(ok=True, message="", changed_pages=[page(i) for i in range(20)])
+    _, pages_dropped = server._fit(result)
+    assert pages_dropped > 0 and len(result.changed_pages) == 20 - pages_dropped
+    assert len(json.dumps(result.model_dump())) + 800 <= 12000

@@ -296,25 +296,14 @@ def _with_duplicates(fixture_db, tmp_path):
     db.write_bytes(fixture_db.read_bytes())
     conn = sqlite3.connect(db)
     rows = [
-        (
-            "markdown/itsm/incident.md",
-            "Incident management > Priority",
-            (
-                "Explains how incident priority is derived.\n\nIncident management > Priority\n\n"
-                "Priority part two: the urgency matrix."
-            ),
-            6,
-        ),
+        ("markdown/itsm/incident.md", "Incident management > Priority",
+         ("Explains how incident priority is derived.\n\nIncident management > Priority\n\n"
+          "Priority part two: the urgency matrix."), 6),
         # the republished copy links differently, as ServiceNow's copies do
-        (
-            "markdown/build/change.md",
-            CHUNKS[5][1],
-            f"{CHUNKS[5][2]}\n\n{CHUNKS[5][1]}\n\n"
-            + CHUNKS[5][3].replace(
-                "changes", "[changes](https://raw.githubusercontent.com/x/c.md)"
-            ),
-            7,
-        ),
+        ("markdown/build/change.md", CHUNKS[5][1],
+         f"{CHUNKS[5][2]}\n\n{CHUNKS[5][1]}\n\n"
+         + CHUNKS[5][3].replace("changes", "[changes](https://raw.githubusercontent.com/x/c.md)"),
+         7),
     ]
     for fp, hp, content, i in rows:
         conn.execute(
@@ -377,9 +366,7 @@ def test_near_copies_count_as_one_but_different_pages_do_not() -> None:
 
 # --- feedback round 2: links, model readiness ----------------------------------------------
 
-SOURCE = (
-    "https://github.com/ServiceNow/ServiceNowDocs/blob/0ba98cdaf706821d72ff79e92b18adc057e60e29/"
-)
+SOURCE = "https://github.com/ServiceNow/ServiceNowDocs/blob/0ba98cdaf706821d72ff79e92b18adc057e60e29/"
 
 
 def test_every_hit_links_to_its_page(ready) -> None:

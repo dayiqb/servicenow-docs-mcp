@@ -140,13 +140,8 @@ def retain(db_paths: set[Path]) -> None:
     keep = {str(Path(p).resolve()) for p in db_paths}
     with _cache_lock:
         cached = set(_matrix_cache)
-    for cache in (
-        _has_context_col,
-        _products_cache,
-        _source_cache,
-        _paths_cache,
-        _heading_words_cache,
-    ):
+    for cache in (_has_context_col, _products_cache, _source_cache, _paths_cache,
+                  _heading_words_cache):
         cached |= set(cache)  # an index only read, never searched, has no matrix
     for k in cached - keep:
         forget(k)

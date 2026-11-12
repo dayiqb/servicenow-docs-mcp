@@ -88,6 +88,4 @@ def test_search_flags_a_name_no_passage_contains(ready) -> None:  # noqa: F811
 
 def test_search_does_not_flag_plain_queries(ready) -> None:  # noqa: F811
     res = _call("snow_docs_search", {"query": "incident priority"})
-    assert (
-        "appears nowhere" not in res["message"] and "None of these passages" not in res["message"]
-    )
+    assert "appears nowhere" not in res["message"] and "None of these passages" not in res["message"]

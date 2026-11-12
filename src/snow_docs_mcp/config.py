@@ -205,15 +205,8 @@ def normalize_release(value: str | None) -> str | None:
 RERANK_PROFILES = {"standard": (25, 800), "fast": (20, 500)}  # (candidates, chars read)
 
 
-_RERANK_WORDS = {
-    "true": "fast",
-    "1": "fast",
-    "yes": "fast",
-    "false": "standard",
-    "0": "standard",
-    "no": "standard",
-    "": "standard",
-}
+_RERANK_WORDS = {"true": "fast", "1": "fast", "yes": "fast", "false": "standard", "0": "standard",
+                 "no": "standard", "": "standard"}
 
 
 def rerank_profile() -> str:
@@ -222,9 +215,8 @@ def rerank_profile() -> str:
     raw = os.environ.get("SNOW_DOCS_RERANK", "").strip().lower()
     profile = raw if raw in RERANK_PROFILES else _RERANK_WORDS.get(raw)
     if profile is None:
-        logger.warning(
-            "SNOW_DOCS_RERANK=%r is not one of %s; using standard", raw, "/".join(RERANK_PROFILES)
-        )
+        logger.warning("SNOW_DOCS_RERANK=%r is not one of %s; using standard", raw,
+                       "/".join(RERANK_PROFILES))
         profile = "standard"
     return profile
 

@@ -49,47 +49,24 @@ def _page(url: str, release: str = "") -> str:
     return f"---\ntitle: T\ncanonical_url: {url}\n{rel}---\n\nBody\n"
 
 
-@pytest.mark.parametrize(
-    "url,page_release,index_release,expected",
-    [
-        # the newest release's pages carry no release folder: pin brazil
-        (
-            f"{SITE}it-service-management/incident.html",
-            "brazil",
-            "brazil",
-            f"{SITE}brazil/it-service-management/incident.html",
-        ),
-        (
-            f"{SITE}delta-australia-brazil/rn.html",
-            "brazil",
-            "brazil",
-            f"{SITE}brazil/delta-australia-brazil/rn.html",
-        ),
-        # older releases' notes shipped in the brazil docs: those pages live under australia
-        (
-            f"{SITE}delta-zurich-australia/rn.html",
-            "australia",
-            "brazil",
-            f"{SITE}australia/delta-zurich-australia/rn.html",
-        ),
-        # left alone: already has a release folder, or a folder that works as it is
-        (
-            f"{SITE}australia/it-service-management/incident.html",
-            "australia",
-            "australia",
-            f"{SITE}australia/it-service-management/incident.html",
-        ),
-        (
-            f"{SITE}delta-washingtondc-australia/rn.html",
-            "australia",
-            "australia",
-            f"{SITE}delta-washingtondc-australia/rn.html",
-        ),
-        # no release in the page: the index's release decides
-        (f"{SITE}csm/cases.html", "", "brazil", f"{SITE}brazil/csm/cases.html"),
-        ("https://example.com/other", "brazil", "brazil", "https://example.com/other"),
-    ],
-)
+@pytest.mark.parametrize("url,page_release,index_release,expected", [
+    # the newest release's pages carry no release folder: pin brazil
+    (f"{SITE}it-service-management/incident.html", "brazil", "brazil",
+     f"{SITE}brazil/it-service-management/incident.html"),
+    (f"{SITE}delta-australia-brazil/rn.html", "brazil", "brazil",
+     f"{SITE}brazil/delta-australia-brazil/rn.html"),
+    # older releases' notes shipped in the brazil docs: those pages live under australia
+    (f"{SITE}delta-zurich-australia/rn.html", "australia", "brazil",
+     f"{SITE}australia/delta-zurich-australia/rn.html"),
+    # left alone: already has a release folder, or a folder that works as it is
+    (f"{SITE}australia/it-service-management/incident.html", "australia", "australia",
+     f"{SITE}australia/it-service-management/incident.html"),
+    (f"{SITE}delta-washingtondc-australia/rn.html", "australia", "australia",
+     f"{SITE}delta-washingtondc-australia/rn.html"),
+    # no release in the page: the index's release decides
+    (f"{SITE}csm/cases.html", "", "brazil", f"{SITE}brazil/csm/cases.html"),
+    ("https://example.com/other", "brazil", "brazil", "https://example.com/other"),
+])
 def test_site_url(url, page_release, index_release, expected) -> None:
     assert sections.site_url(_page(url, page_release), index_release) == expected
 
@@ -159,8 +136,7 @@ def test_store_mentions_and_page_paths(fixture_db) -> None:
 
 def test_code_identifiers() -> None:
     assert identifiers.code_identifiers("GlideRecord addEncodedQuery") == [
-        "GlideRecord",
-        "addEncodedQuery",
+        "GlideRecord", "addEncodedQuery"
     ]
     assert "setMandatory" in identifiers.code_identifiers("g_form.setMandatory()")
     assert "getParameter" in identifiers.code_identifiers("$sp.getParameter")
@@ -185,9 +161,7 @@ def test_prefer_exact_puts_the_named_method_first() -> None:
 def test_search_orders_hits_through_prefer_exact(ready, monkeypatch) -> None:  # noqa: F811
     plain = [h["id"] for h in _call("snow_docs_search", {"query": "incident", "limit": 3})["hits"]]
     monkeypatch.setattr(identifiers, "prefer_exact", lambda q, hits: list(reversed(hits)))
-    flipped = [
-        h["id"] for h in _call("snow_docs_search", {"query": "incident", "limit": 3})["hits"]
-    ]
+    flipped = [h["id"] for h in _call("snow_docs_search", {"query": "incident", "limit": 3})["hits"]]
     assert flipped != plain and len(flipped) == len(plain) == 3
 
 
@@ -203,38 +177,28 @@ def test_prefer_exact_ignores_class_names_alone_parent_headings_and_arguments() 
 # --- product filter ------------------------------------------------------------------------
 
 
-KNOWN = [
-    "employee-service-management",
-    "hr",
-    "it-service-management",
-    "now-platform",
-    "servicenow-platform",
-]
+KNOWN = ["employee-service-management", "hr", "it-service-management", "now-platform",
+         "servicenow-platform"]
 
 
-@pytest.mark.parametrize(
-    "value,expected",
-    [
-        ("itsm", ("it-service-management", "alias")),
-        ("HRSD", ("employee-service-management", "alias")),
-        ("IT Service Management", ("it-service-management", "exact")),
-        ("it_service_management/", ("it-service-management", "exact")),
-        ("hr", ("hr", "exact")),  # a real folder wins over an abbreviation
-        ("now-platform", ("servicenow-platform", "alias")),  # 5 landing pages -> the real area
-        ("api", ("api-reference", "alias-absent")),
-        ("esm", ("", "unknown")),  # Enterprise or Employee Service Management: ambiguous
-        ("xyz", ("", "unknown")),
-    ],
-)
+@pytest.mark.parametrize("value,expected", [
+    ("itsm", ("it-service-management", "alias")),
+    ("HRSD", ("employee-service-management", "alias")),
+    ("IT Service Management", ("it-service-management", "exact")),
+    ("it_service_management/", ("it-service-management", "exact")),
+    ("hr", ("hr", "exact")),  # a real folder wins over an abbreviation
+    ("now-platform", ("servicenow-platform", "alias")),  # 5 landing pages -> the real area
+    ("api", ("api-reference", "alias-absent")),
+    ("esm", ("", "unknown")),  # Enterprise or Employee Service Management: ambiguous
+    ("xyz", ("", "unknown")),
+])
 def test_product_resolve(value, expected) -> None:
     assert products.resolve(value, KNOWN) == expected
 
 
 def test_product_suggestions() -> None:
-    paths = [
-        "markdown/it-service-management/incident-management/a.md",
-        "markdown/employee-service-management/hr-case/b.md",
-    ]
+    paths = ["markdown/it-service-management/incident-management/a.md",
+             "markdown/employee-service-management/hr-case/b.md"]
     assert products.suggestions("incident management", KNOWN, paths)[0] == "it-service-management"
     assert "it-service-management" in products.suggestions("itsn", KNOWN, paths)
 
@@ -254,19 +218,14 @@ API_GAP = CoverageGap("api-reference", "API Reference", 0, 1227)
 
 def test_coverage_gaps_parse_and_skip_malformed() -> None:
     raw = {
-        "snapshot": "2026-09-24",
-        "gz_sha256": "a" * 64,
-        "url": "https://x/y.db.gz",
-        "coverage_gaps": {
-            "compared_with": "australia",
-            "products": [
-                {"product": "api-reference", "title": "API Reference", "pages": 0, "of": 1227},
-                {"product": "Bad Name", "title": "x", "pages": 0, "of": 5},
-                {"product": "esm", "pages": 9, "of": 9},  # not a gap
-                {"product": "esm", "pages": "1", "of": 9},
-                "junk",
-            ],
-        },
+        "snapshot": "2026-09-24", "gz_sha256": "a" * 64, "url": "https://x/y.db.gz",
+        "coverage_gaps": {"compared_with": "australia", "products": [
+            {"product": "api-reference", "title": "API Reference", "pages": 0, "of": 1227},
+            {"product": "Bad Name", "title": "x", "pages": 0, "of": 5},
+            {"product": "esm", "pages": 9, "of": 9},  # not a gap
+            {"product": "esm", "pages": "1", "of": 9},
+            "junk",
+        ]},
     }
     e = config.IndexEntry.from_json("brazil", raw)
     assert e.coverage_gaps == (API_GAP,) and e.gaps_compared_with == "australia"
@@ -307,12 +266,8 @@ def test_filtered_search_on_a_partial_gap_says_so(ready, monkeypatch) -> None:  
     partial = CoverageGap("itsm", "IT Service Management", 2, 500)
     monkeypatch.setattr(setup, "coverage_gaps", lambda rel: ((API_GAP, partial), "brazil"))
     res = _call("snow_docs_search", {"query": "priority", "product": "itsm"})
-    assert (
-        res["ok"]
-        and "lacks most of IT Service Management (2 of 500 pages); for those, "
-        "search release 'brazil'"
-        in res["message"]
-    )
+    assert res["ok"] and "lacks most of IT Service Management (2 of 500 pages); for those, " \
+        "search release 'brazil'" in res["message"]
     assert "API Reference" not in res["message"]  # only the searched area's gap
 
 
@@ -342,17 +297,13 @@ def test_search_says_whether_a_missing_name_exists_elsewhere(ready) -> None:  # 
     store.forget(db)
     # filtered to hr: the name is in the docs, just not in these passages
     elsewhere = _call("snow_docs_search", {"query": "setWorkflowSkip case", "product": "hr"})
-    assert (
-        "'setWorkflowSkip' is in the australia docs but not in these passages; if the "
+    assert "'setWorkflowSkip' is in the australia docs but not in these passages; if the " \
         "question is about it, search for it by name." in elsewhere["message"]
-    )
     assert "appears nowhere" not in elsewhere["message"]
     # misspelt: nowhere in the docs, and the right name is in the candidates
     typo = _call("snow_docs_search", {"query": "setWorkflowSkp change approval"})
-    assert (
-        "'setWorkflowSkp' (did you mean 'setWorkflowSkip'?) appears nowhere in the "
+    assert "'setWorkflowSkp' (did you mean 'setWorkflowSkip'?) appears nowhere in the " \
         "australia docs" in typo["message"]
-    )
     # spelt right and in the candidates: no note
     right = _call("snow_docs_search", {"query": "setWorkflowSkip change approval"})
     assert "setWorkflowSkip" not in right["message"]
@@ -361,7 +312,6 @@ def test_search_says_whether_a_missing_name_exists_elsewhere(ready) -> None:  # 
 def test_did_you_mean_falls_back_to_heading_names() -> None:
     passages = [SimpleNamespace(content="Client script order and design.")]
     assert _did_you_mean(["setMandatroy"], passages) == {}
-
     def more():
         return frozenset({"setMandatory", "setDisplay"})
 
@@ -401,15 +351,9 @@ def test_heading_code_names(ready) -> None:  # noqa: F811
 # --- fast rerank setting -------------------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    "value,expected",
-    [
-        ("", "standard"),
-        ("fast", "fast"),
-        (" FAST ", "fast"),
-        ("turbo", "standard"),
-    ],
-)
+@pytest.mark.parametrize("value,expected", [
+    ("", "standard"), ("fast", "fast"), (" FAST ", "fast"), ("turbo", "standard"),
+])
 def test_rerank_profile(monkeypatch, value, expected) -> None:
     monkeypatch.setenv("SNOW_DOCS_RERANK", value)
     assert config.rerank_profile() == expected
@@ -420,35 +364,26 @@ def test_rerank_profile(monkeypatch, value, expected) -> None:
 
 
 def test_member_names_count_only_in_api_heading_form() -> None:
-    hits = [
-        _hit("VMware credentials", 7.06),
-        _hit("Discovery for VMware vCenter > vCenter Discovery on Windows host", 5.61),
-    ]
+    hits = [_hit("VMware credentials", 7.06),
+            _hit("Discovery for VMware vCenter > vCenter Discovery on Windows host", 5.61)]
     assert identifiers.prefer_exact("vCenter discovery credentials", hits) == hits
     hits = [_hit("Procedure", 7.3), _hit("iOS push notifications", 5.6)]
     assert identifiers.prefer_exact("iOS mobile app push notifications", hits) == hits
     hits = [_hit("RESTAPIRequest - getHeaders", 7.0), _hit("RESTAPIRequest - getHeader", 6.5)]
-    assert [h.score for h in identifiers.prefer_exact("RESTAPIRequest getHeader", hits)] == [
-        6.5,
-        7.0,
-    ]
+    assert [h.score for h in identifiers.prefer_exact("RESTAPIRequest getHeader", hits)] == [6.5, 7.0]
 
 
 def test_table_names_alone_never_reorder() -> None:
-    hits = [
-        _hit("Computer [cmdb_ci_computer] class > Attributes", 7.53),
-        _hit("Service Graph Connector > Computer [cmdb_ci_computer]", 6.0),
-    ]
+    hits = [_hit("Computer [cmdb_ci_computer] class > Attributes", 7.53),
+            _hit("Service Graph Connector > Computer [cmdb_ci_computer]", 6.0)]
     assert identifiers.prefer_exact("cmdb_ci_computer attributes", hits) == hits
 
 
 def test_mentions_needs_the_name_itself_not_its_words(ready) -> None:  # noqa: F811
     db = setup.active_index("australia")
     conn = sqlite3.connect(db)
-    conn.execute(
-        "UPDATE chunks SET content = content || ' Pick one, e.g. from the g form list.' "
-        "WHERE file_path = 'markdown/itsm/problem.md'"
-    )
+    conn.execute("UPDATE chunks SET content = content || ' Pick one, e.g. from the g form list.' "
+                 "WHERE file_path = 'markdown/itsm/problem.md'")
     conn.execute("INSERT INTO chunks_fts(chunks_fts) VALUES('rebuild')")
     conn.commit()
     conn.close()
@@ -484,10 +419,8 @@ def test_names_note_lists_at_most_three_and_agrees_in_number(ready) -> None:  # 
 
 
 def test_link_text_with_escaped_brackets_keeps_only_its_text() -> None:
-    text = (
-        f'[Script Debugger \\[Omitted image "icon.png"\\] Alt text]({RAW}/brazil/markdown/'
-        f"x/script-debugger.md) and [T\\_x]({RAW}/brazil/markdown/y/t\\_Add.md)"
-    )
+    text = (f"[Script Debugger \\[Omitted image \"icon.png\"\\] Alt text]({RAW}/brazil/markdown/"
+            f"x/script-debugger.md) and [T\\_x]({RAW}/brazil/markdown/y/t\\_Add.md)")
     known = {"markdown/y/t_Add.md": f"{SITE}brazil/y/t_Add.html"}
     out = sections.rewrite_doc_links(text, lambda fp: known.get(fp, ""))
     assert "(script-debugger)" not in out and "Script Debugger" in out
@@ -517,9 +450,7 @@ def test_search_pool_leaves_room_for_duplicates(ready, monkeypatch) -> None:  # 
     seen = []
     real = server.run_search
     monkeypatch.setattr(models, "RERANK_POOL", 20)  # the fast profile
-    monkeypatch.setattr(
-        server, "run_search", lambda *a, **k: seen.append(k["top_k"]) or real(*a, **k)
-    )
+    monkeypatch.setattr(server, "run_search", lambda *a, **k: seen.append(k["top_k"]) or real(*a, **k))
     _call("snow_docs_search", {"query": "incident", "limit": 20})
     _call("snow_docs_search", {"query": "incident", "limit": 5})
     assert seen == [25, 20]

@@ -102,3 +102,34 @@ def test_link_in_one_release_and_plain_text_in_the_other_is_no_change():
     a = BASE.replace("Open the form.", f"See [{words}](https://x/a.md).")
     b = BASE.replace("Open the form.", f"See {words}.")
     assert compare_pages(a, b) == PageDiff([], 0)
+
+
+def test_repetitive_lines_with_scattered_changes_are_fast():
+    def obj(i: int, changed: bool) -> str:
+        kind = "integer" if changed else "string"
+        return f'{{\n  "name": "field",\n  "type": "{kind}",\n  "required": true\n}},'
+
+    a = "# P\n\n## Schema\n\n" + "\n".join(obj(i, False) for i in range(1500))
+    b = "# P\n\n## Schema\n\n" + "\n".join(obj(i, i % 5 == 0) for i in range(1500))
+    t = time.monotonic()
+    (s,) = compare_pages(a, b).sections
+    assert time.monotonic() - t < 1.0
+    assert s.changed_words == 300
+
+
+def test_big_table_with_scattered_changes_is_fast():
+    a = "# P\n\n## T\n\n" + " ".join(f"| cell{i % 40} " for i in range(2400))
+    b = "# P\n\n## T\n\n" + " ".join(
+        f"| {'new' if i % 7 == 0 else 'cell'}{i % 40} " for i in range(2400)
+    )
+    t = time.monotonic()
+    (s,) = compare_pages(a, b).sections
+    assert time.monotonic() - t < 1.0 and s.changed_words >= 300
+
+
+def test_one_changed_word_in_a_huge_single_line_counts_as_one():
+    words = [f"w{i % 50}" for i in range(8000)]
+    a = "# P\n\n## S\n\n" + " ".join(words)
+    words[4000] = "different"
+    d = compare_pages(a, "# P\n\n## S\n\n" + " ".join(words))
+    assert d.sections == [] and d.minor == 1
