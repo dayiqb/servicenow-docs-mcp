@@ -358,3 +358,23 @@ def test_rest_tables_without_a_telling_class_count_by_position_and_urls_without_
     assert [p.name for p in e.path_params] == ["sys_id"]
     assert [(p.name, p.type) for p in e.query_params] == [("sysparm_x", "Boolean")]
     assert e.body_params == [] and e.default_url == "/api/sn_chg/change/{sys_id}"
+
+
+def test_default_url_is_derived_when_the_docs_only_give_other_forms():
+    from snow_docs_mcp.api_table import parse_rest_page
+
+    def url(heading_path: str, url_block: str) -> str:
+        page = f"# X API\n\n## X - GET {heading_path}\n\nGets.\n\n### URL format\n\n{url_block}\n"
+        return parse_rest_page("p", page)[0].default_url
+
+    # only a versioned URL: the version part is taken out
+    assert (
+        url("/now/clotho/put", "Versioned URL: `/api/now/{api_version}/clotho/put`")
+        == "/api/now/clotho/put"
+    )
+    # nothing usable in the block, but the heading's path has its namespace
+    assert url("/now/batch", "See the note.") == "/api/now/batch"
+    assert url("/sn\\_uxa/data\\_export", "") == "/api/sn_uxa/data_export"
+    assert url("/api/sn\\_csm/\\{api\\_version\\}/price", "") == "/api/sn_csm/price"
+    # a path without a namespace cannot be completed
+    assert url("/agents/list", "See the note.") == ""

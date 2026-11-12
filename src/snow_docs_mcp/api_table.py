@@ -217,16 +217,14 @@ def parse_rest_page(file_path: str, text: str) -> list[Endpoint]:
                     default=len(sec.body),
                 )
                 current.description = _text(sec.body[:cut])
+                current.default_url = _url_from_path(current.path)  # until "URL format" says
                 endpoints.append(current)
         elif len(sec.heading_path) < 2:
             current = None
         elif current is not None:
             part = sections.unescape_markdown(sec.heading_path[2]).strip().lower()
             if part == "url format":
-                url = _DEFAULT_URL.search(sec.body)
-                plain = [u for u in _CODE_URL.findall(sec.body) if "{api_version}" not in u]
-                found = url.group(1) if url else plain[0] if plain else ""
-                current.default_url = "/" + found.lstrip("/") if found else ""
+                current.default_url = _default_url(sec.body) or current.default_url
             elif part == "supported request parameters":
                 tables = [
                     (cls, rows)
@@ -242,6 +240,31 @@ def parse_rest_page(file_path: str, text: str) -> list[Endpoint]:
                     if not getattr(current, target):
                         setattr(current, target, _rest_params(rows))
     return endpoints
+
+
+def _without_version(url: str) -> str:
+    return "/" + "/".join(p for p in url.strip("/").split("/") if p != "{api_version}")
+
+
+def _default_url(block: str) -> str:
+    """The default URL a "URL format" part gives: labelled, or the only one without a
+    version, or the versioned one with the version taken out."""
+    labelled = _DEFAULT_URL.search(block)
+    if labelled:
+        return _without_version(labelled.group(1))
+    urls = _CODE_URL.findall(block)
+    plain = [u for u in urls if "{api_version}" not in u]
+    return _without_version((plain or urls)[0]) if urls else ""
+
+
+def _url_from_path(path: str) -> str:
+    """'/api' + the heading's path when that path starts with its namespace (now, sn_...)."""
+    parts = [p for p in path.strip("/").split("/") if p]
+    if parts and parts[0].lower() == "api":
+        parts = parts[1:]
+    if parts and (parts[0] == "now" or parts[0].startswith("sn_")):
+        return _without_version("/api/" + "/".join(parts))
+    return ""
 
 
 def _segments(path: str) -> list[str]:
