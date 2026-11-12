@@ -31,11 +31,12 @@ _WS = re.compile(r"\s+")
 @dataclass(frozen=True)
 class SectionChange:
     heading_path: str  # breadcrumb joined with " > ", as ids use it
-    occurrence: int  # 1-based, among sections with the same breadcrumb
+    occurrence: int  # 1-based, among sections with the same breadcrumb (in `before` if removed)
     change: str  # "added" | "removed" | "changed"
     changed_words: int
     before: str  # excerpt; "" when the section is new
     after: str  # excerpt; "" when the section is gone
+    old_occurrence: int = 0  # its occurrence in `before`; 0 when the section is new
 
 
 @dataclass(frozen=True)
@@ -63,15 +64,31 @@ def _display(text: str) -> str:
     return _WS.sub(" ", sections.unlink(text)).strip()
 
 
-def _keyed(page: str) -> dict[tuple[str, int], str]:
-    """(breadcrumb, occurrence) -> section body, in page order."""
-    out: dict[tuple[str, int], str] = {}
-    seen: dict[str, int] = {}
+def _grouped(page: str) -> dict[str, list[str]]:
+    """breadcrumb -> the bodies of its sections, in page order."""
+    out: dict[str, list[str]] = {}
     for s in sections.split_into_sections(sections.strip_front_matter(page)):
-        crumb = " > ".join(s.heading_path)
-        seen[crumb] = seen.get(crumb, 0) + 1
-        out[(crumb, seen[crumb])] = s.body
+        out.setdefault(" > ".join(s.heading_path), []).append(s.body)
     return out
+
+
+def _pair(old: list[str], new: list[str]) -> list[tuple[int | None, int | None]]:
+    """Which section of `old` each section of `new` continues, for sections that share a
+    heading (indexes; None = no counterpart). Unchanged ones are matched first, so a
+    section inserted before them is seen as added, not as a change to its neighbour."""
+    if len(old) == 1 and len(new) == 1:
+        return [(0, 0)]
+    ka, kb = [comparable(x) for x in old], [comparable(x) for x in new]
+    pairs: list[tuple[int | None, int | None]] = []
+    for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(None, ka, kb, autojunk=False).get_opcodes():
+        if tag == "equal":
+            pairs += zip(range(i1, i2), range(j1, j2), strict=True)
+            continue
+        both = min(i2 - i1, j2 - j1)
+        pairs += [(i1 + k, j1 + k) for k in range(both)]
+        pairs += [(i, None) for i in range(i1 + both, i2)]
+        pairs += [(None, j) for j in range(j1 + both, j2)]
+    return pairs
 
 
 def _first_difference(wa: list[str], wb: list[str]) -> int:
@@ -115,44 +132,79 @@ def _excerpt(words: list[str], start: int, max_chars: int) -> str:
     return ("…" if start else "") + text + ("…" if cut else "")
 
 
+def _largest_change(wa: list[str], wb: list[str]) -> tuple[int, int]:
+    """Where the biggest difference between two word lists starts, in each list (the first
+    difference when they are too long to compare exactly)."""
+    if len(wa) * len(wb) > EXACT_CELLS:
+        at = _first_difference(wa, wb)
+        return at, at
+    ops = difflib.SequenceMatcher(None, wa, wb, autojunk=False).get_opcodes()
+    changes = [op for op in ops if op[0] != "equal"]
+    if not changes:
+        return 0, 0
+    _, i1, _, j1, _ = max(changes, key=lambda op: max(op[2] - op[1], op[4] - op[3]))
+    return i1, j1
+
+
 def compare_pages(
     before: str, after: str, *, minor_words: int = MINOR_WORDS, excerpt_chars: int = 300
 ) -> PageDiff:
     """Sections added, removed or reworded between two versions of a page: those of `after`
     in page order, then the removed ones."""
-    old, new = _keyed(before), _keyed(after)
-    listed: list[SectionChange] = []
+    old, new = _grouped(before), _grouped(after)
+    listed: list[tuple[tuple[int, int], SectionChange]] = []  # (sort key, change)
+    removed: list[SectionChange] = []
     minor = 0
-    for key, body in new.items():
-        crumb, occ = key
-        if key not in old:
-            words = comparable(body).split()
-            if words:
-                shown = _excerpt(_display(body).split(), 0, excerpt_chars)
-                listed.append(SectionChange(crumb, occ, "added", len(words), "", shown))
-            continue
-        n = min(_section_change(old[key], body, lt) for lt in (False, True))
-        if n == 0:
-            continue
-        if n < minor_words:
-            minor += 1
-            continue
-        wa, wb = _display(old[key]).split(), _display(body).split()
-        at = _first_difference(wa, wb)
-        listed.append(
-            SectionChange(
-                crumb,
-                occ,
-                "changed",
-                n,
-                _excerpt(wa, at, excerpt_chars),
-                _excerpt(wb, at, excerpt_chars),
+    order = {crumb: n for n, crumb in enumerate(new)}
+
+    def whole(body: str) -> str:
+        return _excerpt(_display(body).split(), 0, excerpt_chars)
+
+    for crumb in dict.fromkeys([*new, *old]):
+        bodies_old, bodies_new = old.get(crumb, []), new.get(crumb, [])
+        for i, j in _pair(bodies_old, bodies_new):
+            if j is None:
+                words = comparable(bodies_old[i]).split()
+                if words:
+                    removed.append(
+                        SectionChange(
+                            crumb, i + 1, "removed", len(words), whole(bodies_old[i]), "", i + 1
+                        )
+                    )
+                continue
+            key = (order[crumb], j)
+            if i is None:
+                words = comparable(bodies_new[j]).split()
+                if words:
+                    listed.append(
+                        (
+                            key,
+                            SectionChange(
+                                crumb, j + 1, "added", len(words), "", whole(bodies_new[j])
+                            ),
+                        )
+                    )
+                continue
+            n = min(_section_change(bodies_old[i], bodies_new[j], lt) for lt in (False, True))
+            if n == 0:
+                continue
+            if n < minor_words:
+                minor += 1
+                continue
+            wa, wb = _display(bodies_old[i]).split(), _display(bodies_new[j]).split()
+            at_a, at_b = _largest_change(wa, wb)
+            listed.append(
+                (
+                    key,
+                    SectionChange(
+                        crumb,
+                        j + 1,
+                        "changed",
+                        n,
+                        _excerpt(wa, at_a, excerpt_chars),
+                        _excerpt(wb, at_b, excerpt_chars),
+                        i + 1,
+                    ),
+                )
             )
-        )
-    for key, body in old.items():
-        if key not in new:
-            words = comparable(body).split()
-            if words:
-                shown = _excerpt(_display(body).split(), 0, excerpt_chars)
-                listed.append(SectionChange(key[0], key[1], "removed", len(words), shown, ""))
-    return PageDiff(listed, minor)
+    return PageDiff([c for _, c in sorted(listed, key=lambda x: x[0])] + removed, minor)

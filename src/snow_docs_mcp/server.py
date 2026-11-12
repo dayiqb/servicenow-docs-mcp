@@ -597,21 +597,36 @@ COMPARE_MAX_CHARS = 12000  # the whole result, as JSON
 _SHORT_EXCERPT = 150
 
 
+_DOCS_URL = re.compile(r"^https?://[^/]+/docs/(?:r/)?", re.IGNORECASE)
+
+
 def _page_path(value: str) -> str:
-    """A `page` argument as a file path: a hit id, or a path with or without the release,
-    'markdown/' and '.md'."""
-    v = value.strip()
-    if "::" in v:
-        parsed = parse_id(v)
-        if parsed is not None:
-            return parsed[1]
+    """A `page` argument as a file path: a hit id, a docs page address, or a path with or
+    without the release, 'markdown/' and '.md' ('' when nothing is left)."""
+    v = value.strip().replace("\\", "/")
+    url = _DOCS_URL.match(v)
+    if url:
+        v = v[url.end() :].split("#", 1)[0].split("?", 1)[0]
+        v = re.sub(r"\.html?$", "", v, flags=re.IGNORECASE)
+        for rel in config.RELEASES:
+            v = v.removeprefix(f"{rel}/")
+    else:
         v = v.split("::", 1)[0]
-    for rel in config.RELEASES:
-        v = v.removeprefix(f"{rel}:")
-    v = v.lstrip("/")
-    if not v.startswith("markdown/"):
-        v = "markdown/" + v
-    return v if v.endswith(".md") else v + ".md"
+        for rel in config.RELEASES:
+            if v.lower().startswith(f"{rel}:"):
+                v = v[len(rel) + 1 :]
+    v = re.sub(r"\.md$", "", v.strip("/"), flags=re.IGNORECASE)
+    if not v:
+        return ""
+    return (v if v.startswith("markdown/") else "markdown/" + v) + ".md"
+
+
+def _same_name_page(path: str, dbs: dict) -> str | None:
+    """The one page with this file name, when the path itself is unknown (a docs address
+    names the product folder, not the subfolder the page is in)."""
+    name = path.rsplit("/", 1)[-1]
+    found = {p for db in dbs.values() for p in store.page_paths(db)[1].get(name, [])}
+    return found.pop() if len(found) == 1 else None
 
 
 def _close_pages(path: str, dbs: dict) -> list[str]:
@@ -639,7 +654,7 @@ def _changed_page(path: str, dbs: dict) -> tuple[str, ChangedPage | None]:
             changed_words=c.changed_words,
             australia_id=""
             if c.change == "added"
-            else make_id(FROM_RELEASE, path, c.heading_path, c.occurrence),
+            else make_id(FROM_RELEASE, path, c.heading_path, c.old_occurrence),
             brazil_id=""
             if c.change == "removed"
             else make_id(TO_RELEASE, path, c.heading_path, c.occurrence),
@@ -705,7 +720,7 @@ def _fit(result: CompareResult) -> tuple[bool, int]:
     while _size(result) > _FIT_CHARS and result.changed_pages:
         page = max(result.changed_pages, key=lambda p: len(p.sections))
         if len(page.sections) > 1:
-            page.sections.pop()
+            page.sections.remove(min(reversed(page.sections), key=lambda s: s.changed_words))
             page.sections_left_out += 1
             sections_dropped = True
         else:
@@ -728,14 +743,17 @@ def _compare(q: str, page: str, product: str | None, limit: int, dbs: dict) -> C
     )
     if page:
         path = _page_path(page)
-        where, changed = _changed_page(path, dbs)
+        where, changed = _changed_page(path, dbs) if path else ("none", None)
+        if where == "none" and path and (same := _same_name_page(path, dbs)):
+            path = same
+            where, changed = _changed_page(path, dbs)
         if where == "none":
-            close = _close_pages(path, dbs)
+            close = _close_pages(path, dbs) if path else []
             hint = f" Did you mean: {', '.join(close)}?" if close else ""
             return CompareResult(
                 ok=False,
-                message=f"No page '{path}' in the australia or brazil docs.{hint} Pass a hit id "
-                "or a page path from snow_docs_search.",
+                message=f"No page '{path or page}' in the australia or brazil docs.{hint} Pass "
+                "a hit id or a page path from snow_docs_search.",
             )
         compared = 1
         pages = [changed] if changed else []
@@ -747,12 +765,22 @@ def _compare(q: str, page: str, product: str | None, limit: int, dbs: dict) -> C
             notes.append(f"limit adjusted to {lim} (allowed: 1-20)")
         prefix = None
         if product and product.strip():
-            db = dbs[FROM_RELEASE]
-            known = store.products(db)
-            folder, how = products.resolve(product, known)
+            for rel in (FROM_RELEASE, TO_RELEASE):  # a docs area may exist in one release only
+                folder, how = products.resolve(product, store.products(dbs[rel]))
+                if how in ("exact", "alias"):
+                    break
             if how not in ("exact", "alias"):
+                db = dbs[FROM_RELEASE]
+                known = store.products(db)
+                folder, how = products.resolve(product, known)
+                problem = _product_problem(product, folder, FROM_RELEASE, db, known)
                 return CompareResult(
-                    ok=False, message=_product_problem(product, folder, FROM_RELEASE, db, known)
+                    ok=False,
+                    message=re.sub(
+                        r"Search with release '(\w+)' for these\.",
+                        r"So these can't be compared; search release '\1' instead.",
+                        problem,
+                    ),
                 )
             if how == "alias":
                 notes.append(f"compared the {folder} docs for '{product.strip()}'")
@@ -795,17 +823,18 @@ def _compare(q: str, page: str, product: str | None, limit: int, dbs: dict) -> C
     if result.changed_pages:
         parts.append(_count(len(result.changed_pages), "changed page"))
     msg = " and ".join(parts) + f" ({FROM_RELEASE} -> {TO_RELEASE})." if parts else ""
+    scope = "on this page" if page else f"among the {_count(compared, 'page')} that match"
     if not result.changed_pages and not (page and where != "both"):
         msg += (
-            " No documentation changes found on this page."
-            if page
-            else f" No documentation changes found among the {_count(compared, 'page')} that match."
+            f" {_count(minor, 'small rewording')} {scope} (not listed); nothing else changed."
+            if minor
+            else f" No documentation changes found {scope}."
         )
     for rel in (FROM_RELEASE, TO_RELEASE):
         only = getattr(result, f"only_in_{rel}")
         if only:
             msg += f" {_count(len(only), 'page')} only in the {rel} docs."
-    if minor:
+    if minor and result.changed_pages:
         msg += f" {_count(minor, 'small rewording')} not listed."
     if pages_left_out:
         msg += (
@@ -818,10 +847,8 @@ def _compare(q: str, page: str, product: str | None, limit: int, dbs: dict) -> C
             "more of them, or read the sections with snow_docs_read."
         )
     if result.release_notes or result.changed_pages:
-        msg += (
-            " Lead with the release notes, cite ids as [id], and call snow_docs_read(id) for "
-            "a full section."
-        )
+        lead = "Lead with the release notes, cite" if result.release_notes else "Cite"
+        msg += f" {lead} ids as [id], and call snow_docs_read(id) for a full section."
     if notes:
         msg += " Note: " + "; ".join(notes) + "."
     result.message = msg.strip()
@@ -847,8 +874,9 @@ def snow_docs_compare(
     Args:
         query: A topic in English, using ServiceNow's terms, e.g. "document intelligence" or
             "flow designer error handling". Translate a question asked in another language.
-        page: Compare one page instead: a hit id from snow_docs_search (either release) or a
-            page path such as "markdown/it-service-management/incident-management.md".
+        page: Compare one page instead: a hit id from snow_docs_search (either release), a
+            page path such as "markdown/it-service-management/incident-management.md", or
+            the page's address on www.servicenow.com.
             Pass either `query` or `page`, not both.
         product: Optional docs area for `query`, as in snow_docs_search (e.g. "itsm").
         limit: Changed pages to return for `query`, 1-20 (default 5).
@@ -861,27 +889,33 @@ def snow_docs_compare(
                 message="Pass either `query` (a topic) or `page` (a hit id or page path), "
                 "not both and not neither.",
             )
-        for attempt in range(2):
+
+        def not_ready(releases) -> CompareResult:
+            for r in releases:
+                setup.request(r)
+            why = list(dict.fromkeys(_not_ready(r) for r in releases))  # one sentence, once
+            return CompareResult(
+                ok=False,
+                message="Comparing needs both the australia and brazil docs. " + " ".join(why),
+            )
+
+        both = (FROM_RELEASE, TO_RELEASE)
+        for _attempt in range(2):
             ready = setup.search_ready if q else (lambda r: setup.active_index(r) is not None)
-            dbs = {r: setup.active_index(r) for r in (FROM_RELEASE, TO_RELEASE)}
+            dbs = {r: setup.active_index(r) for r in both}
             missing = [r for r in dbs if dbs[r] is None or not ready(r)]
             if missing:
-                for r in missing:
-                    setup.request(r)
-                return CompareResult(
-                    ok=False,
-                    message="Comparing needs both the australia and brazil docs. "
-                    + " ".join(_not_ready(r) for r in missing),
-                )
+                return not_ready(missing)
             _release_unused_indexes()
             try:
                 return _compare(q, pg, product, limit, dbs)
-            except FileNotFoundError:  # a newer snapshot replaced an index mid-call
-                if attempt == 1:
-                    raise
-        raise AssertionError("unreachable")
+            except FileNotFoundError:  # a newer snapshot replaced an index mid-call: once more
+                continue
+        return not_ready(both)
     except Exception as e:  # tools report errors, never raise
         logger.exception("snow_docs_compare failed")
+        if not setup.models_on_disk():
+            setup.request(config.default_release())
         return CompareResult(ok=False, message=f"Compare failed: {e}")
 
 

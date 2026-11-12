@@ -133,3 +133,37 @@ def test_one_changed_word_in_a_huge_single_line_counts_as_one():
     words[4000] = "different"
     d = compare_pages(a, "# P\n\n## S\n\n" + " ".join(words))
     assert d.sections == [] and d.minor == 1
+
+
+def test_inserted_repeated_heading_is_reported_as_added():
+    old = "# P\n\n## Procedure\n\nFirst steps here.\n\n## Procedure\n\nSecond steps here.\n"
+    new = old.replace(
+        "## Procedure\n\nFirst steps here.",
+        "## Procedure\n\nA brand new procedure with more than eight words in it.\n\n"
+        "## Procedure\n\nFirst steps here.",
+    )
+    d = compare_pages(old, new)
+    assert [(s.change, s.occurrence) for s in d.sections] == [("added", 1)] and d.minor == 0
+
+
+def test_changed_repeated_heading_keeps_each_releases_occurrence():
+    old = "# P\n\n## Procedure\n\nFirst steps here.\n\n## Procedure\n\nSecond steps here.\n"
+    new = (
+        "# P\n\n## Procedure\n\nAn inserted procedure with more than eight words in it now.\n\n"
+        "## Procedure\n\nFirst steps here.\n\n"
+        "## Procedure\n\nSecond steps were rewritten completely with many new and different words.\n"
+    )
+    d = compare_pages(old, new)
+    changed = next(s for s in d.sections if s.change == "changed")
+    assert (changed.old_occurrence, changed.occurrence) == (2, 3)
+
+
+def test_excerpt_shows_the_largest_change_not_the_first_small_one():
+    filler = " ".join(f"same{i}" for i in range(80))
+    a = f"# P\n\n## S\n\nSee  for details. {filler} The old ending."
+    b = (
+        f"# P\n\n## S\n\nSee the guide for details. {filler} A completely rewritten closing "
+        "paragraph with many more words than before."
+    )
+    (s,) = compare_pages(a, b, excerpt_chars=120).sections
+    assert "old ending" in s.before and "rewritten closing" in s.after

@@ -41,7 +41,9 @@ BR_DOCS = {
     "markdown/hr/case.md": DOCS["markdown/hr/case.md"].replace(
         "title: HR case", "title: HR case\nrelease: brazil"
     ),
-    "markdown/itsm/problem.md": DOCS["markdown/itsm/problem.md"],
+    "markdown/itsm/problem.md": DOCS["markdown/itsm/problem.md"].replace(
+        "the root cause", "the underlying root cause"
+    ),
     "markdown/itsm/big.md": _big("br"),
     NOTES_PAGE: "# Incident release notes\n\n## New\n\nPriority lookup rules replace the fixed "
     "matrix.\n",
@@ -222,3 +224,98 @@ def test_many_one_section_pages_still_fit_the_size_limit():
     _, pages_dropped = server._fit(result)
     assert pages_dropped > 0 and len(result.changed_pages) == 20 - pages_dropped
     assert len(json.dumps(result.model_dump())) + 800 <= 12000
+
+
+@pytest.fixture
+def nothing(monkeypatch, fake_models):
+    monkeypatch.setattr(setup, "start", lambda: None)
+    monkeypatch.setattr(setup, "request", lambda release: None)
+
+
+def test_small_rewordings_do_not_contradict_no_changes(both):
+    r = call("snow_docs_compare", page="markdown/itsm/problem.md")
+    assert r["ok"] and r["changed_pages"] == []
+    assert "No documentation changes found" not in r["message"]
+    assert "1 small rewording" in r["message"] and "nothing else changed" in r["message"]
+
+
+def test_release_notes_lead_is_only_said_when_there_are_release_notes(both):
+    r = call("snow_docs_compare", page="markdown/itsm/incident.md")
+    assert "release notes" not in r["message"] and "cite ids as [id]" in r["message"].lower()
+    q = call("snow_docs_compare", query="incident priority")
+    assert "Lead with the release notes" in q["message"]
+
+
+def test_page_accepts_urls_backslashes_and_other_case(both):
+    for page in (
+        "Australia:markdown/itsm/incident.md::",
+        "markdown\\itsm\\incident.MD",
+        "https://www.servicenow.com/docs/r/australia/itsm/incident.html",
+        "https://www.servicenow.com/docs/r/some-other-folder/incident.html",
+    ):
+        r = call("snow_docs_compare", page=page)
+        assert r["ok"] and r["changed_pages"][0]["page"] == "markdown/itsm/incident.md", page
+    assert not call("snow_docs_compare", page="::")["ok"]
+
+
+def test_both_indexes_missing_message_does_not_repeat_itself(nothing):
+    r = call("snow_docs_compare", query="incident")
+    assert not r["ok"] and r["message"].startswith("Comparing needs both")
+    sentences = [x.strip() for x in r["message"].split(". ") if x.strip()]
+    assert len(sentences) == len(set(sentences)), r["message"]
+
+
+def test_index_replaced_twice_mid_call_says_not_ready(both, monkeypatch):
+    from snow_docs_mcp import server
+
+    def gone(*a, **k):
+        raise FileNotFoundError("index-brazil.db")
+
+    monkeypatch.setattr(server, "_compare", gone)
+    r = call("snow_docs_compare", page="markdown/itsm/incident.md")
+    assert not r["ok"] and r["message"].startswith("Comparing needs both")
+    assert "Compare failed" not in r["message"]
+
+
+def test_product_found_only_in_brazil_is_accepted(both):
+    r = call("snow_docs_compare", query="priority", product="delta-australia-brazil")
+    assert r["ok"], r
+
+
+def test_product_gap_message_does_not_tell_you_to_search(both, monkeypatch):
+    from snow_docs_mcp import server
+
+    monkeypatch.setattr(
+        server,
+        "_product_problem",
+        lambda *a: (
+            "The australia docs snapshot has no X pages (5 in brazil). "
+            "Search with release 'brazil' for these."
+        ),
+    )
+    r = call("snow_docs_compare", query="priority", product="nonsense")
+    assert not r["ok"] and "Search with release" not in r["message"]
+    assert "can't be compared" in r["message"]
+
+
+def test_sections_dropped_for_size_are_the_least_changed():
+    from snow_docs_mcp import server
+
+    secs = [
+        server.SectionDiff(
+            heading_path=f"Page > Section {i}",
+            change="changed",
+            changed_words=i + 8,
+            australia_id=f"australia:markdown/a/p.md::Page > Section {i}",
+            brazil_id=f"brazil:markdown/a/p.md::Page > Section {i}",
+            australia_excerpt="old " * 70,
+            brazil_excerpt="new " * 70,
+        )
+        for i in range(80)
+    ]
+    page = server.ChangedPage(page="markdown/a/p.md", page_title="Page", product="a", sections=secs)
+    result = server.CompareResult(ok=True, message="", changed_pages=[page])
+    server._fit(result)
+    kept = [s.changed_words for s in result.changed_pages[0].sections]
+    assert 0 < len(kept) < 80 and min(kept) == 88 - len(kept)
+    assert kept == sorted(kept), "page order is kept"
