@@ -84,7 +84,9 @@ Australia to Brazil. Use only the ServiceNow docs tools; do not fill gaps from m
    per page; each page is "Combined <application> release notes for upgrades from Australia to
    Brazil". Release notes are per application, so a product often has several pages (the
    application, its workspace, its AI skills): use every page that belongs to what the user
-   asked about, and name the pages you used. If none fits, try the product's other names once
+   asked about, and name the pages you used. `more_release_notes` lists further pages whose
+   application name shares a word with the query (the docs may call the product something
+   else): use those that belong, too. If none fits, try the product's other names once
    (abbreviation, old name). If there is still none, say that the release notes have no page for
    this product, and stop.
 2. For each page, call snow_docs_read with the passage's id cut off after "::" (this returns
@@ -200,6 +202,11 @@ class ChangedPage(BaseModel):
     sections_left_out: int = Field(0, description="Dropped to keep the result short.")
 
 
+class NotesPage(BaseModel):
+    id: str = Field(description="Pass to snow_docs_read for the whole release-notes page.")
+    application: str
+
+
 class CompareResult(BaseModel):
     ok: bool
     message: str
@@ -207,6 +214,10 @@ class CompareResult(BaseModel):
     brazil_snapshot: str = ""
     release_notes: list[Hit] = Field(
         [], description="ServiceNow's own release notes for upgrades from Australia to Brazil."
+    )
+    more_release_notes: list[NotesPage] = Field(
+        [],
+        description="Other release-notes pages whose application name shares a word with the query.",
     )
     changed_pages: list[ChangedPage] = []
     only_in_australia: list[str] = []
@@ -736,6 +747,62 @@ def _size(result: CompareResult) -> int:
     return len(json.dumps(result.model_dump()))
 
 
+MORE_RELEASE_NOTES = 10
+_NOTES_TITLE = re.compile(r"^Combined (.+) release notes for upgrades from Australia to Brazil$")
+# Words too common in application names to identify one.
+_GENERIC_WORDS = frozenset(
+    [
+        "a",
+        "an",
+        "and",
+        "for",
+        "in",
+        "of",
+        "on",
+        "the",
+        "to",
+        "with",
+        "now",
+        "servicenow",
+        "service",
+        "services",
+        "management",
+        "release",
+        "notes",
+        "upgrade",
+        "application",
+        "applications",
+    ]
+)
+
+
+def _notes_by_name(db, q: str, already: set[str]) -> list[NotesPage]:
+    """Release-notes pages whose application name shares a word with the query: search
+    misses a page when the docs call the product something else ("Flow Designer" is under
+    "Flows, subflows, and actions"), and one product often has several pages. A query word
+    matches a name word it begins (hr -> HRSD, flow -> Flows). Best matches first."""
+    words = {w for w in _WORD_RE.findall(q.lower()) if len(w) > 1 and w not in _GENERIC_WORDS}
+    if not words:
+        return []
+    found: list[tuple[int, str, str]] = []
+    for path in store.page_paths(db)[0]:
+        if not path.startswith(RELEASE_NOTES_PREFIX) or f"{TO_RELEASE}:{path}" in already:
+            continue
+        m = _NOTES_TITLE.match(
+            sections.front_matter_value(store.get_document(db, path) or "", "title")
+        )
+        if not m:
+            continue
+        name_words = _WORD_RE.findall(m.group(1).lower())
+        hits = sum(any(n.startswith(w) for n in name_words) for w in words)
+        if hits:
+            found.append((-hits, m.group(1), path))
+    return [
+        NotesPage(id=make_id(TO_RELEASE, path, ""), application=name)
+        for _, name, path in sorted(found)[:MORE_RELEASE_NOTES]
+    ]
+
+
 def _fit(result: CompareResult) -> tuple[bool, int]:
     """Shrink `result` to the size limit: shorter excerpts first, then fewer sections per
     page, then fewer pages (the least-changed last). Returns (sections were dropped, pages
@@ -831,6 +898,8 @@ def _compare(q: str, page: str, product: str | None, limit: int, dbs: dict) -> C
                 seen_pages.add(note_page)
                 result.release_notes.append(h)
         del result.release_notes[RELEASE_NOTES_HITS:]
+        kept = {h.id.split(ID_SEPARATOR, 1)[0] for h in result.release_notes}
+        result.more_release_notes = _notes_by_name(dbs[TO_RELEASE], q, kept)
         candidates = _candidate_pages(dbs, q, prefix)
         compared = len(candidates)
         pages = []
@@ -848,15 +917,21 @@ def _compare(q: str, page: str, product: str | None, limit: int, dbs: dict) -> C
     left_out, pages_left_out = _fit(result)
 
     parts = []
-    if not page:
-        parts.append(
-            _count(len(result.release_notes), "release-notes page")
-            if result.release_notes
-            else "No release-notes pages matched"
-        )
+    by_name = len(result.more_release_notes)
+    if result.release_notes:
+        parts.append(_count(len(result.release_notes), "release-notes page"))
+        if by_name:
+            parts.append(
+                f"{_count(by_name, 'more release-notes page')} by name (more_release_notes)"
+            )
+    elif by_name:
+        parts.append(f"{_count(by_name, 'release-notes page')} found by name (more_release_notes)")
+    elif not page:
+        parts.append("No release-notes pages matched")
     if result.changed_pages:
         parts.append(_count(len(result.changed_pages), "changed page"))
-    msg = " and ".join(parts) + f" ({FROM_RELEASE} -> {TO_RELEASE})." if parts else ""
+    listed = ", ".join(parts[:-1]) + " and " + parts[-1] if len(parts) > 1 else "".join(parts)
+    msg = listed + f" ({FROM_RELEASE} -> {TO_RELEASE})." if parts else ""
     scope = "on this page" if page else f"among the {_count(compared, 'page')} that match"
     if not result.changed_pages and not (page and where != "both"):
         msg += (
@@ -880,8 +955,9 @@ def _compare(q: str, page: str, product: str | None, limit: int, dbs: dict) -> C
             " Some sections were left out to keep this short; compare a single page to see "
             "more of them, or read the sections with snow_docs_read."
         )
-    if result.release_notes or result.changed_pages:
-        lead = "Lead with the release notes, cite" if result.release_notes else "Cite"
+    if result.release_notes or result.more_release_notes or result.changed_pages:
+        has_notes = result.release_notes or result.more_release_notes
+        lead = "Lead with the release notes, cite" if has_notes else "Cite"
         msg += f" {lead} ids as [id], and call snow_docs_read(id) for a full section."
     if notes:
         msg += " Note: " + "; ".join(notes) + "."
@@ -900,7 +976,8 @@ def snow_docs_compare(
 
     Use this for questions about what is new or different in Brazil, typically before an
     upgrade from Australia. Returns ServiceNow's own release notes for that upgrade first
-    (`release_notes`), then the documentation pages whose text really changed, section by
+    (`release_notes`, one passage per page; `more_release_notes` lists further pages whose
+    application name matches the query), then the documentation pages whose text really changed, section by
     section with an excerpt from each release (`changed_pages`). Differences in metadata and
     links are ignored, and small rewordings are counted but not listed. Both releases' docs
     must be installed; the result says so when one is missing.

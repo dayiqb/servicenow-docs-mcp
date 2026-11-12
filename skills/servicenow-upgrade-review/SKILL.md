@@ -11,7 +11,9 @@ Australia to Brazil. Use only the ServiceNow docs tools; do not fill gaps from m
    per page; each page is "Combined <application> release notes for upgrades from Australia to
    Brazil". Release notes are per application, so a product often has several pages (the
    application, its workspace, its AI skills): use every page that belongs to what the user
-   asked about, and name the pages you used. If none fits, try the product's other names once
+   asked about, and name the pages you used. `more_release_notes` lists further pages whose
+   application name shares a word with the query (the docs may call the product something
+   else): use those that belong, too. If none fits, try the product's other names once
    (abbreviation, old name). If there is still none, say that the release notes have no page for
    this product, and stop.
 2. For each page, call snow_docs_read with the passage's id cut off after "::" (this returns

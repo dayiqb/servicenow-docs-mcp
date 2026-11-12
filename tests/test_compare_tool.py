@@ -48,6 +48,21 @@ BR_DOCS = {
     NOTES_PAGE: "# Incident release notes\n\n## New\n\nPriority lookup rules replace the fixed "
     "matrix.\n\n## Changes\n\nPriority lookup rules can be maintained per assignment group.\n",
 }
+WORKSPACE_NOTES = (
+    "markdown/delta-australia-brazil/brazil-australia-incidentworkspace-release-notes.md"
+)
+FLOWS_NOTES = (
+    "markdown/delta-australia-brazil/brazil-australia-flowssubflowsandactions-release-notes.md"
+)
+for _path, _app in (
+    (WORKSPACE_NOTES, "Incident Workspace"),
+    (FLOWS_NOTES, "Flows, subflows, and actions"),
+):
+    BR_DOCS[_path] = (
+        f"---\ntitle: Combined {_app} release notes for upgrades from Australia to Brazil\n---\n\n"
+        f"# Combined {_app} release notes\n\n## New features\n\nNothing here.\n"
+    )
+
 BR_CHUNKS = [
     CHUNKS[0],
     (CHUNKS[1][0], CHUNKS[1][1], CHUNKS[1][2], NEW_PRIORITY),
@@ -332,3 +347,23 @@ def test_release_notes_give_one_passage_per_page(both):
     pages = [h["id"].split("::")[0] for h in r["release_notes"]]
     assert pages == [f"brazil:{NOTES_PAGE}"], pages
     assert "1 release-notes page" in r["message"]
+
+
+def test_release_notes_pages_are_also_found_by_application_name(both):
+    r = call("snow_docs_compare", query="incident priority")
+    more = r["more_release_notes"]
+    assert [m["application"] for m in more] == ["Incident Workspace"]
+    assert more[0]["id"] == f"brazil:{WORKSPACE_NOTES}::"
+    assert "1 more release-notes page by name" in r["message"]
+    assert "Nothing here" in call("snow_docs_read", id=more[0]["id"])["content"]
+
+
+def test_a_name_that_search_misses_still_finds_its_release_notes_page(both):
+    r = call("snow_docs_compare", query="Flow Designer")
+    assert [m["application"] for m in r["more_release_notes"]] == ["Flows, subflows, and actions"]
+    assert r["message"].startswith("1 release-notes page found by name (more_release_notes)")
+
+
+def test_generic_words_do_not_match_every_release_notes_page(both):
+    r = call("snow_docs_compare", query="service management for the release")
+    assert r["more_release_notes"] == []
