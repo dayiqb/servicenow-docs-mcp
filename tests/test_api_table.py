@@ -186,3 +186,175 @@ def test_unknown_names_give_the_closest_ones():
     # an unknown class is not answered with other classes' methods, only pointed at them
     assert t.find("$sp.getValue") == ("not_found", ["GlideRecord.getValue"])
     assert t.find("  ") == ("not_found", [])
+
+
+def test_parameters_come_from_the_signature_when_the_docs_have_no_table():
+    page = (
+        "# GlideForm\n\n## GlideForm - clearChoices\\(String fieldName\\)\n\nRemoves all choices.\n\n"
+        "## GlideForm - open\\(type: TokenType, token: String\\)\n\nOpens it.\n"
+    )
+    a, b = parse_page("p", page)
+    assert [(p.name, p.type, p.description) for p in a.params] == [("fieldName", "String", "")]
+    assert [(p.name, p.type) for p in b.params] == [("type", "TokenType"), ("token", "String")]
+
+
+def test_variables_the_docs_name_resolve_to_their_classes():
+    page = PAGE.replace("Scoped GlideRecord", "GlideSPScriptable")
+    t = ApiTable(
+        parse_page("p", page) + parse_page("q", PAGE.replace("Scoped GlideRecord", "GlideListV3"))
+    )
+    assert t.find("$sp.getValue")[0] == "method"
+    assert sorted(t.find("g_list")[1]) == ["GlideListV3"]
+    assert t.find("current.getValue")[0] == "not_found"  # GlideRecord is not in this table
+
+
+REST = """# Table API
+
+The Table API allows CRUD operations on tables.
+
+## Table - POST /now/table/\\{tableName\\}
+
+Inserts one record in the specified table.
+
+### URL format
+
+Versioned URL: `/api/now/{api_version}/table/{tableName}`
+
+Default URL: `/api/now/table/{tableName}`
+
+### Supported request parameters
+
+<table class="rest_api_path_parameters"><thead><tr><th>
+
+Name
+
+</th><th>
+
+Description
+
+</th></tr></thead><tbody><tr><td>
+
+tableName
+
+</td><td>
+
+Name of the table in which to save the record.Data type: String
+
+</td></tr></tbody>
+</table><table class="rest_api_query_parameters"><thead><tr><th>
+
+Name
+
+</th><th>
+
+Description
+
+</th></tr></thead><tbody><tr><td>
+
+sysparm\\_fields
+
+</td><td>
+
+Comma-separated list of fields to return.Data type: String
+
+</td></tr></tbody>
+</table><table class="rest_api_request_body"><thead><tr><th>
+
+Name
+
+</th><th>
+
+Description
+
+</th></tr></thead><tbody><tr><td>
+
+name-value pairs
+
+</td><td>
+
+Field name and the associated value for each field.
+
+</td></tr></tbody>
+</table>
+
+### Status codes
+
+|Status code|Description|
+|-----------|-----------|
+|201|Created.|
+
+## Table - GET /now/table/\\{tableName\\}/\\{sys\\_id\\}
+
+Retrieves the record identified by the specified sys_id.
+
+### Supported request parameters
+
+|Name|Description|
+|----|-----------|
+|sys\\_id|Sys_id of the record. Data type: String|
+
+|Name|Description|
+|----|-----------|
+|None| |
+
+|Name|Description|
+|----|-----------|
+|None| |
+"""
+REST_PATH = "markdown/api-reference/rest-apis/c_TableAPI.md"
+
+
+def test_rest_endpoints_are_parsed_with_their_three_parameter_tables():
+    from snow_docs_mcp.api_table import parse_rest_page
+
+    post, get = parse_rest_page(REST_PATH, REST)
+    assert (post.api, post.verb, post.path) == ("Table", "POST", "/now/table/{tableName}")
+    assert post.default_url == "/api/now/table/{tableName}"
+    assert post.description == "Inserts one record in the specified table."
+    assert [(p.name, p.type) for p in post.path_params] == [("tableName", "String")]
+    assert [(p.name, p.type) for p in post.query_params] == [("sysparm_fields", "String")]
+    assert [p.name for p in post.body_params] == ["name-value pairs"]
+    assert get.path == "/now/table/{tableName}/{sys_id}"
+    assert [p.name for p in get.path_params] == ["sys_id"] and get.query_params == []
+    assert parse_rest_page(PATH, PAGE) == []  # a scripting page has no endpoints
+
+
+def test_rest_lookup_by_api_name_path_and_verb():
+    from snow_docs_mcp.api_table import parse_rest_page
+
+    t = ApiTable(parse_page(PATH, PAGE), parse_rest_page(REST_PATH, REST))
+    kind, found = t.find("Table API")
+    assert kind == "rest_api" and [e.verb for e in found["Table"]] == ["POST", "GET"]
+    assert t.find("table")[0] == "rest_api"
+    for q in (
+        "POST /now/table/{tableName}",
+        "post /api/now/table/incident",
+        "POST /api/now/v2/table/incident",
+    ):
+        kind, found = t.find(q)
+        assert kind == "endpoint" and [(e.verb, e.path) for e in found] == [
+            ("POST", "/now/table/{tableName}")
+        ], q
+    kind, found = t.find("/now/table")  # a path prefix lists what is under it
+    assert kind == "endpoint" and len(found) == 2
+    assert t.find("GET /api/now/table/incident/abc123")[1][0].path.endswith("{sys_id}")
+    assert t.find("DELETE /now/table/incident") == ("not_found", ["POST /now/table/{tableName}"])
+    assert t.find("/now/nothing/here") == ("not_found", [])
+
+
+def test_rest_tables_without_a_telling_class_count_by_position_and_urls_without_a_label():
+    from snow_docs_mcp.api_table import parse_rest_page
+
+    page = (
+        "# Change API\n\n## Change - GET /sn\\_chg/change/\\{sys\\_id\\}\n\nGets it.\n\n"
+        "### URL format\n\nVersioned URL: `/api/sn_chg/{api_version}/change/{sys_id}`\n\n"
+        "`api/sn_chg/change/{sys_id}`\n\n### Supported request parameters\n\n"
+        '<table class="rest_api_request_parameters"><thead><tr><th>Name</th><th>Description</th>'
+        "</tr></thead><tbody><tr><td>sys\\_id</td><td>The record.Data type: String</td></tr></tbody>\n"
+        "</table>|Parameter|Description|\n|----|-----------|\n|sysparm\\_x|A flag. Data type: Boolean|\n\n"
+        "|Name|Description|\n|----|-----------|\n|None| |\n"
+    )
+    (e,) = parse_rest_page("p", page)
+    assert [p.name for p in e.path_params] == ["sys_id"]
+    assert [(p.name, p.type) for p in e.query_params] == [("sysparm_x", "Boolean")]
+    assert e.body_params == [] and e.default_url == "/api/sn_chg/change/{sys_id}"

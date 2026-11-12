@@ -254,14 +254,28 @@ class ApiMethod(BaseModel):
     url: str = ""
 
 
+class ApiEndpoint(BaseModel):
+    api: str
+    verb: str
+    path: str
+    default_url: str = ""
+    description: str = ""
+    path_parameters: list[ApiParam] = []
+    query_parameters: list[ApiParam] = []
+    body_parameters: list[ApiParam] = []
+    id: str = Field(description="Pass to snow_docs_read for the full section; cite it as [id].")
+    url: str = ""
+
+
 class ApiResult(BaseModel):
     ok: bool
     message: str
     release: str = ""
     snapshot: str = ""
-    kind: str = Field("", description="class, method or not_found")
+    kind: str = Field("", description="class, method, rest_api, endpoint or not_found")
     classes: list[ApiClass] = []
     methods: list[ApiMethod] = []
+    endpoints: list[ApiEndpoint] = []
     suggestions: list[str] = []
 
 
@@ -1162,6 +1176,8 @@ def snow_docs_compare(
 # --- API table -----------------------------------------------------------------------------
 
 API_METHODS_SHOWN = 12  # methods returned in full for one name (overloads, several classes)
+API_ENDPOINTS_SHOWN = 6
+API_BODY_PARAMS = 40
 _API_EXAMPLE_CHARS = 1500
 _api_tables: dict[str, api_table.ApiTable] = {}
 
@@ -1172,8 +1188,9 @@ def _api_table(db) -> api_table.ApiTable:
     if key not in _api_tables:
         pages = store.documents(db, api_table.API_PREFIX)
         members = [m for path, text in pages for m in api_table.parse_page(path, text)]
+        endpoints = [e for path, text in pages for e in api_table.parse_rest_page(path, text)]
         _api_tables.clear()  # one index at a time is enough; a new snapshot replaces the old
-        _api_tables[key] = api_table.ApiTable(members)
+        _api_tables[key] = api_table.ApiTable(members, endpoints)
     return _api_tables[key]
 
 
@@ -1189,12 +1206,14 @@ def snow_docs_api(name: str, release: str | None = None) -> ApiResult:
     parameters and return type, or to list what a class offers. Unlike snow_docs_search it
     answers from a table of every documented method, so "not_found" means the API reference of
     that release does not document it. Covers the server and client scripting APIs (GlideRecord,
-    GlideSystem, GlideForm, ...), not REST endpoints; for how to use an API, search instead.
+    GlideSystem, GlideForm, ...) and the REST APIs; for how to use an API, search instead.
 
     Args:
         name: A class ("GlideRecord", "Scoped GlideRecord", or the variable it is usually in:
-            "gs", "g_form", "g_user"), a method with its class ("GlideRecord.addEncodedQuery",
-            "g_form.setMandatory"), or a method name alone ("addEncodedQuery").
+            "gs", "g_form", "current", "$sp", ...), a method with its class ("GlideRecord.addEncodedQuery",
+            "g_form.setMandatory", "$sp.getParameter"), or a method name alone
+            ("addEncodedQuery"). For REST: an API ("Table API"), or an endpoint as a path with
+            or without its verb ("POST /api/now/table/incident", "/now/table").
         release: "australia" or "brazil". Defaults to the configured release.
     """
     try:
@@ -1229,6 +1248,49 @@ def snow_docs_api(name: str, release: str | None = None) -> ApiResult:
                 f"{_count(total, 'member')} in the {rel} API reference. Look up "
                 "Class.method for a method's parameters and return type."
             ).replace("classs", "classes")
+        elif kind == "rest_api":
+            for api_name, listed in found.items():
+                pages = list(dict.fromkeys(make_id(rel, e.file_path, "") for e in listed))
+                result.classes.append(
+                    ApiClass(
+                        class_name=api_name,
+                        members=[f"{e.verb} {e.path}" for e in listed],
+                        page_ids=pages,
+                    )
+                )
+            result.message = (
+                f"{_count(len(result.classes[0].members), 'endpoint')} in the {api_name} REST API "
+                f'({rel} API reference). Look up "VERB /path" for an endpoint\'s parameters.'
+            )
+        elif kind == "endpoint":
+            for e in found[:API_ENDPOINTS_SHOWN]:
+                page = store.get_document(db, e.file_path) or ""
+                result.endpoints.append(
+                    ApiEndpoint(
+                        api=e.api,
+                        verb=e.verb,
+                        path=e.path,
+                        default_url=e.default_url,
+                        description=e.description,
+                        path_parameters=[ApiParam(**asdict(x)) for x in e.path_params],
+                        query_parameters=[ApiParam(**asdict(x)) for x in e.query_params],
+                        body_parameters=[
+                            ApiParam(**asdict(x)) for x in e.body_params[:API_BODY_PARAMS]
+                        ],
+                        id=make_id(rel, e.file_path, e.heading_path, e.occurrence),
+                        url=page_url(db, rel, e.file_path, page),
+                    )
+                )
+            result.message = (
+                f"{_count(len(found), 'endpoint')} for '{wanted}' in the {rel} API reference"
+                + (
+                    f" (the first {API_ENDPOINTS_SHOWN} shown)"
+                    if len(found) > API_ENDPOINTS_SHOWN
+                    else ""
+                )
+                + ". Parameter descriptions are shortened; snow_docs_read(id) gives the full "
+                "section with status codes and examples."
+            )
         elif kind == "method":
             for m in sorted(found, key=lambda m: (m.class_name, m.name))[:API_METHODS_SHOWN]:
                 example = m.example
@@ -1264,7 +1326,8 @@ def snow_docs_api(name: str, release: str | None = None) -> ApiResult:
             hint = f" Closest names: {', '.join(result.suggestions)}." if result.suggestions else ""
             result.message = (
                 f"'{wanted}' is not in the {rel} API reference ({len(table):,} documented "
-                f"methods and properties).{hint} Do not use it in code unless another source "
+                f"methods and properties, {len(table.endpoints):,} REST endpoints).{hint} "
+                "Do not use it in code unless another source "
                 "confirms it; snow_docs_search may find it outside the API reference."
             )
         return result

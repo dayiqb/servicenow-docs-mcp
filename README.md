@@ -146,14 +146,19 @@ Desktop, pick the `upgrade_review` prompt and enter the product name, or just as
 
 Ask what a class offers or what a method takes, for example *"Which parameters does
 GlideRecord.addEncodedQuery take?"* or *"List the methods of GlideAggregate."* Claude calls
-`snow_docs_api`, which answers from a table of every method in the API reference (about 4,500
-methods in 520 classes): the signature, each parameter with its type, the return type, a short
-description and the first code example. A class name lists its methods, with the global and
-scoped variants apart; `gs`, `g_form` and `g_user` work as class names too.
+`snow_docs_api`, which answers from a table of everything in the API reference instead of
+searching text:
+
+- **Scripting APIs.** About 4,500 methods in 520 classes: the signature, each parameter with
+  its type, the return type, a short description and the first code example. A class name lists
+  its methods, with the global and scoped variants apart. The variables scripts use work as
+  class names too (`gs`, `current`, `g_form`, `g_list`, `$sp` and others).
+- **REST APIs.** About 680 endpoints in 136 APIs: an API name ("Table API") lists its endpoints,
+  and an endpoint ("POST /api/now/table/incident") gives its default URL and its path, query
+  and request body parameters.
 
 A name the API reference does not have gets a clear "not found" with the closest names, so
-Claude checks its methods before it writes script code instead of guessing. REST endpoints are
-not in the table; search finds those.
+Claude checks its methods before it writes script code instead of guessing.
 
 ## Troubleshooting
 

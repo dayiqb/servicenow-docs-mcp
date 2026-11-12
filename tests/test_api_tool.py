@@ -6,7 +6,7 @@ import anyio
 import pytest
 from conftest import DOCS, build_fixture_index, install_index, make_entry
 from mcp import Client
-from test_api_table import GLOBAL, GLOBAL_PATH, PAGE, PATH
+from test_api_table import GLOBAL, GLOBAL_PATH, PAGE, PATH, REST, REST_PATH
 
 from snow_docs_mcp import config, setup
 from snow_docs_mcp.server import mcp
@@ -19,7 +19,7 @@ def api(monkeypatch, tmp_path, fake_models):
     monkeypatch.setattr(setup, "request", lambda release: None)
     monkeypatch.setattr(config, "BUILTIN_ENTRIES", {"australia": make_entry()})
     monkeypatch.delenv("SNOW_DOCS_INDEX_URL", raising=False)
-    docs = {**DOCS, PATH: PAGE, GLOBAL_PATH: GLOBAL}
+    docs = {**DOCS, PATH: PAGE, GLOBAL_PATH: GLOBAL, REST_PATH: REST}
     install_index(
         build_fixture_index(tmp_path / "au.db", docs=docs), config.BUILTIN_ENTRIES["australia"]
     )
@@ -99,3 +99,33 @@ def test_empty_name_unknown_release_and_missing_index(api):
     )
     r = call("snow_docs_api", name="GlideRecord", release="brazil")
     assert not r["ok"] and r["kind"] == ""
+
+
+def test_a_rest_endpoint_gives_its_parameters_by_place(api):
+    r = call("snow_docs_api", name="POST /api/now/table/incident")
+    assert r["ok"] and r["kind"] == "endpoint"
+    (e,) = r["endpoints"]
+    assert (e["api"], e["verb"], e["path"]) == ("Table", "POST", "/now/table/{tableName}")
+    assert e["default_url"] == "/api/now/table/{tableName}"
+    assert [p["name"] for p in e["path_parameters"]] == ["tableName"]
+    assert [p["name"] for p in e["query_parameters"]] == ["sysparm_fields"]
+    assert [p["name"] for p in e["body_parameters"]] == ["name-value pairs"]
+    assert "Inserts one record" in call("snow_docs_read", id=e["id"])["content"]
+
+
+def test_a_rest_api_name_lists_its_endpoints(api):
+    r = call("snow_docs_api", name="Table API")
+    assert r["kind"] == "rest_api"
+    assert r["classes"] == [
+        {
+            "class_name": "Table",
+            "members": ["POST /now/table/{tableName}", "GET /now/table/{tableName}/{sys_id}"],
+            "page_ids": [f"australia:{REST_PATH}::"],
+        }
+    ]
+
+
+def test_an_unknown_endpoint_is_a_clear_no(api):
+    r = call("snow_docs_api", name="DELETE /now/table/incident")
+    assert r["ok"] and r["kind"] == "not_found"
+    assert r["suggestions"] == ["POST /now/table/{tableName}"]

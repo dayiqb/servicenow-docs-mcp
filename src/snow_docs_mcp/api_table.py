@@ -28,8 +28,39 @@ _SEPARATOR = re.compile(r"^[\s|:-]+$")
 _WS = re.compile(r"\s+")
 _VARIANT = re.compile(r"^scoped\s+|\s*\(.*\)\s*$", re.IGNORECASE)
 
-# The variables scripts usually hold these classes in.
-VARIABLES = {"gs": "glidesystem", "g_form": "glideform", "g_user": "glideuser"}
+_REST_HEADING = re.compile(
+    r"^(?P<api>.+?)\s+[-–—]\s+(?P<verb>GET|POST|PUT|PATCH|DELETE)\s+(?P<path>/\S*)\s*$"
+)
+_ENDPOINT_QUERY = re.compile(r"^(?:(GET|POST|PUT|PATCH|DELETE)\s+)?(/\S*)$", re.IGNORECASE)
+_DEFAULT_URL = re.compile(r"Default URL:\s*`([^`]+)`")
+_CODE_URL = re.compile(r"`(/?api/[^`\s]+)`")
+_DATA_TYPE = re.compile(r"Data type:\s*([A-Za-z]\w*)")
+_VERSION = re.compile(r"^(v\d+|\{api_version\})$", re.IGNORECASE)
+_REST_DESCRIPTION_CHARS = 300
+
+# The variables scripts hold these classes in, as the API reference names them.
+VARIABLES: dict[str, tuple[str, ...]] = {
+    "gs": ("glidesystem",),
+    "current": ("gliderecord",),
+    "previous": ("gliderecord",),
+    "g_form": ("glideform", "mobileglideform"),
+    "g_user": ("glideuser",),
+    "g_list": ("glidelist2", "glidelistv3", "glidelist"),
+    "g_modal": ("glidemodal",),
+    "g_aw": ("glideagentworkspace",),
+    "g_document": ("glidedocument",),
+    "g_guid": ("glideguid",),
+    "g_i18n": ("i18n",),
+    "g_menu": ("glidemenu",),
+    "g_item": ("glidemenu",),
+    "g_navigation": ("glidenavigation",),
+    "g_notification": ("glidenotification",),
+    "g_processor": ("glidescriptedprocessor",),
+    "g_request": ("glideservletrequest",),
+    "g_response": ("glideservletresponse",),
+    "g_ui_scripts": ("glideuiscripts",),
+    "$sp": ("glidespscriptable",),
+}
 
 
 @dataclass(frozen=True)
@@ -55,17 +86,37 @@ class Member:
     example: str = ""
 
 
+@dataclass
+class Endpoint:
+    api: str  # "Table"
+    verb: str
+    path: str  # "/now/table/{tableName}"
+    file_path: str
+    heading_path: str
+    occurrence: int
+    description: str = ""
+    default_url: str = ""
+    path_params: list[Param] = field(default_factory=list)
+    query_params: list[Param] = field(default_factory=list)
+    body_params: list[Param] = field(default_factory=list)
+
+
 def _text(cell: str) -> str:
     cell = sections.unescape_markdown(sections.unlink(_TAG.sub(" ", cell)))
     return _WS.sub(" ", cell).strip()
 
 
-def _tables(body: str) -> list[list[list[str]]]:
-    """Every table in a section, as rows of cell texts (header row first)."""
-    found: list[tuple[int, list[list[str]]]] = []
+_TABLE_CLASS = re.compile(r'^<table\b[^>]*\bclass="([^"]*)"', re.IGNORECASE)
+
+
+def _tables(body: str) -> list[tuple[str, list[list[str]]]]:
+    """Every table in a section, in order: (its HTML class or "", rows of cell texts with the
+    header row first)."""
+    found: list[tuple[int, str, list[list[str]]]] = []
     for m in _HTML_TABLE.finditer(body):
         rows = [[_text(c) for c in _HTML_CELL.findall(r)] for r in _HTML_ROW.findall(m.group(0))]
-        found.append((m.start(), [r for r in rows if r]))
+        cls = _TABLE_CLASS.match(m.group(0))
+        found.append((m.start(), cls.group(1) if cls else "", [r for r in rows if r]))
     block: list[list[str]] = []
     start = pos = 0
     for line in [*_HTML_TABLE.sub(lambda m: "\n" * m.group(0).count("\n"), body).split("\n"), ""]:
@@ -75,10 +126,10 @@ def _tables(body: str) -> list[list[list[str]]]:
             if not _SEPARATOR.match(line):
                 block.append([_text(c) for c in _PIPE.split(line.strip().strip("|"))])
         elif block:
-            found.append((start, block))
+            found.append((start, "", block))
             block = []
         pos += len(line) + 1
-    return [rows for _, rows in sorted(found, key=lambda x: x[0])]
+    return [(cls, rows) for _, cls, rows in sorted(found, key=lambda x: x[0])]
 
 
 def _fill(member: Member, body: str) -> None:
@@ -89,7 +140,7 @@ def _fill(member: Member, body: str) -> None:
             default=len(body),
         )
         member.description = _text(body[:cut])
-    for rows in _tables(body):
+    for _, rows in _tables(body):
         header = [h.lower() for h in rows[0]] if rows else []
         if header == ["name", "type", "description"] and not member.params:
             member.params = [
@@ -102,6 +153,103 @@ def _fill(member: Member, body: str) -> None:
         code = _FENCE.search(body)
         if code:
             member.example = code.group(1).rstrip()
+
+
+def _signature_params(signature: str) -> list[Param]:
+    """Parameters as a signature names them: "String name" or "name: String"."""
+    args = signature[signature.index("(") + 1 : signature.rindex(")")]
+    out: list[Param] = []
+    for piece in (a.strip() for a in args.split(",")):
+        if not piece:
+            continue
+        if ":" in piece:
+            name, _, kind = piece.partition(":")
+        else:
+            kind, _, name = piece.rpartition(" ")
+        out.append(Param(name.strip(), kind.strip(), ""))
+    return out
+
+
+def _rest_params(rows: list[list[str]]) -> list[Param]:
+    out = []
+    for row in rows[1:]:
+        if len(row) < 2 or not row[0] or row[0].lower() == "none":
+            continue
+        kind = _DATA_TYPE.search(row[1])
+        text = row[1]
+        if len(text) > _REST_DESCRIPTION_CHARS:
+            text = text[:_REST_DESCRIPTION_CHARS].rsplit(" ", 1)[0] + "…"
+        out.append(Param(row[0], kind.group(1) if kind else "", text))
+    return out
+
+
+def parse_rest_page(file_path: str, text: str) -> list[Endpoint]:
+    """The REST endpoints a page documents: H2 `API - VERB /path`, with the tables under
+    "Supported request parameters" (path, query, request body, in that order)."""
+    endpoints: list[Endpoint] = []
+    current: Endpoint | None = None
+    seen: dict[str, int] = {}
+    for sec in sections.split_into_sections(sections.strip_front_matter(text)):
+        crumb = " > ".join(sec.heading_path)
+        seen[crumb] = seen.get(crumb, 0) + 1
+        if len(sec.heading_path) == 2:
+            m = _REST_HEADING.match(sections.unescape_markdown(sec.heading_path[-1]))
+            current = None
+            if m:
+                current = Endpoint(
+                    m.group("api").strip(),
+                    m.group("verb"),
+                    m.group("path"),
+                    file_path,
+                    crumb,
+                    seen[crumb],
+                )
+                cut = min(
+                    (
+                        i
+                        for i in (
+                            sec.body.find("\n|"),
+                            sec.body.find("<table"),
+                            sec.body.find("```"),
+                        )
+                        if i >= 0
+                    ),
+                    default=len(sec.body),
+                )
+                current.description = _text(sec.body[:cut])
+                endpoints.append(current)
+        elif len(sec.heading_path) < 2:
+            current = None
+        elif current is not None:
+            part = sections.unescape_markdown(sec.heading_path[2]).strip().lower()
+            if part == "url format":
+                url = _DEFAULT_URL.search(sec.body)
+                plain = [u for u in _CODE_URL.findall(sec.body) if "{api_version}" not in u]
+                found = url.group(1) if url else plain[0] if plain else ""
+                current.default_url = "/" + found.lstrip("/") if found else ""
+            elif part == "supported request parameters":
+                tables = [
+                    (cls, rows)
+                    for cls, rows in _tables(sec.body)
+                    if rows
+                    and [h.lower() for h in rows[0]]
+                    in (["name", "description"], ["parameter", "description"])
+                ]
+                # path, query, request body, in that order; an HTML class may say which
+                for place, (cls, rows) in enumerate(tables[:3]):
+                    by_class = next((k for k in ("path", "query", "body") if k in cls), "")
+                    target = f"{by_class or ('path', 'query', 'body')[place]}_params"
+                    if not getattr(current, target):
+                        setattr(current, target, _rest_params(rows))
+    return endpoints
+
+
+def _segments(path: str) -> list[str]:
+    """A REST path's parts, without the '/api' start and the version."""
+    parts = [p for p in path.strip().strip("/").split("/") if p]
+    if parts and parts[0].lower() == "api":
+        parts = parts[1:]
+    return [p for i, p in enumerate(parts) if not (i <= 2 and _VERSION.match(p))]
 
 
 def parse_page(file_path: str, text: str) -> list[Member]:
@@ -146,6 +294,9 @@ def parse_page(file_path: str, text: str) -> list[Member]:
         if current is not None:
             _fill(current, sec.body)
             members.append(current)
+    for member in members:  # a few methods have no parameter table: read the signature
+        if member.kind == "method" and not member.params:
+            member.params = _signature_params(member.signature)
     classes = {m.class_name for m in members if m.kind == "method"}
     return [m for m in members if m.kind == "method" or m.class_name in classes]
 
@@ -161,7 +312,11 @@ def _base(class_name: str) -> str:
 
 
 class ApiTable:
-    def __init__(self, members: list[Member]):
+    def __init__(self, members: list[Member], endpoints: list[Endpoint] | None = None):
+        self.endpoints = list(endpoints or [])
+        self.by_api: dict[str, list[Endpoint]] = {}  # lowercase API name -> its endpoints
+        for e in self.endpoints:
+            self.by_api.setdefault(e.api.lower(), []).append(e)
         self.by_class: dict[
             str, dict[str, list[Member]]
         ] = {}  # base -> class as written -> members
@@ -178,13 +333,43 @@ class ApiTable:
     def __len__(self) -> int:
         return sum(len(v) for v in self.by_method.values())
 
+    def _endpoints(self, verb: str, path: str) -> tuple[str, object]:
+        """Endpoints a (verb and) path means: the documented path it fits, or everything
+        under it when it is only the start of one."""
+        given = _segments(path)
+
+        def fits(doc: list[str], n: int) -> bool:
+            return len(doc) >= n and all(
+                d.startswith("{") or d.lower() == g.lower()
+                for d, g in zip(doc[:n], given, strict=False)
+            )
+
+        def literal(doc: list[str]) -> int:
+            return sum(not d.startswith("{") for d in doc[: len(given)])
+
+        docs = [(e, _segments(e.path)) for e in self.endpoints]
+        same = [(e, d) for e, d in docs if len(d) == len(given) and fits(d, len(given))]
+        under = [(e, d) for e, d in docs if fits(d, len(given))] if given else []
+        for group in (same, under):
+            if not group:
+                continue
+            best = max(literal(d) for _, d in group)
+            hits = [e for e, d in group if literal(d) == best]
+            wanted = [e for e in hits if not verb or e.verb == verb.upper()]
+            if wanted:
+                return "endpoint", wanted
+            return "not_found", [f"{e.verb} {e.path}" for e in hits][:5]
+        return "not_found", []
+
     def _class(self, name: str) -> tuple[str, dict[str, list[Member]]] | None:
         """(base, the variants a class name means): one variant when it names it exactly."""
         wanted = name.strip().lower()
-        base = VARIABLES.get(wanted) or _base(wanted)
-        variants = self.by_class.get(base)
-        if not variants:
+        base = _base(wanted)
+        bases = [b for b in (*VARIABLES.get(wanted, ()), base) if b in self.by_class]
+        if not bases:
             return None
+        base = bases[0]
+        variants = {c: ms for b in dict.fromkeys(bases) for c, ms in self.by_class[b].items()}
         # a plain name means every variant; "Scoped GlideRecord" means that one
         exact = {c: ms for c, ms in variants.items() if c.lower() == wanted and wanted != base}
         return base, exact or variants
@@ -195,9 +380,15 @@ class ApiTable:
         q = re.sub(r"\(.*\)\s*$", "", name.strip()).strip().strip(".")
         if not q:
             return "not_found", []
+        endpoint = _ENDPOINT_QUERY.match(q)
+        if endpoint:
+            return self._endpoints(endpoint.group(1) or "", endpoint.group(2))
         whole = self._class(q)
         if whole:
             return "class", whole[1]
+        api = self.by_api.get(re.sub(r"\s+api$", "", q.lower()))
+        if api:
+            return "rest_api", {api[0].api: api}
         cls_part, _, method = q.rpartition(".")
         if cls_part:
             hit = self._class(cls_part)
