@@ -4,6 +4,7 @@ Tools (all read-only):
     snow_docs_search   hybrid (semantic + keyword) search with reranking over the ServiceNow
                        product docs, per release (australia, brazil)
     snow_docs_read     the full section behind a search hit
+    snow_docs_compare  what changed between the australia and brazil docs for a topic or page
     snow_docs_status   setup/update progress per release, and where data lives
 
 Prompt:
@@ -34,6 +35,7 @@ from __future__ import annotations
 
 import contextlib
 import difflib
+import json
 import logging
 import os
 import re
@@ -47,6 +49,7 @@ from mcp.types import ToolAnnotations
 from pydantic import BaseModel, Field
 
 from snow_docs_mcp import config, identifiers, models, products, sections, setup, store
+from snow_docs_mcp.compare import compare_pages
 from snow_docs_mcp.read import ReadResult as _ReadResult
 from snow_docs_mcp.read import not_an_id, page_url, read_section
 from snow_docs_mcp.search import make_id, parse_id, run_search, snippet, strip_blurb
@@ -141,12 +144,48 @@ class StatusResult(BaseModel):
     server_version: str = __version__
 
 
+class SectionDiff(BaseModel):
+    heading_path: str
+    change: str = Field(description="added, removed or changed (australia -> brazil).")
+    changed_words: int
+    australia_id: str = Field("", description="Pass to snow_docs_read; empty when added.")
+    brazil_id: str = Field("", description="Pass to snow_docs_read; empty when removed.")
+    australia_excerpt: str = ""
+    brazil_excerpt: str = ""
+
+
+class ChangedPage(BaseModel):
+    page: str = Field(description="The page's path; pass it as `page` to compare it alone.")
+    page_title: str
+    product: str
+    australia_url: str = ""
+    brazil_url: str = ""
+    sections: list[SectionDiff] = []
+    minor_changes: int = Field(0, description="Small rewordings, counted but not listed.")
+    sections_left_out: int = Field(0, description="Dropped to keep the result short.")
+
+
+class CompareResult(BaseModel):
+    ok: bool
+    message: str
+    australia_snapshot: str = ""
+    brazil_snapshot: str = ""
+    release_notes: list[Hit] = Field(
+        [], description="ServiceNow's own release notes for upgrades from Australia to Brazil."
+    )
+    changed_pages: list[ChangedPage] = []
+    only_in_australia: list[str] = []
+    only_in_brazil: list[str] = []
+
+
 def _not_ready(release: str) -> str:
     st = setup.status(release)
     if setup.index_ready(release) and not setup.models_on_disk():
         models = setup.models_status()
         if models.state == "error":
-            return f"{models.message}. It retries the next time it's used. Help: {config.README_URL}"
+            return (
+                f"{models.message}. It retries the next time it's used. Help: {config.README_URL}"
+            )
         return (
             "The ServiceNow docs server is downloading its search models (first run only). "
             "Try again in a minute or two; snow_docs_status shows progress."
@@ -211,7 +250,9 @@ def _one_edit(a: str, b: str) -> bool:
     if len(a) == len(b):
         diff = [i for i in range(len(a)) if a[i] != b[i]]
         return len(diff) == 1 or (
-            len(diff) == 2 and diff[1] == diff[0] + 1 and a[diff[0]] == b[diff[1]]
+            len(diff) == 2
+            and diff[1] == diff[0] + 1
+            and a[diff[0]] == b[diff[1]]
             and a[diff[1]] == b[diff[0]]
         )
     short, long_ = sorted((a, b), key=len)
@@ -467,7 +508,11 @@ def snow_docs_search(
                 # The reranker always scores the whole pool, so taking all of it costs nothing
                 # extra and leaves room to drop duplicates and still return `lim` passages.
                 hits = run_search(
-                    db, q, top_k=max(lim + 5, models.RERANK_POOL), source_filter=prefix, query_text=q
+                    db,
+                    q,
+                    top_k=max(lim + 5, models.RERANK_POOL),
+                    source_filter=prefix,
+                    query_text=q,
                 )
                 hits = identifiers.prefer_exact(q, hits)
                 out = _distinct_hits(db, rel, hits, lim)
@@ -538,6 +583,299 @@ def snow_docs_read(id: str, max_chars: int = 20000) -> ReadResult:
         return ReadResult(ok=False, message=f"Read failed: {e}")
 
 
+# --- compare ------------------------------------------------------------------------------
+
+FROM_RELEASE, TO_RELEASE = "australia", "brazil"
+# ServiceNow's combined release notes for upgrades from Australia to Brazil (Brazil docs only).
+RELEASE_NOTES_PREFIX = "markdown/delta-australia-brazil/"
+RELEASE_NOTES_HITS = 3
+COMPARE_CANDIDATE_PAGES = 15  # pages a query compares: the top search hits of both releases
+COMPARE_MAX_CHARS = 12000  # the whole result, as JSON
+_SHORT_EXCERPT = 150
+
+
+def _page_path(value: str) -> str:
+    """A `page` argument as a file path: a hit id, or a path with or without the release,
+    'markdown/' and '.md'."""
+    v = value.strip()
+    if "::" in v:
+        parsed = parse_id(v)
+        if parsed is not None:
+            return parsed[1]
+        v = v.split("::", 1)[0]
+    for rel in config.RELEASES:
+        v = v.removeprefix(f"{rel}:")
+    v = v.lstrip("/")
+    if not v.startswith("markdown/"):
+        v = "markdown/" + v
+    return v if v.endswith(".md") else v + ".md"
+
+
+def _close_pages(path: str, dbs: dict) -> list[str]:
+    by_name: dict[str, list[str]] = {}
+    for db in dbs.values():
+        for name, paths in store.page_paths(db)[1].items():
+            by_name.setdefault(name, []).extend(p for p in paths if p not in by_name.get(name, []))
+    names = difflib.get_close_matches(path.rsplit("/", 1)[-1], list(by_name), n=3, cutoff=0.6)
+    return [p for name in names for p in by_name[name]][:3]
+
+
+def _changed_page(path: str, dbs: dict) -> tuple[str, ChangedPage | None]:
+    """('both' | 'australia' | 'brazil' | 'none': where the page exists, its comparison when
+    it is in both)."""
+    old = store.get_document(dbs[FROM_RELEASE], path)
+    new = store.get_document(dbs[TO_RELEASE], path)
+    if old is None or new is None:
+        where = FROM_RELEASE if old is not None else TO_RELEASE if new is not None else "none"
+        return where, None
+    diff = compare_pages(old, new)
+    listed = [
+        SectionDiff(
+            heading_path=c.heading_path,
+            change=c.change,
+            changed_words=c.changed_words,
+            australia_id=""
+            if c.change == "added"
+            else make_id(FROM_RELEASE, path, c.heading_path, c.occurrence),
+            brazil_id=""
+            if c.change == "removed"
+            else make_id(TO_RELEASE, path, c.heading_path, c.occurrence),
+            australia_excerpt=c.before,
+            brazil_excerpt=c.after,
+        )
+        for c in diff.sections
+    ]
+    return "both", ChangedPage(
+        page=path,
+        page_title=sections.front_matter_value(new, "title"),
+        product=store.product_of(path),
+        australia_url=page_url(dbs[FROM_RELEASE], FROM_RELEASE, path, old),
+        brazil_url=page_url(dbs[TO_RELEASE], TO_RELEASE, path, new),
+        sections=listed,
+        minor_changes=diff.minor,
+    )
+
+
+def _candidate_pages(dbs: dict, q: str, prefix: str | None) -> list[str]:
+    """The pages a query is about: the top hits of both releases, interleaved by rank. The
+    order within them doesn't matter (pages are ranked by how much changed), so no reranking."""
+    ranked = [
+        [
+            h.file_path
+            for h in run_search(db, q, top_k=30, source_filter=prefix, query_text=q, rerank=False)
+        ]
+        for db in dbs.values()
+    ]
+    out: list[str] = []
+    for i in range(max(map(len, ranked), default=0)):
+        for paths in ranked:
+            if (
+                i < len(paths)
+                and paths[i] not in out
+                and not paths[i].startswith("markdown/delta-")
+            ):
+                out.append(paths[i])
+    return out[:COMPARE_CANDIDATE_PAGES]
+
+
+_FIT_CHARS = COMPARE_MAX_CHARS - 800  # room for the message, written after fitting
+
+
+def _size(result: CompareResult) -> int:
+    """Length as the client receives it (JSON with non-ASCII escaped: the longest form)."""
+    return len(json.dumps(result.model_dump()))
+
+
+def _fit(result: CompareResult) -> bool:
+    """Shrink `result` to COMPARE_MAX_CHARS: shorter excerpts first, then fewer sections.
+    True when sections were dropped."""
+    if _size(result) <= _FIT_CHARS:
+        return False
+    for page in result.changed_pages:
+        for sec in page.sections:
+            for field in ("australia_excerpt", "brazil_excerpt"):
+                text = getattr(sec, field)
+                if len(text) > _SHORT_EXCERPT:
+                    setattr(sec, field, text[:_SHORT_EXCERPT].rstrip() + "…")
+    dropped = False
+    while _size(result) > _FIT_CHARS:
+        page = max(result.changed_pages, key=lambda p: len(p.sections), default=None)
+        if page is None or len(page.sections) <= 1:
+            break
+        over = _size(result) - _FIT_CHARS
+        while over > 0 and len(page.sections) > 1:
+            over -= len(json.dumps(page.sections.pop().model_dump())) + 2
+            page.sections_left_out += 1
+        dropped = True
+    return dropped
+
+
+def _count(n: int, what: str) -> str:
+    return f"{n} {what}" if n == 1 else f"{n} {what}s"
+
+
+def _compare(q: str, page: str, product: str | None, limit: int, dbs: dict) -> CompareResult:
+    notes: list[str] = []
+    result = CompareResult(
+        ok=True,
+        message="",
+        australia_snapshot=_snapshot_of(FROM_RELEASE),
+        brazil_snapshot=_snapshot_of(TO_RELEASE),
+    )
+    if page:
+        path = _page_path(page)
+        where, changed = _changed_page(path, dbs)
+        if where == "none":
+            close = _close_pages(path, dbs)
+            hint = f" Did you mean: {', '.join(close)}?" if close else ""
+            return CompareResult(
+                ok=False,
+                message=f"No page '{path}' in the australia or brazil docs.{hint} Pass a hit id "
+                "or a page path from snow_docs_search.",
+            )
+        compared = 1
+        pages = [changed] if changed else []
+        if where != "both":
+            getattr(result, f"only_in_{where}").append(path)
+    else:
+        lim = max(1, min(int(limit), 20))
+        if lim != limit:
+            notes.append(f"limit adjusted to {lim} (allowed: 1-20)")
+        prefix = None
+        if product and product.strip():
+            db = dbs[FROM_RELEASE]
+            known = store.products(db)
+            folder, how = products.resolve(product, known)
+            if how not in ("exact", "alias"):
+                return CompareResult(
+                    ok=False, message=_product_problem(product, folder, FROM_RELEASE, db, known)
+                )
+            if how == "alias":
+                notes.append(f"compared the {folder} docs for '{product.strip()}'")
+            prefix = f"markdown/{folder}/"
+        note_hits = run_search(
+            dbs[TO_RELEASE],
+            q,
+            top_k=models.RERANK_POOL,
+            source_filter=RELEASE_NOTES_PREFIX,
+            query_text=q,
+        )
+        result.release_notes = [
+            h
+            for h in _distinct_hits(dbs[TO_RELEASE], TO_RELEASE, note_hits, RELEASE_NOTES_HITS)
+            if h.score >= WEAK_SCORE
+        ]
+        candidates = _candidate_pages(dbs, q, prefix)
+        compared = len(candidates)
+        pages = []
+        for path in candidates:
+            where, changed = _changed_page(path, dbs)
+            if changed:
+                pages.append(changed)
+            elif where != "none":
+                getattr(result, f"only_in_{where}").append(path)
+        pages.sort(key=lambda p: -sum(s.changed_words for s in p.sections))
+        pages = [p for p in pages if p.sections][:lim] + [p for p in pages if not p.sections]
+
+    result.changed_pages = [p for p in pages if p.sections]
+    minor = sum(p.minor_changes for p in pages)
+    left_out = _fit(result)
+
+    parts = []
+    if not page:
+        parts.append(
+            _count(len(result.release_notes), "release-notes passage")
+            if result.release_notes
+            else "No release-notes passages matched"
+        )
+    if result.changed_pages:
+        parts.append(_count(len(result.changed_pages), "changed page"))
+    msg = " and ".join(parts) + f" ({FROM_RELEASE} -> {TO_RELEASE})." if parts else ""
+    if not result.changed_pages and not (page and where != "both"):
+        msg += (
+            " No documentation changes found on this page."
+            if page
+            else f" No documentation changes found among the {_count(compared, 'page')} that match."
+        )
+    for rel in (FROM_RELEASE, TO_RELEASE):
+        only = getattr(result, f"only_in_{rel}")
+        if only:
+            msg += f" {_count(len(only), 'page')} only in the {rel} docs."
+    if minor:
+        msg += f" {_count(minor, 'small rewording')} not listed."
+    if left_out:
+        msg += (
+            " Some sections were left out to keep this short; compare a single page to see "
+            "more of them, or read the sections with snow_docs_read."
+        )
+    if result.release_notes or result.changed_pages:
+        msg += (
+            " Lead with the release notes, cite ids as [id], and call snow_docs_read(id) for "
+            "a full section."
+        )
+    if notes:
+        msg += " Note: " + "; ".join(notes) + "."
+    result.message = msg.strip()
+    return result
+
+
+@mcp.tool(name="snow_docs_compare", annotations=READ_ONLY)
+def snow_docs_compare(
+    query: str | None = None,
+    page: str | None = None,
+    product: str | None = None,
+    limit: int = 5,
+) -> CompareResult:
+    """Show what changed in the ServiceNow docs between the Australia and Brazil releases.
+
+    Use this for questions about what is new or different in Brazil, typically before an
+    upgrade from Australia. Returns ServiceNow's own release notes for that upgrade first
+    (`release_notes`), then the documentation pages whose text really changed, section by
+    section with an excerpt from each release (`changed_pages`). Differences in metadata and
+    links are ignored, and small rewordings are counted but not listed. Both releases' docs
+    must be installed; the result says so when one is missing.
+
+    Args:
+        query: A topic in English, using ServiceNow's terms, e.g. "document intelligence" or
+            "flow designer error handling". Translate a question asked in another language.
+        page: Compare one page instead: a hit id from snow_docs_search (either release) or a
+            page path such as "markdown/it-service-management/incident-management.md".
+            Pass either `query` or `page`, not both.
+        product: Optional docs area for `query`, as in snow_docs_search (e.g. "itsm").
+        limit: Changed pages to return for `query`, 1-20 (default 5).
+    """
+    try:
+        q, pg = (query or "").strip(), (page or "").strip()
+        if bool(q) == bool(pg):
+            return CompareResult(
+                ok=False,
+                message="Pass either `query` (a topic) or `page` (a hit id or page path), "
+                "not both and not neither.",
+            )
+        for attempt in range(2):
+            ready = setup.search_ready if q else (lambda r: setup.active_index(r) is not None)
+            dbs = {r: setup.active_index(r) for r in (FROM_RELEASE, TO_RELEASE)}
+            missing = [r for r in dbs if dbs[r] is None or not ready(r)]
+            if missing:
+                for r in missing:
+                    setup.request(r)
+                return CompareResult(
+                    ok=False,
+                    message="Comparing needs both the australia and brazil docs. "
+                    + " ".join(_not_ready(r) for r in missing),
+                )
+            _release_unused_indexes()
+            try:
+                return _compare(q, pg, product, limit, dbs)
+            except FileNotFoundError:  # a newer snapshot replaced an index mid-call
+                if attempt == 1:
+                    raise
+        raise AssertionError("unreachable")
+    except Exception as e:  # tools report errors, never raise
+        logger.exception("snow_docs_compare failed")
+        return CompareResult(ok=False, message=f"Compare failed: {e}")
+
+
 @mcp.tool(name="snow_docs_status", annotations=READ_ONLY)
 def snow_docs_status() -> StatusResult:
     """Show whether the ServiceNow docs server is ready, setup or update progress per
@@ -575,7 +913,9 @@ def snow_docs_status() -> StatusResult:
                 chunks=chunks,
             )
         )
-    models_state = "ready" if setup.models_on_disk() else (setup.models_status().message or "missing")
+    models_state = (
+        "ready" if setup.models_on_disk() else (setup.models_status().message or "missing")
+    )
     notes = [setup.update_note()]
     legacy = setup.legacy_files()
     if legacy:

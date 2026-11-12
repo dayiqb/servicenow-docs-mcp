@@ -44,6 +44,10 @@
       "description": "Read the full documentation section behind a search result."
     },
     {
+      "name": "snow_docs_compare",
+      "description": "Show what changed between the Australia and Brazil docs for a topic or page."
+    },
+    {
       "name": "snow_docs_status",
       "description": "Show setup progress, the docs snapshot served, and where data is stored."
     }

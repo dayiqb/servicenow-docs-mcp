@@ -199,9 +199,9 @@ def site_url(page: str, release: str) -> str:
         return url
     page_release = front_matter_value(page, "release") or release
     if page_release == "brazil":
-        return f"{_SITE}brazil/{url[len(_SITE):]}"
+        return f"{_SITE}brazil/{url[len(_SITE) :]}"
     if page_release == "australia" and _AU_DELTA.fullmatch(first):
-        return f"{_SITE}australia/{url[len(_SITE):]}"
+        return f"{_SITE}australia/{url[len(_SITE) :]}"
     return url
 
 

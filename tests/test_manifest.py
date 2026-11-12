@@ -118,11 +118,33 @@ def test_prompt_hook_is_wired_in_exec_form() -> None:
 # Claude Desktop runs plugin servers on the host (and bridges them into Cowork) only if their
 # `env` avoids the names it reserves; one reserved name and the server never starts (2026-09-28:
 # 'env declares reserved variable name "UV_SYSTEM_CERTS"'). Desktop's rule, as shipped then:
-DESKTOP_RESERVED_PREFIXES = ("CLAUDE_", "ANTHROPIC_", "OTEL_", "LD_", "DYLD_", "BASH_FUNC_",
-                             "GIT_", "NPM_CONFIG_", "UV_")
-DESKTOP_RESERVED_NAMES = {"PATH", "HOME", "PYTHONPATH", "PYTHONHOME", "SSL_CERT_FILE",
-                          "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY", "TMPDIR",
-                          "USERPROFILE", "APPDATA", "LOCALAPPDATA", "NODE_EXTRA_CA_CERTS"}
+DESKTOP_RESERVED_PREFIXES = (
+    "CLAUDE_",
+    "ANTHROPIC_",
+    "OTEL_",
+    "LD_",
+    "DYLD_",
+    "BASH_FUNC_",
+    "GIT_",
+    "NPM_CONFIG_",
+    "UV_",
+)
+DESKTOP_RESERVED_NAMES = {
+    "PATH",
+    "HOME",
+    "PYTHONPATH",
+    "PYTHONHOME",
+    "SSL_CERT_FILE",
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "ALL_PROXY",
+    "NO_PROXY",
+    "TMPDIR",
+    "USERPROFILE",
+    "APPDATA",
+    "LOCALAPPDATA",
+    "NODE_EXTRA_CA_CERTS",
+}
 
 
 def test_plugin_server_and_hooks_avoid_desktop_reserved_env_names() -> None:

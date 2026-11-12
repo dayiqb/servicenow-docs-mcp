@@ -188,6 +188,7 @@ def test_clean_stdio_handshake() -> None:
     )
 
     assert sorted(tool["name"] for tool in tools["result"]["tools"]) == [
+        "snow_docs_compare",
         "snow_docs_read",
         "snow_docs_search",
         "snow_docs_status",

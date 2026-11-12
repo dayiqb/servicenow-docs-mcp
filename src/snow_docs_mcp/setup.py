@@ -634,7 +634,9 @@ def _delete_index(path: Path) -> bool:
 def legacy_files() -> list[Path]:
     """Index files of the first version (`index-<date>.db`), which this version never
     deletes: that version may still be installed and using them."""
-    return sorted(p for p in config.data_home().glob("index-*.db") if _LEGACY_INDEX.fullmatch(p.name))
+    return sorted(
+        p for p in config.data_home().glob("index-*.db") if _LEGACY_INDEX.fullmatch(p.name)
+    )
 
 
 def _migrate_legacy(home: Path) -> None:

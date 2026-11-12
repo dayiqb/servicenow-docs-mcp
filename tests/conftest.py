@@ -111,7 +111,10 @@ def one_hot(i: int) -> np.ndarray:
     return v
 
 
-def build_fixture_index(path: Path) -> Path:
+def build_fixture_index(path: Path, docs: dict | None = None, chunks: list | None = None) -> Path:
+    """The fixture index; `docs` / `chunks` replace DOCS / CHUNKS (e.g. a second release)."""
+    docs = DOCS if docs is None else docs
+    chunks = CHUNKS if chunks is None else chunks
     conn = sqlite3.connect(path)
     conn.executescript(
         """
@@ -130,21 +133,21 @@ def build_fixture_index(path: Path) -> Path:
         CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
         """
     )
-    for i, (fp, hp, blurb, body) in enumerate(CHUNKS):
+    for i, (fp, hp, blurb, body) in enumerate(chunks):
         content = f"{blurb}\n\n{hp}\n\n{body}"
         conn.execute(
             "INSERT INTO chunks (file_path, heading_path, content, byte_offset, embedding) "
             "VALUES (?, ?, ?, ?, ?)",
             (fp, hp, content, 0, one_hot(i).tobytes()),
         )
-    conn.executemany("INSERT INTO documents VALUES (?, ?)", list(DOCS.items()))
+    conn.executemany("INSERT INTO documents VALUES (?, ?)", list(docs.items()))
     conn.executemany(
         "INSERT INTO meta VALUES (?, ?)",
         [
             ("snapshot", "2026-05-15"),
             ("corpus_commit", "0ba98cdaf706821d72ff79e92b18adc057e60e29"),
             ("corpus_repo", "https://github.com/ServiceNow/ServiceNowDocs"),
-            ("chunk_count", str(len(CHUNKS))),
+            ("chunk_count", str(len(chunks))),
         ],
     )
     conn.execute("PRAGMA journal_mode = delete")

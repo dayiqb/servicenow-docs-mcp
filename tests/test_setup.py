@@ -984,7 +984,9 @@ def test_a_corrected_entry_is_retried_by_the_running_server(home, payload, srv, 
     assert not list(home.glob("*.bad")), "a successful install forgets the failure"
 
 
-def test_an_installed_release_does_not_wait_for_another_apps_download(home, fixture_db, monkeypatch):
+def test_an_installed_release_does_not_wait_for_another_apps_download(
+    home, fixture_db, monkeypatch
+):
     current = make_entry()
     monkeypatch.setattr(config, "BUILTIN_ENTRIES", {"australia": current})
     monkeypatch.delenv("SNOW_DOCS_INDEX_URL", raising=False)

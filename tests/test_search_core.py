@@ -172,7 +172,9 @@ def test_a_page_header_reads_as_title_and_description() -> None:
     assert S.snippet("---\nno fields here", 0) == "--- no fields here"
 
 
-def test_the_reranker_reads_only_the_start_of_each_candidate(fixture_db, fake_models, monkeypatch) -> None:
+def test_the_reranker_reads_only_the_start_of_each_candidate(
+    fixture_db, fake_models, monkeypatch
+) -> None:
     from snow_docs_mcp import models
 
     monkeypatch.setattr(models, "RERANK_CHARS", 20)
