@@ -1188,11 +1188,8 @@ def _api_table(db) -> api_table.ApiTable:
     """The index's API reference as a table, parsed once per index file (well under a second)."""
     key = str(db)
     if key not in _api_tables:
-        pages = store.documents(db, api_table.API_PREFIX)
-        members = [m for path, text in pages for m in api_table.parse_page(path, text)]
-        endpoints = [e for path, text in pages for e in api_table.parse_rest_page(path, text)]
         _api_tables.clear()  # one index at a time is enough; a new snapshot replaces the old
-        _api_tables[key] = api_table.ApiTable(members, endpoints)
+        _api_tables[key] = api_table.load(db)
     return _api_tables[key]
 
 

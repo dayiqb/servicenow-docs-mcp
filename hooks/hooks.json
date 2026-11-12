@@ -19,6 +19,27 @@
           }
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv",
+            "args": [
+              "run",
+              "--frozen",
+              "--quiet",
+              "--directory",
+              "${CLAUDE_PLUGIN_ROOT}",
+              "python",
+              "hooks/servicenow_script_check.py"
+            ],
+            "timeout": 20
+          }
+        ]
+      }
     ]
   }
 }

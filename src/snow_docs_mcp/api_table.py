@@ -324,6 +324,16 @@ def parse_page(file_path: str, text: str) -> list[Member]:
     return [m for m in members if m.kind == "method" or m.class_name in classes]
 
 
+def load(db_path) -> ApiTable:
+    """The API reference of one index as a table (parsing takes about half a second)."""
+    from snow_docs_mcp import store
+
+    pages = store.documents(db_path, API_PREFIX)
+    members = [m for path, text in pages for m in parse_page(path, text)]
+    endpoints = [e for path, text in pages for e in parse_rest_page(path, text)]
+    return ApiTable(members, endpoints)
+
+
 def _base(class_name: str) -> str:
     """'Scoped GlideRecord' and 'GlideForm (Next Experience)' -> 'gliderecord', 'glideform'."""
     name = class_name.strip()
@@ -345,6 +355,7 @@ class ApiTable:
         ] = {}  # base -> class as written -> members
         self.by_method: dict[str, list[Member]] = {}  # lowercase method name -> members
         self.display: dict[str, str] = {}  # base -> the class name without its variant
+        self.names: set[str] = set()  # class names as the docs write them, exact case
         for m in members:
             base = _base(m.class_name)
             self.by_class.setdefault(base, {}).setdefault(m.class_name, []).append(m)
@@ -352,6 +363,7 @@ class ApiTable:
             plain = _VARIANT.sub("", m.class_name).strip()
             if base not in self.display or len(plain) < len(self.display[base]):
                 self.display[base] = plain
+            self.names.update((plain, m.class_name))
 
     def __len__(self) -> int:
         return sum(len(v) for v in self.by_method.values())
@@ -396,6 +408,23 @@ class ApiTable:
         # a plain name means every variant; "Scoped GlideRecord" means that one
         exact = {c: ms for c, ms in variants.items() if c.lower() == wanted and wanted != base}
         return base, exact or variants
+
+    def member(self, class_name: str, method: str) -> tuple[str, bool, list[str]] | None:
+        """(the class as the docs name it, whether it documents `method`, the closest
+        names when it does not); None when `class_name` is neither a class nor a variable
+        that holds one. Class and method names are matched exactly, as JavaScript does."""
+        if class_name not in VARIABLES and class_name not in self.names:
+            return None
+        hit = self._class(class_name)
+        if not hit:
+            return None
+        base, variants = hit
+        names = sorted({m.name for ms in variants.values() for m in ms})
+        display = self.display[base]
+        if method in names:
+            return display, True, []
+        close = difflib.get_close_matches(method, names, n=3, cutoff=0.6)
+        return display, False, [f"{display}.{c}" for c in close]
 
     def find(self, name: str) -> tuple[str, object]:
         """("class", {class as written: members}), ("method", [members]) or

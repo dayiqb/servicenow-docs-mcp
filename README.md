@@ -115,6 +115,16 @@ together. Other messages are left alone. The hook never blocks a message; turn i
 the environment variable `SNOW_DOCS_PROMPT_HOOK=off`. (The hook comes with the plugin, in
 Claude Code; in Claude Desktop the extension's built-in instructions do the same job.)
 
+**Script check, automatically.** A second hook runs after Claude writes or edits a file with
+ServiceNow script code (JavaScript, TypeScript, exported XML, widget HTML). It looks up every
+call it can name a class for, such as `gr.addEncodedQuery()` on a variable assigned
+`new GlideRecord(...)`, or calls on `gs`, `current` and `g_form`, in the API reference, and
+tells Claude which ones are not documented, with the closest documented names. Claude then
+fixes the code or tells you the method is undocumented. It takes about a second, never blocks
+a write and stays silent for code that checks out; turn it off with
+`SNOW_DOCS_SCRIPT_HOOK=off`. (Claude Code only; in Claude Desktop the instructions tell Claude
+to check methods with `snow_docs_api` itself.)
+
 ## Compare releases
 
 Ask what changes between the two releases, for example *"What changes for Document Intelligence
