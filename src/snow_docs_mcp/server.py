@@ -18,6 +18,8 @@ rules it should follow are sent as server instructions (ANSWER_RULES).
 Console script `snow-docs-mcp`:
     snow-docs-mcp                       serve MCP over stdio (what Claude apps launch)
     snow-docs-mcp setup [RELEASE|all]   download docs index(es) and models now, with progress
+    snow-docs-mcp check-index --australia PATH --brazil PATH
+                                        count what the tools find in an index (maintainers)
 
 stdout (fd 1) is the protocol wire: nothing but JSON-RPC frames may reach it; all logging
 goes to stderr. Background setup starts from the server's lifespan, i.e. inside the SDK's
@@ -1486,6 +1488,10 @@ def main(argv: list[str] | None = None) -> None:
 
     if args[:1] == ["setup"]:
         sys.exit(_run_setup_cli(args[1:]))
+    if args[:1] == ["check-index"]:
+        from snow_docs_mcp import health
+
+        sys.exit(health.run_cli(args[1:]))
     if args[:1] in (["-h"], ["--help"]):
         print(__doc__, file=sys.stderr)
         return
