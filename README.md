@@ -129,6 +129,18 @@ page metadata and links are ignored, and small rewordings are counted but not li
 releases' docs must be downloaded; the first comparison starts the download of the one that is
 missing.
 
+## Upgrade review
+
+Ask for an upgrade checklist, for example *"What do we need to check for Document Intelligence
+before we upgrade from Australia to Brazil?"* Claude finds the product's page in ServiceNow's
+combined release notes, reads all of it, and writes a checklist with a citation on every item:
+before and after the upgrade, new features, changed behavior, removed and deprecated, and
+activation and requirements. Where the release notes say there are no updates, the checklist says
+so.
+
+In Claude Code this is the `servicenow-upgrade-review` skill, used automatically. In Claude
+Desktop, pick the `upgrade_review` prompt and enter the product name, or just ask.
+
 ## Troubleshooting
 
 | Problem | Fix |

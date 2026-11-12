@@ -46,7 +46,7 @@ BR_DOCS = {
     ),
     "markdown/itsm/big.md": _big("br"),
     NOTES_PAGE: "# Incident release notes\n\n## New\n\nPriority lookup rules replace the fixed "
-    "matrix.\n",
+    "matrix.\n\n## Changes\n\nPriority lookup rules can be maintained per assignment group.\n",
 }
 BR_CHUNKS = [
     CHUNKS[0],
@@ -57,6 +57,12 @@ BR_CHUNKS = [
         "Incident release notes > New",
         "Release notes for incident.",
         "Priority lookup rules replace the fixed matrix.",
+    ),
+    (
+        NOTES_PAGE,
+        "Incident release notes > Changes",
+        "Release notes for incident.",
+        "Priority lookup rules can be maintained per assignment group.",
     ),
 ]
 
@@ -319,3 +325,10 @@ def test_sections_dropped_for_size_are_the_least_changed():
     kept = [s.changed_words for s in result.changed_pages[0].sections]
     assert 0 < len(kept) < 80 and min(kept) == 88 - len(kept)
     assert kept == sorted(kept), "page order is kept"
+
+
+def test_release_notes_give_one_passage_per_page(both):
+    r = call("snow_docs_compare", query="priority lookup rules")
+    pages = [h["id"].split("::")[0] for h in r["release_notes"]]
+    assert pages == [f"brazil:{NOTES_PAGE}"], pages
+    assert "1 release-notes page" in r["message"]

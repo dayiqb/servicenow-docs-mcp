@@ -9,6 +9,7 @@ Tools (all read-only):
 
 Prompt:
     answer             answer a question from the docs, with citations
+    upgrade_review     a cited checklist for upgrading one product from Australia to Brazil
 
 Answers are written by the Claude that calls these tools; the server only retrieves. The
 rules it should follow are sent as server instructions (ANSWER_RULES).
@@ -52,7 +53,7 @@ from snow_docs_mcp import config, identifiers, models, products, sections, setup
 from snow_docs_mcp.compare import compare_pages
 from snow_docs_mcp.read import ReadResult as _ReadResult
 from snow_docs_mcp.read import not_an_id, page_url, read_section
-from snow_docs_mcp.search import make_id, parse_id, run_search, snippet, strip_blurb
+from snow_docs_mcp.search import ID_SEPARATOR, make_id, parse_id, run_search, snippet, strip_blurb
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +74,37 @@ When answering a ServiceNow question with them:
 7. For a question about what changes between Australia and Brazil (an upgrade, what's new),
    call snow_docs_compare first. Lead with its release notes, then the changed sections; cite
    ids as usual, and say that small rewordings are not listed."""
+
+# The upgrade review recipe: the `upgrade_review` prompt, manifest.json and the
+# servicenow-upgrade-review skill carry this text word for word (tests keep them in step).
+UPGRADE_REVIEW_RULES = """\
+Write an upgrade review: what to check for one ServiceNow product when upgrading from
+Australia to Brazil. Use only the ServiceNow docs tools; do not fill gaps from memory.
+1. Call snow_docs_compare with the product name as `query`. `release_notes` has one passage
+   per page; each page is "Combined <application> release notes for upgrades from Australia to
+   Brazil". Release notes are per application, so a product often has several pages (the
+   application, its workspace, its AI skills): use every page that belongs to what the user
+   asked about, and name the pages you used. If none fits, try the product's other names once
+   (abbreviation, old name). If there is still none, say that the release notes have no page for
+   this product, and stop.
+2. For each page, call snow_docs_read with the passage's id cut off after "::" (this returns
+   the whole page). If the result is truncated, read it again with max_chars 100000.
+3. Write the checklist in these parts, in this order, one line per item, each ending with its
+   citation [id]:
+   - Before and after the upgrade (the page's "Important information for upgrading")
+   - New features to evaluate ("New features")
+   - Changed behavior ("Changes")
+   - Removed and deprecated ("Removed", "Deprecations")
+   - Activation and requirements ("Activation information", "Additional requirements")
+   Take items only from the Brazil rows of the page. Where the page says
+   "No updates for this release", write that for the part instead of leaving it out.
+4. Add a part "Changed in the documentation" with the `changed_pages` from step 1, if there are
+   any, and say that small rewordings are not listed.
+5. If a tool for the user's own ServiceNow instance is connected, ask before using it. With a
+   yes, look up the instance's release and installed applications, and mark the items that
+   apply to this instance.
+6. End with what the review does not cover: customizations, integrations and other products.
+Answer in the user's language; keep product, feature and field names as the docs write them."""
 
 READ_ONLY = ToolAnnotations(read_only_hint=True, idempotent_hint=True, open_world_hint=False)
 
@@ -591,7 +623,7 @@ def snow_docs_read(id: str, max_chars: int = 20000) -> ReadResult:
 FROM_RELEASE, TO_RELEASE = "australia", "brazil"
 # ServiceNow's combined release notes for upgrades from Australia to Brazil (Brazil docs only).
 RELEASE_NOTES_PREFIX = "markdown/delta-australia-brazil/"
-RELEASE_NOTES_HITS = 3
+RELEASE_NOTES_HITS = 5  # pages: release notes are per application, a product often has several
 COMPARE_CANDIDATE_PAGES = 15  # pages a query compares: the top search hits of both releases
 COMPARE_MAX_CHARS = 12000  # the whole result, as JSON
 _SHORT_EXCERPT = 150
@@ -792,11 +824,13 @@ def _compare(q: str, page: str, product: str | None, limit: int, dbs: dict) -> C
             source_filter=RELEASE_NOTES_PREFIX,
             query_text=q,
         )
-        result.release_notes = [
-            h
-            for h in _distinct_hits(dbs[TO_RELEASE], TO_RELEASE, note_hits, RELEASE_NOTES_HITS)
-            if h.score >= WEAK_SCORE
-        ]
+        seen_pages: set[str] = set()
+        for h in _distinct_hits(dbs[TO_RELEASE], TO_RELEASE, note_hits, len(note_hits)):
+            note_page = h.id.split(ID_SEPARATOR, 1)[0]
+            if h.score >= WEAK_SCORE and note_page not in seen_pages:  # the best passage per page
+                seen_pages.add(note_page)
+                result.release_notes.append(h)
+        del result.release_notes[RELEASE_NOTES_HITS:]
         candidates = _candidate_pages(dbs, q, prefix)
         compared = len(candidates)
         pages = []
@@ -816,9 +850,9 @@ def _compare(q: str, page: str, product: str | None, limit: int, dbs: dict) -> C
     parts = []
     if not page:
         parts.append(
-            _count(len(result.release_notes), "release-notes passage")
+            _count(len(result.release_notes), "release-notes page")
             if result.release_notes
-            else "No release-notes passages matched"
+            else "No release-notes pages matched"
         )
     if result.changed_pages:
         parts.append(_count(len(result.changed_pages), "changed page"))
@@ -982,6 +1016,12 @@ def snow_docs_status() -> StatusResult:
 def answer(question: str) -> str:
     """Answer a ServiceNow question from the official docs, with citations."""
     return f"{ANSWER_RULES}\n\nQuestion: {question}"
+
+
+@mcp.prompt(name="upgrade_review", title="Upgrade review: Australia to Brazil")
+def upgrade_review(product: str) -> str:
+    """Write a cited checklist of what to check for a product when upgrading to Brazil."""
+    return f"{UPGRADE_REVIEW_RULES}\n\nProduct: {product}"
 
 
 # --- process entry points -----------------------------------------------------------------

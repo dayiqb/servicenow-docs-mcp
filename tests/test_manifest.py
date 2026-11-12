@@ -32,7 +32,7 @@ def test_manifest_lists_exactly_the_registered_tools_and_prompts() -> None:
 
 
 def test_manifest_prompt_text_is_the_servers_answer_rules() -> None:
-    (prompt,) = MANIFEST["prompts"]
+    prompt = next(p for p in MANIFEST["prompts"] if p["name"] == "answer")
     assert prompt["arguments"] == ["question"]
     assert prompt["text"] == f"{ANSWER_RULES}\n\nQuestion: ${{arguments.question}}"
 
@@ -173,3 +173,18 @@ def test_instructions_and_readme_name_the_compare_tool() -> None:
     assert "snow_docs_compare" in ANSWER_RULES
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     assert "snow_docs_compare" in readme and "## Compare releases" in readme
+
+
+def test_upgrade_review_text_is_the_same_in_prompt_manifest_and_skill() -> None:
+    from snow_docs_mcp.server import UPGRADE_REVIEW_RULES
+
+    prompt = next(p for p in MANIFEST["prompts"] if p["name"] == "upgrade_review")
+    assert prompt["arguments"] == ["product"]
+    assert prompt["text"] == f"{UPGRADE_REVIEW_RULES}\n\nProduct: ${{arguments.product}}"
+    skill = (ROOT / "skills" / "servicenow-upgrade-review" / "SKILL.md").read_text(encoding="utf-8")
+    assert skill.startswith("---\nname: servicenow-upgrade-review\ndescription: ")
+    assert UPGRADE_REVIEW_RULES in skill
+    for needed in ("snow_docs_compare", "snow_docs_read", "No updates for this release", "[id]"):
+        assert needed in UPGRADE_REVIEW_RULES
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "upgrade_review" in readme and "servicenow-upgrade-review" in readme

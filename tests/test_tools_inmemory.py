@@ -80,7 +80,7 @@ def test_surface_tools_annotations_prompt_and_instructions(ready) -> None:
         assert tool.description and len(tool.description) > 60, tool.name
     search = next(t for t in tools.tools if t.name == "snow_docs_search")
     assert "release" in search.input_schema["properties"]
-    assert [p.name for p in prompts.prompts] == ["answer"]
+    assert [p.name for p in prompts.prompts] == ["answer", "upgrade_review"]
     text = prompt.messages[0].content.text
     assert "How do SLAs pause?" in text and "Cite every factual claim" in text
     assert "australia" in ANSWER_RULES and "brazil" in ANSWER_RULES
@@ -399,3 +399,13 @@ def test_status_is_not_ok_while_the_models_download(ready) -> None:
     assert not s.models_on_disk(), "a half-downloaded file means not ready"
     (blob / "abc123.incomplete").unlink()
     assert s.models_on_disk()
+
+
+def test_upgrade_review_prompt_names_the_product_and_the_steps(ready) -> None:
+    async def go():
+        async with Client(mcp) as client:
+            return await client.get_prompt("upgrade_review", {"product": "Document Intelligence"})
+
+    text = anyio.run(go).messages[0].content.text
+    assert text.endswith("Product: Document Intelligence")
+    assert "snow_docs_compare" in text and "Australia to Brazil" in text
