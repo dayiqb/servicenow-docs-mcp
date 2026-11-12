@@ -42,11 +42,16 @@ class PageDiff:
     minor: int  # changed sections below the threshold
 
 
-def comparable(text: str) -> str:
+def comparable(text: str, *, link_text: bool = False) -> str:
     """Text reduced to what counts as documentation: no front matter, links, URLs, generated
-    table attributes or layout whitespace."""
+    table attributes or layout whitespace. `link_text` keeps each link's text.
+
+    The releases render links two ways: one drops a link's text where the other has it, or
+    one has plain text where the other has a link. Dropping links hides the first, keeping
+    their text hides the second, so a section counts as changed only when it differs both ways.
+    """
     text = sections.strip_front_matter(text)
-    text = _LINK.sub("", text)
+    text = sections.unlink(text) if link_text else _LINK.sub("", text)
     text = _URL.sub("", text)
     text = _GENERATED_ATTR.sub("", text)
     return _WS.sub(" ", text).strip()
@@ -87,9 +92,22 @@ def _changed_words_by_line(a: str, b: str) -> int:
     return total
 
 
-def _line_comparable(body: str) -> str:
+def _line_comparable(body: str, link_text: bool) -> str:
     """Like `comparable`, but keeping line breaks (for the by-line comparison)."""
-    return "\n".join(c for line in body.splitlines() if (c := comparable(line)))
+    lines = (comparable(line, link_text=link_text) for line in body.splitlines())
+    return "\n".join(c for c in lines if c)
+
+
+def _section_change(a: str, b: str, link_text: bool) -> int:
+    """Changed words between two versions of a section body (0 = the same)."""
+    ca, cb = comparable(a, link_text=link_text), comparable(b, link_text=link_text)
+    if ca == cb:
+        return 0
+    if max(len(ca.split()), len(cb.split())) > LINE_MODE_WORDS:
+        return _changed_words_by_line(
+            _line_comparable(a, link_text), _line_comparable(b, link_text)
+        )
+    return _changed_words(ca, cb)
 
 
 def _excerpt(words: list[str], start: int, max_chars: int) -> str:
@@ -125,13 +143,9 @@ def compare_pages(
                 shown = _excerpt(_display(body).split(), 0, excerpt_chars)
                 listed.append(SectionChange(crumb, occ, "added", len(words), "", shown))
             continue
-        ca, cb = comparable(old[key]), comparable(body)
-        if ca == cb:
+        n = min(_section_change(old[key], body, lt) for lt in (False, True))
+        if n == 0:
             continue
-        if max(len(ca.split()), len(cb.split())) > LINE_MODE_WORDS:
-            n = _changed_words_by_line(_line_comparable(old[key]), _line_comparable(body))
-        else:
-            n = _changed_words(ca, cb)
         if n < minor_words:
             minor += 1
             continue

@@ -4,12 +4,13 @@ Ask Claude questions about ServiceNow and get answers taken from the **official 
 documentation**, for the **Australia** and **Brazil** releases, each claim with a citation you can
 open.
 
-It adds three read-only tools to Claude:
+It adds four read-only tools to Claude:
 
 | Tool | What it does |
 |---|---|
 | `snow_docs_search` | Finds the most relevant documentation passages for a question |
 | `snow_docs_read` | Opens the full section behind a search result |
+| `snow_docs_compare` | Shows what changed between the Australia and Brazil docs for a topic or page |
 | `snow_docs_status` | Shows download/update progress and which docs snapshot is loaded |
 
 Claude writes the answer from the passages and cites them. The server itself runs no AI model
@@ -112,6 +113,21 @@ client script, update set, CMDB, ITSM, ACL, catalog item, …) count only when t
 together. Other messages are left alone. The hook never blocks a message; turn it off with
 the environment variable `SNOW_DOCS_PROMPT_HOOK=off`. (The hook comes with the plugin, in
 Claude Code; in Claude Desktop the extension's built-in instructions do the same job.)
+
+## Compare releases
+
+Ask what changes between the two releases, for example *"What changes for Document Intelligence
+when we upgrade from Australia to Brazil?"* Claude calls `snow_docs_compare` and gets back:
+
+- **Release notes.** The matching passages from ServiceNow's own combined release notes for
+  upgrades from Australia to Brazil.
+- **Changed pages.** The documentation pages on that topic whose text differs between the
+  releases, section by section (added, removed or changed), with an excerpt from each release.
+
+To compare one page, give Claude its path or a citation from an earlier answer. Differences in
+page metadata and links are ignored, and small rewordings are counted but not listed. Both
+releases' docs must be downloaded; the first comparison starts the download of the one that is
+missing.
 
 ## Troubleshooting
 

@@ -69,7 +69,10 @@ When answering a ServiceNow question with them:
 3. Cite every factual claim with the passage id in square brackets, e.g. [australia:markdown/...md::Heading]; when a result has a url, you may also link it.
 4. Before giving step-by-step instructions, call snow_docs_read on the id to get the full section.
 5. If the docs do not cover the question, or only cover a different release or product, say so plainly.
-6. If two sources disagree, point out the conflict and cite both."""
+6. If two sources disagree, point out the conflict and cite both.
+7. For a question about what changes between Australia and Brazil (an upgrade, what's new),
+   call snow_docs_compare first. Lead with its release notes, then the changed sections; cite
+   ids as usual, and say that small rewordings are not listed."""
 
 READ_ONLY = ToolAnnotations(read_only_hint=True, idempotent_hint=True, open_world_hint=False)
 

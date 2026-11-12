@@ -20,6 +20,10 @@ Answer ServiceNow questions from the official product documentation, not from me
 4. If the docs don't cover the question, or only cover another release or product, say
    so plainly instead of guessing.
 5. If sources disagree, point out the conflict and cite both.
+6. For a question about what changes between Australia and Brazil (an upgrade, what's
+   new), call `snow_docs_compare` with the topic, or with `page` for one page. Lead with
+   the release notes it returns, then the changed sections, and say that small
+   rewordings are not listed.
 
 If a tool says the docs are still being set up, tell the user it's a one-time download
 and to try again in a minute or two; `snow_docs_status` shows progress.

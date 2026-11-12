@@ -78,7 +78,7 @@ def test_plugin_launches_the_server_from_its_own_folder() -> None:
 def test_plugin_skill_exists_and_names_the_tools() -> None:
     skill = (ROOT / "skills" / "servicenow-docs" / "SKILL.md").read_text(encoding="utf-8")
     assert skill.startswith("---\nname: servicenow-docs\ndescription: ")
-    for tool in ("snow_docs_search", "snow_docs_read", "snow_docs_status"):
+    for tool in ("snow_docs_search", "snow_docs_read", "snow_docs_compare", "snow_docs_status"):
         assert tool in skill
 
 
@@ -159,3 +159,17 @@ def test_plugin_server_and_hooks_avoid_desktop_reserved_env_names() -> None:
             assert not upper.startswith(DESKTOP_RESERVED_PREFIXES), name
     # system certificates for uv's own downloads, as a flag instead (any uv version)
     assert plugin["mcpServers"]["servicenow-docs"]["args"][:2] == ["run", "--native-tls"]
+
+
+def test_version_is_0_1_7_everywhere() -> None:
+    plugin = json.loads((ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
+    market = json.loads((ROOT / ".claude-plugin" / "marketplace.json").read_text(encoding="utf-8"))
+    versions = {__version__, MANIFEST["version"], plugin["version"]}
+    versions |= {p["version"] for p in market["plugins"]}
+    assert versions == {"0.1.7"}
+
+
+def test_instructions_and_readme_name_the_compare_tool() -> None:
+    assert "snow_docs_compare" in ANSWER_RULES
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "snow_docs_compare" in readme and "## Compare releases" in readme

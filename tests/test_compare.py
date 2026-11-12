@@ -95,3 +95,10 @@ def test_excerpt_starts_near_the_first_difference_and_is_cut():
     (s,) = compare_pages(a, b, excerpt_chars=120).sections
     assert s.after.startswith("…") and "new and much longer" in s.after
     assert len(s.before) <= 122 and len(s.after) <= 122
+
+
+def test_link_in_one_release_and_plain_text_in_the_other_is_no_change():
+    words = "Parent topic for integrating the two applications across every product area"
+    a = BASE.replace("Open the form.", f"See [{words}](https://x/a.md).")
+    b = BASE.replace("Open the form.", f"See {words}.")
+    assert compare_pages(a, b) == PageDiff([], 0)
