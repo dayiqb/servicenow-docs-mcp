@@ -777,29 +777,38 @@ _GENERIC_WORDS = frozenset(
 
 
 def _notes_by_name(db, q: str, already: set[str]) -> list[NotesPage]:
-    """Release-notes pages whose application name shares a word with the query: search
-    misses a page when the docs call the product something else ("Flow Designer" is under
-    "Flows, subflows, and actions"), and one product often has several pages. A query word
-    matches a name word it begins (hr -> HRSD, flow -> Flows). Best matches first."""
+    """Release-notes pages found by application name: search misses a page when the docs
+    call the product something else ("Flow Designer" is under "Flows, subflows, and
+    actions"), and one product often has several pages. A query word matches a name word it
+    begins (hr -> HRSD, flow -> Flows). A page must contain the rarest query word that occurs
+    in any name: in "HR Service Delivery", "hr" names the product, "delivery" would also bring
+    in Legal and Workplace Service Delivery. Pages with more matching words come first."""
     words = {w for w in _WORD_RE.findall(q.lower()) if len(w) > 1 and w not in _GENERIC_WORDS}
     if not words:
         return []
-    found: list[tuple[int, str, str]] = []
+    pages: list[tuple[str, str, set[str]]] = []  # (path, application, the query words it has)
     for path in store.page_paths(db)[0]:
-        if not path.startswith(RELEASE_NOTES_PREFIX) or f"{TO_RELEASE}:{path}" in already:
+        if not path.startswith(RELEASE_NOTES_PREFIX):
             continue
-        m = _NOTES_TITLE.match(
-            sections.front_matter_value(store.get_document(db, path) or "", "title")
-        )
-        if not m:
-            continue
-        name_words = _WORD_RE.findall(m.group(1).lower())
-        hits = sum(any(n.startswith(w) for n in name_words) for w in words)
-        if hits:
-            found.append((-hits, m.group(1), path))
+        title = sections.front_matter_value(store.get_document(db, path) or "", "title")
+        m = _NOTES_TITLE.match(title)
+        if m:
+            name_words = _WORD_RE.findall(m.group(1).lower())
+            has = {w for w in words if any(n.startswith(w) for n in name_words)}
+            pages.append((path, m.group(1), has))
+    in_names = {w: sum(w in has for _, _, has in pages) for w in words}
+    counts = [n for n in in_names.values() if n]
+    if not counts:
+        return []
+    rarest = {w for w, n in in_names.items() if n == min(counts)}
+    found = sorted(
+        (-len(has), name, path)
+        for path, name, has in pages
+        if has & rarest and f"{TO_RELEASE}:{path}" not in already
+    )
     return [
         NotesPage(id=make_id(TO_RELEASE, path, ""), application=name)
-        for _, name, path in sorted(found)[:MORE_RELEASE_NOTES]
+        for _, name, path in found[:MORE_RELEASE_NOTES]
     ]
 
 

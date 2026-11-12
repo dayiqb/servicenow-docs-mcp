@@ -54,9 +54,13 @@ WORKSPACE_NOTES = (
 FLOWS_NOTES = (
     "markdown/delta-australia-brazil/brazil-australia-flowssubflowsandactions-release-notes.md"
 )
+_DELTA = "markdown/delta-australia-brazil/brazil-australia-"
 for _path, _app in (
     (WORKSPACE_NOTES, "Incident Workspace"),
     (FLOWS_NOTES, "Flows, subflows, and actions"),
+    (_DELTA + "agentworkspaceforhr-release-notes.md", "Agent Workspace for HR Case Handling"),
+    (_DELTA + "legaldelivery-release-notes.md", "Legal Service Delivery"),
+    (_DELTA + "workplacedelivery-release-notes.md", "Workplace Service Delivery"),
 ):
     BR_DOCS[_path] = (
         f"---\ntitle: Combined {_app} release notes for upgrades from Australia to Brazil\n---\n\n"
@@ -368,3 +372,11 @@ def test_a_name_that_search_misses_still_finds_its_release_notes_page(both):
 def test_generic_words_do_not_match_every_release_notes_page(both):
     r = call("snow_docs_compare", query="service management for the release")
     assert r["more_release_notes"] == []
+
+
+def test_by_name_matches_must_contain_the_rarest_query_word(both):
+    both.rerank_scores = {"": -5.0}
+    r = call("snow_docs_compare", query="HR Service Delivery")
+    assert [m["application"] for m in r["more_release_notes"]] == [
+        "Agent Workspace for HR Case Handling"
+    ]
