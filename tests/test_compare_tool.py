@@ -359,6 +359,7 @@ def test_release_notes_pages_are_also_found_by_application_name(both):
 
 
 def test_a_name_that_search_misses_still_finds_its_release_notes_page(both):
+    both.rerank_scores = {"": -5.0}  # search finds nothing relevant
     r = call("snow_docs_compare", query="Flow Designer")
     assert [m["application"] for m in r["more_release_notes"]] == ["Flows, subflows, and actions"]
     assert r["message"].startswith("1 release-notes page found by name (more_release_notes)")
