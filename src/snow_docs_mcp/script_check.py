@@ -433,8 +433,35 @@ def review(
             scope = _Scope(*body, block=name == "catch")
             functions.append(_Function(m.start(), scope, (m.end(), close)))
     opens = {close: open_ for open_, close in pairs.items()}
+    arrows: list[int] = []
     arrow = code.find("=>")
     while arrow >= 0:
+        arrows.append(arrow)
+        arrow = code.find("=>", arrow + 2)
+    # Where each arrow's body starts and ends. Worked out from the last arrow to the first: an
+    # expression body runs to the comma, bracket or semicolon that ends it, and when it meets
+    # the body of a later arrow (`a => b => c => ...`) it ends where that one does, instead of
+    # reading the rest of the file again for every arrow.
+    body_of: dict[int, tuple[int, int]] = {}
+    ends: dict[int, int] = {}  # body start -> body end
+    for arrow in reversed(arrows):
+        start = arrow + 2
+        while start < n and code[start].isspace():
+            start += 1
+        if start < n and code[start] == "{" and start in pairs:
+            end = pairs[start] + 1
+        else:
+            end = start
+            while end < n and code[end] not in ",;)]}":
+                if ends.get(end, end) > end:
+                    end = ends[end]
+                elif code[end] in "([{":
+                    end = pairs.get(end, n - 1) + 1
+                else:
+                    end += 1
+        body_of[arrow] = (start, end)
+        ends[start] = end
+    for arrow in arrows:
         before = code[max(0, arrow - 400) : arrow]
         params: tuple[int, int] | None = None
         single = ""
@@ -448,18 +475,8 @@ def review(
             m = _ARROW_NAME.search(before)
             if m:
                 single, header = m.group(1), arrow - len(before) + m.start(1)
-        start = arrow + 2
-        while start < n and code[start].isspace():
-            start += 1
-        if start < n and code[start] == "{" and start in pairs:
-            end = pairs[start] + 1
-        else:  # an expression: up to the comma, bracket or semicolon that ends it
-            end = start
-            while end < n and code[end] not in ",;)]}":
-                end = pairs.get(end, n - 1) + 1 if code[end] in "([{" else end + 1
         if params or single:
-            functions.append(_Function(header, _Scope(start, end), params, single))
-        arrow = code.find("=>", arrow + 2)
+            functions.append(_Function(header, _Scope(*body_of[arrow]), params, single))
 
     scopes = sorted((f.scope for f in functions), key=lambda s: (s.start, -s.end))
     open_scopes = [root]

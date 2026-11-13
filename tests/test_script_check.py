@@ -435,3 +435,17 @@ def test_service_portal_services_are_handed_to_a_controller_by_name():
     table = ApiTable(TABLE_MEMBERS + parse_page("sp.md", sp))
     code = "api.controller = function($scope, spUtil, $http) { spUtil.recordWatch($scope); spUtil.recordWach($scope); $http.get('/x'); };"
     assert [f.call for f in check(code, table)] == ["spUtil.recordWach"]
+
+
+def test_many_arrow_functions_in_a_row_are_fast():
+    """A minified file is thousands of arrows; each one's body used to be scanned to the end
+    of the file (90,000 characters took 34 seconds, past the hook's timeout)."""
+    import time
+
+    from snow_docs_mcp.script_check import review
+
+    curried = "var gr = new GlideRecord('incident');\n" + "a=>" * 30000 + "gr.qurey()"
+    started = time.monotonic()
+    found = review(curried, TABLE)
+    assert time.monotonic() - started < 2.0
+    assert [f.call for f in found.findings] == ["GlideRecord.qurey"]
