@@ -263,3 +263,28 @@ def test_the_sources_pane_mod_is_complete_and_not_yet_offered_for_install() -> N
     assert (mod / "types" / "index.d.ts").is_file() and (mod / "README.md").is_file()
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     assert "servicenow-docs-sources" in readme and "/docs-sources" in readme
+
+
+def test_the_bundle_holds_only_what_the_extension_needs() -> None:
+    """Local folders that git never sees (.claude with other sessions' worktrees, .superpowers
+    with scratch files) were packed into the bundle: 524 KB instead of 220. They are ignored
+    by name, and the build fails on anything that is not on its list."""
+    ignored = (ROOT / ".mcpbignore").read_text(encoding="utf-8").split()
+    for folder in (".claude/", ".superpowers/"):
+        assert folder in ignored
+    build = (ROOT / "scripts" / "build_mcpb.sh").read_text(encoding="utf-8")
+    assert "ALLOWED=" in build and "not on the list" in build
+    allowed = build.split('ALLOWED="', 1)[1].split('"', 1)[0].split()
+    assert sorted(allowed) == sorted(
+        [
+            "src",
+            "server",
+            "manifest.json",
+            "pyproject.toml",
+            "uv.lock",
+            "README.md",
+            "NOTICE",
+            "LICENSE",
+            ".python-version",
+        ]
+    )

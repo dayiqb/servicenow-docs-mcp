@@ -40,11 +40,13 @@ import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
-# The repo that must NOT be reachable from the extracted copy. Derived from PROJECT_ROOT so a
-# rename cannot silently make the leak check vacuous; the literal fragments below are a
+# The checkout that must NOT be reachable from the extracted copy: its full path, so a rename
+# cannot silently make the leak check vacuous. (This used to be the name of the folder two
+# levels up, from when the project lived inside the research repo; in a checkout of its own
+# that is the home folder, and every path matched.) The literal fragments are a
 # belt-and-braces second form for the case where a path reaches the copy by some other route.
-REPO_ROOT = PROJECT_ROOT.parents[1]
-REPO_PATH_FRAGMENTS = (REPO_ROOT.name, "docs-rag-frontier", "docs-rag-mcp")
+REPO_ROOT = PROJECT_ROOT
+REPO_PATH_FRAGMENTS = (str(PROJECT_ROOT), "docs-rag-frontier", "docs-rag-mcp")
 
 ENV_FLAG = "SNOW_DOCS_EXTRACTION_TEST"
 

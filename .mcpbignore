@@ -18,3 +18,5 @@ hooks/
 agents/
 commands/
 mods/
+.claude/
+.superpowers/
