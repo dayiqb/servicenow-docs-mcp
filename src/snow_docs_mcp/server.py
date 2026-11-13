@@ -13,6 +13,7 @@ Tools (all read-only):
 Prompt:
     answer             answer a question from the docs, with citations
     upgrade_review     a cited checklist for upgrading one product from Australia to Brazil
+    setup_checklist    a cited, ordered checklist for setting up one feature
 
 Answers are written by the Claude that calls these tools; the server only retrieves. The
 rules it should follow are sent as server instructions (ANSWER_RULES).
@@ -129,6 +130,34 @@ Australia to Brazil. Use only the ServiceNow docs tools; do not fill gaps from m
    apply to this instance.
 6. End with what the review does not cover: customizations, integrations and other products.
 Answer in the user's language; keep product, feature and field names as the docs write them."""
+
+# The setup checklist recipe: the `setup_checklist` prompt, manifest.json and the
+# servicenow-setup-checklist skill carry this text word for word (tests keep them in step).
+SETUP_CHECKLIST_RULES = """\
+Write a setup checklist: the steps to set up one ServiceNow feature, in order, taken from
+the docs. Use only the ServiceNow docs tools; do not fill gaps from memory.
+1. Find the pages. Call snow_docs_search with the feature and words such as "set up",
+   "configure" and "activate". If the feature is a product or an application, also call
+   snow_docs_browse for its folder and pick the setup, configuration, installation and
+   administration pages by title.
+2. Read every page you take a step from with snow_docs_read (the section, or the whole page
+   with the id cut off after "::"). Follow "Before you begin" and "What to do next" to the
+   pages they name, and read those too.
+3. Write the checklist in these parts, in this order, each item ending with its citation [id]:
+   - Before you start: plugins or store applications to activate, licenses, the roles needed
+     to do the setup, and other features it depends on.
+   - Steps: numbered, in the order the docs give, one action per step, with the navigation
+     path and the role where the docs state them.
+   - Check that it works: how the docs say to verify the result. If they do not say, write
+     that.
+   - Next: optional configuration the docs point to.
+4. Where the docs for the user's release (Australia unless they say Brazil) lack a step, say
+   so instead of filling it in. If two pages disagree, show both.
+5. If a tool for the user's own ServiceNow instance is connected, ask before using it. With a
+   yes, look up which plugins are active and which roles the user has, and mark the items
+   that are already done.
+Answer in the user's language; keep navigation paths, field names and role names as the docs
+write them."""
 
 READ_ONLY = ToolAnnotations(read_only_hint=True, idempotent_hint=True, open_world_hint=False)
 
@@ -1657,6 +1686,12 @@ def answer(question: str) -> str:
 def upgrade_review(product: str) -> str:
     """Write a cited checklist of what to check for a product when upgrading to Brazil."""
     return f"{UPGRADE_REVIEW_RULES}\n\nProduct: {product}"
+
+
+@mcp.prompt(name="setup_checklist", title="Setup checklist for a feature")
+def setup_checklist(feature: str) -> str:
+    """Write a cited, ordered checklist for setting up a ServiceNow feature."""
+    return f"{SETUP_CHECKLIST_RULES}\n\nFeature: {feature}"
 
 
 # --- process entry points -----------------------------------------------------------------

@@ -202,3 +202,18 @@ def test_instructions_and_readme_name_the_api_tool() -> None:
     assert "snow_docs_api" in ANSWER_RULES
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     assert "snow_docs_api" in readme and "## API lookup" in readme
+
+
+def test_setup_checklist_text_is_the_same_in_prompt_manifest_and_skill() -> None:
+    from snow_docs_mcp.server import SETUP_CHECKLIST_RULES
+
+    prompt = next(p for p in MANIFEST["prompts"] if p["name"] == "setup_checklist")
+    assert prompt["arguments"] == ["feature"]
+    assert prompt["text"] == f"{SETUP_CHECKLIST_RULES}\n\nFeature: ${{arguments.feature}}"
+    skill = (ROOT / "skills" / "servicenow-setup-checklist" / "SKILL.md").read_text(encoding="utf-8")
+    assert skill.startswith("---\nname: servicenow-setup-checklist\ndescription: ")
+    assert SETUP_CHECKLIST_RULES in skill
+    for needed in ("snow_docs_search", "snow_docs_browse", "snow_docs_read", "[id]", "Before you start"):
+        assert needed in SETUP_CHECKLIST_RULES
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "setup_checklist" in readme and "servicenow-setup-checklist" in readme

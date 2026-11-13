@@ -181,6 +181,17 @@ searching text:
 A name the API reference does not have gets a clear "not found" with the closest names, so
 Claude checks its methods before it writes script code instead of guessing.
 
+## Setup checklist
+
+Ask how to set something up, for example *"How do I set up Document Intelligence?"* Claude
+finds the setup pages, reads them in full and writes an ordered checklist with a citation on
+every item: what must be in place first (plugins, licenses, roles, dependencies), the steps in
+the docs' order, how to check that it works, and what to configure next. Where the docs lack a
+step, the checklist says so.
+
+In Claude Code this is the `servicenow-setup-checklist` skill, used automatically. In Claude
+Desktop, pick the `setup_checklist` prompt and enter the feature, or just ask.
+
 ## Browse
 
 Ask what the docs have on something instead of searching for words you may not know, for
