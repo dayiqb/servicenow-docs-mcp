@@ -105,6 +105,10 @@ def forget(db_path: str | Path) -> None:
     _source_cache.pop(key, None)
     _paths_cache.pop(key, None)
     _heading_words_cache.pop(key, None)
+    with _per_index_lock:
+        for cache in _per_index_caches:
+            cache.pop(key, None)
+            cache.pop(str(db_path), None)
 
 
 def _l2_normalize(vectors: np.ndarray) -> np.ndarray:
@@ -549,15 +553,19 @@ def source_url(db_path: str | Path, file_path: str) -> str:
 
 PER_INDEX_ENTRIES = 2  # one index per release (australia, brazil)
 _per_index_lock = threading.Lock()
+_per_index_caches: list[dict] = []  # every cache per_index fills, so `forget` can empty them
 
 
 def per_index(cache: dict, db, load):
     """What `load` reads out of an index file, kept for one index per release: calls that
-    alternate between the releases do not load again, and a new snapshot takes the place of
-    the oldest entry. Tools run in worker threads, so loading and replacing happen under a
-    lock and the value is returned from a local, never read back from the cache."""
+    alternate between the releases do not load again. `forget` drops an index's entry when
+    the index is let go; beyond that, a new entry takes the place of the oldest. Tools run in
+    worker threads, so loading and replacing happen under a lock and the value is returned
+    from a local, never read back from the cache."""
     key = str(db)
     with _per_index_lock:
+        if not any(known is cache for known in _per_index_caches):
+            _per_index_caches.append(cache)
         value = cache.get(key)
         if value is None:
             value = load(db)

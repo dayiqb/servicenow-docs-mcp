@@ -180,3 +180,23 @@ def test_both_releases_stay_loaded_when_calls_alternate(tmp_path, monkeypatch):
     assert server._api_table(newer).names and server._page_titles(newer)
     assert len(server._api_tables) == 2 and len(server._titles) == 2
     assert str(au) not in server._api_tables and str(br) in server._api_tables
+
+
+def test_an_index_that_is_let_go_takes_what_was_read_from_it(tmp_path):
+    """When a newer snapshot replaces an index, its API table and titles go with it, so the
+    other release is not the one pushed out to make room."""
+    from snow_docs_mcp import server, store
+
+    docs = {**DOCS, PATH: PAGE, GLOBAL_PATH: GLOBAL}
+    old = build_fixture_index(tmp_path / "au-old.db", docs=docs)
+    other = build_fixture_index(tmp_path / "br.db", docs=docs)
+    newer = build_fixture_index(tmp_path / "au-new.db", docs=docs)
+    for db in (other, old):
+        server._api_table(db)
+        server._page_titles(db)
+    store.forget(old)
+    assert str(old) not in server._api_tables and str(old) not in server._titles
+    server._api_table(newer)
+    server._page_titles(newer)
+    assert set(server._api_tables) == {str(other), str(newer)}
+    assert set(server._titles) == {str(other), str(newer)}
