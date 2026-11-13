@@ -1628,6 +1628,18 @@ def snow_docs_sdk_status() -> SdkStatusResult:
         found = sdk.status()
         if not found.installed:
             return SdkStatusResult(ok=True, installed=False, message=found.message)
+        if found.error:
+            return SdkStatusResult(
+                ok=False,
+                installed=True,
+                version=found.version,
+                message=(
+                    f"ServiceNow SDK {found.version or '(unknown version)'} is installed, but "
+                    f"its instances could not be read: {found.error}. Which instances are "
+                    "configured is unknown; the user can run the command in a terminal to see "
+                    "why."
+                ),
+            )
         instances = [SdkInstance(**asdict(i)) for i in found.instances]
         default = next((i for i in instances if i.default), None)
         if not instances:
@@ -1689,17 +1701,17 @@ def snow_docs_sdk_explain(topic: str | None = None, max_chars: int = 20000) -> S
         max_chars: Maximum characters of documentation to return (500-100000, default 20000).
     """
     try:
-        found = sdk.status()
-        if not found.installed:
-            return SdkExplainResult(ok=False, message=found.message)
+        if not sdk.installed():
+            return SdkExplainResult(ok=False, message=sdk.NOT_INSTALLED)
+        version = sdk.version()
         known = sdk.topics()
-        result = SdkExplainResult(ok=True, message="", version=found.version)
+        result = SdkExplainResult(ok=True, message="", version=version)
         wanted = (topic or "").strip()
         if not wanted:
             result.topics = [SdkTopic(name=t.name) for t in known]
             result.message = (
                 f"{_count(len(known), 'topic')} in the documentation of ServiceNow SDK "
-                f"{found.version}. Pass a name as `topic` to read it, or a keyword to narrow "
+                f"{version}. Pass a name as `topic` to read it, or a keyword to narrow "
                 "the list."
             )
             return result
@@ -1725,7 +1737,7 @@ def snow_docs_sdk_explain(topic: str | None = None, max_chars: int = 20000) -> S
                 hint = f" Closest: {', '.join(close)}." if close else ""
                 result.message = (
                     f"No topic for '{wanted}' in the documentation of ServiceNow SDK "
-                    f"{found.version}.{hint} Call without `topic` to list them all."
+                    f"{version}.{hint} Call without `topic` to list them all."
                 )
             return result
         text = sdk.explain(name)
@@ -1739,11 +1751,15 @@ def snow_docs_sdk_explain(topic: str | None = None, max_chars: int = 20000) -> S
             SdkTopic(name=t.name, keywords=t.keywords) for t in others[:SDK_TOPICS_SHOWN]
         ]
         result.message = (
-            f"The '{name}' topic from the documentation of ServiceNow SDK {found.version}."
+            f"The '{name}' topic from the documentation of ServiceNow SDK {version}."
             + (" Cut short; pass a larger max_chars for the rest." if result.truncated else "")
             + (f" Related: {', '.join(t.name for t in others[:5])}." if others else "")
         )
         return result
+    except sdk.SdkError as e:
+        return SdkExplainResult(
+            ok=False, message=f"The SDK's documentation could not be read: {e}."
+        )
     except Exception as e:  # tools report errors, never raise
         logger.exception("snow_docs_sdk_explain failed")
         return SdkExplainResult(ok=False, message=f"SDK explain failed: {e}")

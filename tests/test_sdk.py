@@ -150,3 +150,82 @@ def test_the_command_line_and_the_library_have_them_too(fake_sdk, capsys):
         and "Creates a Business Rule" in json.loads(capsys.readouterr().out)["content"]
     )
     assert api.sdk_status().installed and api.sdk_explain("businessrule-api").content
+
+
+# --- failures are reported as failures, not as facts ---------------------------------------
+
+BROKEN = r"""#!/bin/sh
+case "$*" in
+  "--version") echo "4.14.0" ;;
+  "auth --list") echo "keychain is locked" >&2; exit 3 ;;
+  "explain --list") echo "boom" >&2; exit 3 ;;
+  "explain acl-api --format raw") echo "boom" >&2; exit 3 ;;
+  *) echo "unexpected: $*" >&2; exit 9 ;;
+esac
+"""
+
+
+def _install(tmp_path, monkeypatch, script: str):
+    exe = tmp_path / "now-sdk"
+    exe.write_text(script)
+    exe.chmod(exe.stat().st_mode | stat.S_IEXEC)
+    monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
+    return exe
+
+
+def test_a_failing_instance_list_is_not_reported_as_no_instances(tmp_path, monkeypatch):
+    _install(tmp_path, monkeypatch, BROKEN)
+    s = sdk.status()
+    assert s.installed and s.version == "4.14.0" and "exit 3" in s.error
+    r = call("snow_docs_sdk_status")
+    assert not r["ok"] and r["installed"] and r["version"] == "4.14.0"
+    assert "No instance is configured" not in r["message"]
+    assert "auth --list" in r["message"] and "exit 3" in r["message"]
+
+
+def test_a_timed_out_instance_list_is_not_reported_as_no_instances(tmp_path, monkeypatch):
+    slow = BROKEN.replace('echo "keychain is locked" >&2; exit 3', "sleep 5")
+    _install(tmp_path, monkeypatch, slow)
+    monkeypatch.setattr(sdk, "TIMEOUT_SECONDS", 0.3)
+    r = call("snow_docs_sdk_status")
+    assert not r["ok"] and "timed out" in r["message"]
+    assert "No instance is configured" not in r["message"]
+
+
+def test_a_failing_topic_list_is_not_reported_as_an_unknown_topic(tmp_path, monkeypatch):
+    _install(tmp_path, monkeypatch, BROKEN)
+    with pytest.raises(sdk.SdkError):
+        sdk.topics()
+    r = call("snow_docs_sdk_explain", topic="x")
+    assert not r["ok"] and "No topic" not in r["message"]
+    assert "explain --list" in r["message"] and "exit 3" in r["message"]
+
+
+def test_a_failing_explain_is_not_reported_as_a_missing_topic(tmp_path, monkeypatch):
+    _install(tmp_path, monkeypatch, BROKEN)
+    with pytest.raises(sdk.SdkError):
+        sdk.explain("acl-api")
+
+
+def test_explain_does_not_need_the_instance_list(tmp_path, monkeypatch):
+    works = FAKE.replace('"auth --list")', '"auth --list") exit 7 ;;\n  "never")')
+    _install(tmp_path, monkeypatch, works)
+    r = call("snow_docs_sdk_explain", topic="businessrule-api")
+    assert r["ok"] and r["version"] == "4.14.0" and "Creates a Business Rule" in r["content"]
+
+
+def test_the_sdk_never_reads_the_servers_standard_input(tmp_path, monkeypatch):
+    """The MCP server talks JSON-RPC on stdin; a child that reads it would eat a request."""
+    _install(tmp_path, monkeypatch, "#!/bin/sh\ncat\necho 4.14.0\n")
+    read_end, write_end = os.pipe()
+    os.write(write_end, b"REQUEST-LINE\n")
+    os.close(write_end)
+    saved = os.dup(0)
+    try:
+        os.dup2(read_end, 0)
+        out = sdk._run(["--version"])
+    finally:
+        os.dup2(saved, 0)
+        os.close(saved)
+        os.close(read_end)
+    assert "REQUEST-LINE" not in out and "4.14.0" in out
