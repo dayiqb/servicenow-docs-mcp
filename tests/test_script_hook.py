@@ -120,3 +120,13 @@ def test_a_table_the_docs_never_mention_is_named_in_the_note():
         frozenset({"incident"}),
     )
     assert "table 'incidnet'" in text and "line 1" in text and "incident" in text
+
+
+def test_a_fluent_file_gets_a_reminder_to_build_and_to_use_explain():
+    code = "import { BusinessRule } from '@servicenow/sdk/core'\nBusinessRule({ name: 'x' })\n"
+    text = script_hook.note(
+        payload("Write", file_path="src/fluent/rule.now.ts", content=code), TABLE, "australia"
+    )
+    assert "now-sdk build" in text and "snow_docs_sdk_explain" in text
+    both = script_hook.note(payload("Write", file_path="a.now.ts", content=BAD), TABLE, "australia")
+    assert "GlideRecord.addEncodedQuerry" in both and "now-sdk build" in both

@@ -193,6 +193,8 @@ def test_clean_stdio_handshake() -> None:
         "snow_docs_check_script",
         "snow_docs_compare",
         "snow_docs_read",
+        "snow_docs_sdk_explain",
+        "snow_docs_sdk_status",
         "snow_docs_search",
         "snow_docs_status",
     ], f"the three tools must be advertised over the wire, got {tools['result']['tools']!r}"

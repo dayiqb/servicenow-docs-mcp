@@ -26,6 +26,7 @@ _LOOKS_LIKE_SCRIPT = re.compile(
     r"\bnew\s+[A-Z]\w*\s*\(|\b(?:gs|current|previous|g_\w+)\s*\.|\$sp\s*\.|\bGlide\w+\s*\."
 )
 _WRITERS = {"Write", "Edit", "MultiEdit"}
+_FLUENT_SUFFIX = ".now.ts"  # ServiceNow SDK source files
 
 
 def code_of(payload: dict) -> str:
@@ -50,24 +51,44 @@ def note(
     if PurePath(path).suffix.lower() not in _CODE_SUFFIXES:
         return None
     code = code_of(payload)
-    if not code or not _LOOKS_LIKE_SCRIPT.search(code):
+    if not code:
         return None
-    findings = check(code, table, tables)
-    if not findings:
-        return None
-    lines = []
-    for f in findings:
-        close = f"; closest: {', '.join(f.suggestions)}" if f.suggestions else ""
-        if f.kind == "table":
-            lines.append(f"- table '{f.call}' at line {f.line}: the docs never mention it{close}")
-        else:
-            lines.append(f"- {f.call}() at line {f.line}: not in the API reference{close}")
-    return (
-        f"ServiceNow script check ({release} docs) of the text just written to "
-        f"{PurePath(path).name or 'the file'}:\n" + "\n".join(lines) + "\n"
-        "Look each method up with snow_docs_api. If it is a mistake, fix the code. If the "
-        "method or table really exists but is not in the docs (custom or undocumented), tell "
-        "the user that it could not be verified."
+    name = PurePath(path).name or "the file"
+    parts: list[str] = []
+    findings = check(code, table, tables) if _LOOKS_LIKE_SCRIPT.search(code) else []
+    if findings:
+        lines = []
+        for f in findings:
+            close = f"; closest: {', '.join(f.suggestions)}" if f.suggestions else ""
+            if f.kind == "table":
+                lines.append(
+                    f"- table '{f.call}' at line {f.line}: the docs never mention it{close}"
+                )
+            else:
+                lines.append(f"- {f.call}() at line {f.line}: not in the API reference{close}")
+        parts.append(
+            f"ServiceNow script check ({release} docs) of the text just written to {name}:\n"
+            + "\n".join(lines)
+            + "\nLook each method up with snow_docs_api. If it is a mistake, fix the code. If the "
+            "method or table really exists but is not in the docs (custom or undocumented), tell "
+            "the user that it could not be verified."
+        )
+    if path.lower().endswith(_FLUENT_SUFFIX):
+        parts.append(
+            f"{name} is a ServiceNow SDK (Fluent) file. Check the Fluent APIs it uses with "
+            "snow_docs_sdk_explain, and suggest running `now-sdk build`, which type-checks the "
+            "project locally."
+        )
+    return "\n\n".join(parts) or None
+
+
+def _worth_a_look(payload: dict) -> bool:
+    """Cheap first look, before the slower imports: script-like text, or a Fluent file."""
+    tool_input = payload.get("tool_input")
+    path = str(tool_input.get("file_path", "")) if isinstance(tool_input, dict) else ""
+    code = code_of(payload)
+    return bool(code) and (
+        path.lower().endswith(_FLUENT_SUFFIX) or bool(_LOOKS_LIKE_SCRIPT.search(code))
     )
 
 
@@ -78,7 +99,7 @@ def main() -> int:
         payload = json.loads(sys.stdin.read() or "null")
     except (ValueError, UnicodeDecodeError):
         return 0
-    if not isinstance(payload, dict) or not _LOOKS_LIKE_SCRIPT.search(code_of(payload)):
+    if not isinstance(payload, dict) or not _worth_a_look(payload):
         return 0
     from snow_docs_mcp import api_table, config, setup, tables  # after the cheap checks
 

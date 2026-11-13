@@ -73,6 +73,8 @@ def test_surface_tools_annotations_prompt_and_instructions(ready) -> None:
         "snow_docs_check_script",
         "snow_docs_compare",
         "snow_docs_read",
+        "snow_docs_sdk_explain",
+        "snow_docs_sdk_status",
         "snow_docs_search",
         "snow_docs_status",
     ]

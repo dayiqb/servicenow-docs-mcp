@@ -18,7 +18,19 @@ from snow_docs_mcp.server import snow_docs_browse as browse
 from snow_docs_mcp.server import snow_docs_check_script as check_script
 from snow_docs_mcp.server import snow_docs_compare as compare
 from snow_docs_mcp.server import snow_docs_read as read
+from snow_docs_mcp.server import snow_docs_sdk_explain as sdk_explain
+from snow_docs_mcp.server import snow_docs_sdk_status as sdk_status
 from snow_docs_mcp.server import snow_docs_search as search
 from snow_docs_mcp.server import snow_docs_status as status
 
-__all__ = ["browse", "check_script", "compare", "lookup", "read", "search", "status"]
+__all__ = [
+    "browse",
+    "check_script",
+    "compare",
+    "lookup",
+    "read",
+    "sdk_explain",
+    "sdk_status",
+    "search",
+    "status",
+]

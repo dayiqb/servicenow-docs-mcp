@@ -4,7 +4,7 @@ Ask Claude questions about ServiceNow and get answers taken from the **official 
 documentation**, for the **Australia** and **Brazil** releases, each claim with a citation you can
 open.
 
-It adds seven read-only tools to Claude:
+It adds nine read-only tools to Claude:
 
 | Tool | What it does |
 |---|---|
@@ -14,6 +14,8 @@ It adds seven read-only tools to Claude:
 | `snow_docs_api` | Looks up a scripting class or method exactly: its methods, parameters and return type |
 | `snow_docs_check_script` | Checks a script: which method calls and table names the docs do not have |
 | `snow_docs_browse` | Lists the docs as a tree: product areas, folders and pages by title |
+| `snow_docs_sdk_status` | Shows whether the ServiceNow SDK is installed, its version and the instances it is set up for |
+| `snow_docs_sdk_explain` | Reads the ServiceNow SDK's own documentation (Fluent) for the installed version |
 | `snow_docs_status` | Shows download/update progress and which docs snapshot is loaded |
 
 Claude writes the answer from the passages and cites them. The server itself runs no AI model
@@ -200,6 +202,23 @@ without arguments it lists the 54 product areas with their page counts; with a p
 lists that area's folders and pages by title; with a folder it goes further down. Every page
 can be opened in full.
 
+## ServiceNow SDK
+
+If the ServiceNow SDK (`now-sdk`) is installed on your computer, two more lookups work:
+
+- **SDK documentation.** Ask about Fluent or the SDK, for example *"How do I define a business
+  rule in Fluent?"* Claude reads the SDK's own documentation with `snow_docs_sdk_explain`
+  (about 270 topics), which matches the SDK version you have installed.
+- **Setup status.** Ask *"Is my ServiceNow SDK set up?"* and `snow_docs_sdk_status` shows the
+  version and the instances the SDK has credentials for: alias, address, kind of sign-in and
+  which one is the default. User names and secrets are never shown.
+
+Both only read. This extension never signs in, never changes the SDK's configuration and never
+contacts an instance: adding an instance is something you do yourself in a terminal
+(`now-sdk auth --add <instance> --type oauth`). In Claude Code, the script check also reminds
+Claude to run `now-sdk build`, which type-checks locally, after it changes a Fluent file
+(`*.now.ts`).
+
 ## Command line and library
 
 The same tools work without Claude, from a terminal, a script or another agent. Each command
@@ -214,6 +233,8 @@ snow-docs-mcp check-script my_business_rule.js
 snow-docs-mcp browse itsm --folder incident-management
 snow-docs-mcp compare "document intelligence"
 snow-docs-mcp status
+snow-docs-mcp sdk-status
+snow-docs-mcp sdk-explain BusinessRule
 ```
 
 From a checkout, put `uv run` in front. A search loads the search models each time, so it

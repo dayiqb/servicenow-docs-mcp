@@ -1,5 +1,5 @@
 """Command line for the docs tools: `snow-docs-mcp search "..."`, `read`, `compare`, `api`,
-`check-script`, `browse`, `status`.
+`check-script`, `browse`, `status`, `sdk-status`, `sdk-explain`.
 
 Each command prints the tool's result as one JSON document on stdout and exits 0 when the
 result is ok, 1 when it is not, 2 on bad usage. Anything else a tool or a model prints goes to
@@ -15,7 +15,17 @@ import json
 import sys
 from pathlib import Path
 
-COMMANDS = ("search", "read", "compare", "api", "check-script", "browse", "status")
+COMMANDS = (
+    "search",
+    "read",
+    "compare",
+    "api",
+    "check-script",
+    "browse",
+    "status",
+    "sdk-status",
+    "sdk-explain",
+)
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -50,6 +60,10 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--offset", type=int, default=0)
     release(p)
     sub.add_parser("status", help="what is installed, and which docs snapshot")
+    sub.add_parser("sdk-status", help="is the ServiceNow SDK set up, and for which instances")
+    p = sub.add_parser("sdk-explain", help="the ServiceNow SDK's own documentation")
+    p.add_argument("topic", nargs="?")
+    p.add_argument("--max-chars", type=int, default=20000)
     return parser
 
 
@@ -69,6 +83,10 @@ def _call(args: argparse.Namespace):
         return server.snow_docs_check_script(code, args.release)
     if args.command == "browse":
         return server.snow_docs_browse(args.product, args.folder, args.release, args.offset)
+    if args.command == "sdk-status":
+        return server.snow_docs_sdk_status()
+    if args.command == "sdk-explain":
+        return server.snow_docs_sdk_explain(args.topic, args.max_chars)
     return server.snow_docs_status()
 
 

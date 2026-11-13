@@ -29,8 +29,13 @@ Answer ServiceNow questions from the official product documentation, not from me
    GlideSystem). If it answers `not_found`, do not use that method; say so, and offer
    the closest documented one. After writing or changing a script, pass the whole
    script to `snow_docs_check_script` and act on what it finds before showing the code.
-8. Table and field names depend on the instance. If a tool for the user's own ServiceNow
-   instance is connected, check them there (ask first); otherwise say they are unverified.
+8. Table and field names depend on the instance. If the ServiceNow SDK (`now-sdk`) or another
+   tool for the user's own instance is available, offer to check them there, and ask before
+   anything that queries the instance; otherwise say they are unverified.
+9. For code written with the ServiceNow SDK or Fluent, read `snow_docs_sdk_explain`: it is
+   the documentation of the SDK version installed on this computer. `snow_docs_sdk_status`
+   shows whether the SDK is set up and for which instances. After changing a Fluent file,
+   suggest `now-sdk build`, which type-checks it locally.
 
 To see what the docs have on a product rather than search them, call `snow_docs_browse`:
 without arguments for the product areas, with `product` (and `folder`) for the folders and

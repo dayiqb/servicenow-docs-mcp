@@ -8,6 +8,8 @@ Tools (all read-only):
     snow_docs_api      a class's methods, or a method's parameters and return type, exactly
     snow_docs_check_script  which calls and tables in a script the docs do not have
     snow_docs_browse   the docs as a tree: product areas, folders and pages
+    snow_docs_sdk_status   whether the ServiceNow SDK is set up, and for which instances
+    snow_docs_sdk_explain  the SDK's own documentation (Fluent), for the installed version
     snow_docs_status   setup/update progress per release, and where data lives
 
 Prompt:
@@ -22,7 +24,7 @@ Console script `snow-docs-mcp`:
     snow-docs-mcp                       serve MCP over stdio (what Claude apps launch)
     snow-docs-mcp setup [RELEASE|all]   download docs index(es) and models now, with progress
     snow-docs-mcp search "QUERY" | read ID | compare [QUERY] | api NAME | check-script FILE |
-                  browse [PRODUCT] | status
+                  browse [PRODUCT] | status | sdk-status | sdk-explain [TOPIC]
                                         the tools from a terminal: one JSON result on stdout
                                         (see snow_docs_mcp.cli; as a library: snow_docs_mcp.api)
     snow-docs-mcp check-index --australia PATH --brazil PATH
@@ -66,6 +68,7 @@ from snow_docs_mcp import (
     models,
     products,
     script_check,
+    sdk,
     sections,
     setup,
     store,
@@ -99,8 +102,13 @@ When answering a ServiceNow question with them:
    snow_docs_api. If it answers not_found, do not use that method; say so, and offer the
    closest documented one. After writing or changing a script, pass the whole script to
    snow_docs_check_script and act on what it finds before showing the code.
-9. Table and field names depend on the instance. If a tool for the user's own ServiceNow
-   instance is connected, check them there (ask first); otherwise say they are unverified."""
+9. Table and field names depend on the instance. If the ServiceNow SDK (now-sdk) or another
+   tool for the user's own instance is available, offer to check them there, and ask before
+   anything that queries the instance; otherwise say they are unverified.
+10. For code written with the ServiceNow SDK or Fluent, read snow_docs_sdk_explain: it is the
+   documentation of the SDK version installed on this computer. snow_docs_sdk_status shows
+   whether the SDK is set up and for which instances. After changing a Fluent file, suggest
+   `now-sdk build`, which type-checks it locally."""
 
 # The upgrade review recipe: the `upgrade_review` prompt, manifest.json and the
 # servicenow-upgrade-review skill carry this text word for word (tests keep them in step).
@@ -352,6 +360,36 @@ class BrowseResult(BaseModel):
     folders: list[BrowseFolder] = []
     pages: list[BrowsePage] = []
     pages_left_out: int = 0
+
+
+class SdkInstance(BaseModel):
+    alias: str
+    host: str
+    auth_type: str = Field(description="basic or oauth")
+    default: bool
+
+
+class SdkStatusResult(BaseModel):
+    ok: bool
+    message: str
+    installed: bool = False
+    version: str = ""
+    instances: list[SdkInstance] = []
+
+
+class SdkTopic(BaseModel):
+    name: str
+    keywords: str = ""
+
+
+class SdkExplainResult(BaseModel):
+    ok: bool
+    message: str
+    version: str = ""
+    topic: str = ""
+    content: str = ""
+    truncated: bool = False
+    topics: list[SdkTopic] = []
 
 
 class ScriptFinding(BaseModel):
@@ -1489,6 +1527,146 @@ def snow_docs_check_script(code: str, release: str | None = None) -> ScriptCheck
         return ScriptCheckResult(ok=False, message=f"Script check failed: {e}")
 
 
+# --- ServiceNow SDK -----------------------------------------------------------------------
+
+SDK_TOPICS_SHOWN = 40
+
+
+@mcp.tool(name="snow_docs_sdk_status", annotations=READ_ONLY)
+def snow_docs_sdk_status() -> SdkStatusResult:
+    """Show whether the ServiceNow SDK (now-sdk) is set up on this computer: its version and
+    the instances it has credentials for (alias, address, kind of sign-in, which is default).
+
+    Read-only: it runs `now-sdk --version` and `now-sdk auth --list`, contacts no instance and
+    shows no user name or secret. Use it before suggesting now-sdk commands, to know which
+    instance alias to name. Adding or removing an instance is done by the user in a terminal
+    (`now-sdk auth --add <instance> --type oauth`), never through this tool.
+    """
+    try:
+        found = sdk.status()
+        if not found.installed:
+            return SdkStatusResult(ok=True, installed=False, message=found.message)
+        instances = [SdkInstance(**asdict(i)) for i in found.instances]
+        default = next((i for i in instances if i.default), None)
+        if not instances:
+            tail = (
+                "No instance is configured. The user adds one in a terminal with "
+                "`now-sdk auth --add <instance> --type oauth`."
+            )
+        elif default:
+            tail = (
+                f"{_count(len(instances), 'instance')} configured; the default is "
+                f"{default.alias} ({default.host})."
+            )
+        else:
+            tail = (
+                f"{_count(len(instances), 'instance')} configured, none as default; the user "
+                "sets one with `now-sdk auth --use <alias>`."
+            )
+        return SdkStatusResult(
+            ok=True,
+            installed=True,
+            version=found.version,
+            instances=instances,
+            message=f"ServiceNow SDK {found.version or '(unknown version)'} is installed. {tail}",
+        )
+    except Exception as e:  # tools report errors, never raise
+        logger.exception("snow_docs_sdk_status failed")
+        return SdkStatusResult(ok=False, message=f"SDK status failed: {e}")
+
+
+def _sdk_topic(wanted: str, known: list[sdk.Topic]) -> tuple[str, list[sdk.Topic]]:
+    """(the topic a name or keyword means, or "", the topics it could mean)."""
+    low = wanted.strip().lower()
+    by_name = {t.name.lower(): t for t in known}
+    if low in by_name:
+        return by_name[low].name, []
+    exact = [t for t in known if low in {k.strip().lower() for k in t.keywords.split(",")}]
+    loose = exact or [t for t in known if low in t.name.lower() or low in t.keywords.lower()]
+    if len(loose) == 1:
+        return loose[0].name, []
+    apis = [t for t in exact if t.name.endswith("-api")]
+    if len(apis) == 1:  # "BusinessRule" names the API page; its guide is listed beside it
+        return apis[0].name, [t for t in loose if t is not apis[0]]
+    return "", loose
+
+
+@mcp.tool(name="snow_docs_sdk_explain", annotations=READ_ONLY)
+def snow_docs_sdk_explain(topic: str | None = None, max_chars: int = 20000) -> SdkExplainResult:
+    """Read the ServiceNow SDK's own documentation (`now-sdk explain`): Fluent APIs and guides,
+    for the SDK version installed on this computer.
+
+    Use this for anything written with the ServiceNow SDK or Fluent (BusinessRule, Table, Acl,
+    Flow, AI agents, now.config.json, ...): it is more exact for the installed version than the
+    product docs. Without `topic` it lists the topics. With a topic name ("businessrule-api"),
+    a Fluent name ("BusinessRule") or a keyword ("business rule") it returns that topic's
+    documentation, or the topics that match when there are several. Read-only and local.
+
+    Args:
+        topic: A topic name, a Fluent API name or a keyword. Omit to list all topics.
+        max_chars: Maximum characters of documentation to return (500-100000, default 20000).
+    """
+    try:
+        found = sdk.status()
+        if not found.installed:
+            return SdkExplainResult(ok=False, message=found.message)
+        known = sdk.topics()
+        result = SdkExplainResult(ok=True, message="", version=found.version)
+        wanted = (topic or "").strip()
+        if not wanted:
+            result.topics = [SdkTopic(name=t.name) for t in known]
+            result.message = (
+                f"{_count(len(known), 'topic')} in the documentation of ServiceNow SDK "
+                f"{found.version}. Pass a name as `topic` to read it, or a keyword to narrow "
+                "the list."
+            )
+            return result
+        name, others = _sdk_topic(wanted, known)
+        if not name:
+            if others:
+                result.topics = [
+                    SdkTopic(name=t.name, keywords=t.keywords) for t in others[:SDK_TOPICS_SHOWN]
+                ]
+                result.message = (
+                    f"{_count(len(others), 'topic')} match '{wanted}'"
+                    + (
+                        f" (the first {SDK_TOPICS_SHOWN} shown)"
+                        if len(others) > SDK_TOPICS_SHOWN
+                        else ""
+                    )
+                    + ". Pass one of the names as `topic`."
+                )
+            else:
+                close = difflib.get_close_matches(
+                    wanted.lower(), [t.name for t in known], n=3, cutoff=0.5
+                )
+                hint = f" Closest: {', '.join(close)}." if close else ""
+                result.message = (
+                    f"No topic for '{wanted}' in the documentation of ServiceNow SDK "
+                    f"{found.version}.{hint} Call without `topic` to list them all."
+                )
+            return result
+        text = sdk.explain(name)
+        if text is None:
+            return SdkExplainResult(ok=False, message=f"now-sdk could not show the topic '{name}'.")
+        limit = max(500, min(int(max_chars), 100000))
+        result.topic = name
+        result.truncated = len(text) > limit
+        result.content = text[:limit]
+        result.topics = [
+            SdkTopic(name=t.name, keywords=t.keywords) for t in others[:SDK_TOPICS_SHOWN]
+        ]
+        result.message = (
+            f"The '{name}' topic from the documentation of ServiceNow SDK {found.version}."
+            + (" Cut short; pass a larger max_chars for the rest." if result.truncated else "")
+            + (f" Related: {', '.join(t.name for t in others[:5])}." if others else "")
+        )
+        return result
+    except Exception as e:  # tools report errors, never raise
+        logger.exception("snow_docs_sdk_explain failed")
+        return SdkExplainResult(ok=False, message=f"SDK explain failed: {e}")
+
+
 # --- browse -------------------------------------------------------------------------------
 
 BROWSE_PAGES_SHOWN = 100
@@ -1777,10 +1955,11 @@ def main(argv: list[str] | None = None) -> None:
 
     if args[:1] == ["setup"]:
         sys.exit(_run_setup_cli(args[1:]))
-    if args and args[0] in ("search", "read", "compare", "api", "check-script", "browse", "status"):
+    if args:
         from snow_docs_mcp import cli
 
-        sys.exit(cli.run(args))
+        if args[0] in cli.COMMANDS:
+            sys.exit(cli.run(args))
     if args[:1] == ["check-index"]:
         from snow_docs_mcp import health
 
