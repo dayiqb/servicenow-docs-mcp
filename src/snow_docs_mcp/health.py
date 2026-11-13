@@ -10,6 +10,7 @@ is published. Run it with `snow-docs-mcp check-index --australia PATH --brazil P
 from __future__ import annotations
 
 import argparse
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -17,17 +18,21 @@ from snow_docs_mcp import store, tables
 from snow_docs_mcp.compare import compare_pages
 
 # Floors, about 80 % of the 2026-11-06 indexes (4,539 methods in 521 classes, 94 % with a
-# return type; 681 REST endpoints in 136 APIs, 99 % with parameters, all with a default URL;
-# 10,533 table and field names in brackets; 315 release-notes applications in 30 families).
+# return type, 2,966 with described parameters, 3,848 with a code example; 681 REST endpoints
+# in 136 APIs, 99 % with parameters, all with a default URL; 10,533 table and field names in
+# brackets; every page with a title; 315 release-notes applications in 30 families).
 FLOORS: dict[str, float] = {
     "api_methods": 3600,
     "api_classes": 400,
     "api_methods_with_return_type": 0.80,
+    "api_methods_with_parameters": 2350,
+    "api_methods_with_example": 3050,
     "rest_endpoints": 540,
     "rest_apis": 100,
     "rest_endpoints_with_parameters": 0.85,
     "rest_endpoints_with_default_url": 0.95,
     "table_names": 8000,
+    "pages_with_title": 0.95,
     "release_notes_applications": 250,
     "release_notes_families": 20,
 }
@@ -53,6 +58,8 @@ def counts(db: str | Path, release: str) -> dict[str, float]:
         "api_methods": len(methods),
         "api_classes": len(table.by_class),
         "api_methods_with_return_type": share(sum(bool(m.returns) for m in methods), len(methods)),
+        "api_methods_with_parameters": sum(any(p.description for p in m.params) for m in methods),
+        "api_methods_with_example": sum(bool(m.example) for m in methods),
         "rest_endpoints": len(endpoints),
         "rest_apis": len(table.by_api),
         "rest_endpoints_with_parameters": share(
@@ -64,6 +71,8 @@ def counts(db: str | Path, release: str) -> dict[str, float]:
         ),
     }
     out["table_names"] = len(tables.scan(db))
+    titles = store.titles_by_path(db)
+    out["pages_with_title"] = share(sum(bool(t) for t in titles.values()), len(titles))
     if release == NOTES_RELEASE:
         apps, families, _ = server._notes_index(db)
         out["release_notes_applications"] = len(apps)
@@ -98,7 +107,8 @@ def compare_noise(australia_db: str | Path, brazil_db: str | Path) -> tuple[floa
 
 
 def run_cli(argv: list[str]) -> int:
-    """`snow-docs-mcp check-index`: 0 = healthy, 1 = a count below its floor, 2 = bad usage."""
+    """`snow-docs-mcp check-index`: 0 = healthy, 1 = a count below its floor, 2 = bad usage
+    (including a file that is not a docs index)."""
     parser = argparse.ArgumentParser(
         prog="snow-docs-mcp check-index",
         description="Count what the tools find in a docs index and compare it with the floors.",
@@ -107,8 +117,8 @@ def run_cli(argv: list[str]) -> int:
     parser.add_argument("--brazil", type=Path, help="path to a brazil index (.db)")
     try:
         args = parser.parse_args(argv)
-    except SystemExit:
-        return 2
+    except SystemExit as stop:  # --help exits 0, bad usage 2
+        return 0 if stop.code in (0, None) else 2
     given = {r: p for r, p in (("australia", args.australia), ("brazil", args.brazil)) if p}
     if not given:
         print("check-index: pass --australia PATH and/or --brazil PATH", file=sys.stderr)
@@ -119,7 +129,11 @@ def run_cli(argv: list[str]) -> int:
             return 2
     failed: list[str] = []
     for release, path in given.items():
-        found = counts(path, release)
+        try:
+            found = counts(path, release)
+        except sqlite3.Error as e:
+            print(f"check-index: {path} is not a docs index ({e})", file=sys.stderr)
+            return 2
         for key, value in found.items():
             print(f"{release}  {key}: {value:g}  (floor {FLOORS.get(key, 0):g})")
         failed += [f"{release}  {line}" for line in problems(found, FLOORS)]

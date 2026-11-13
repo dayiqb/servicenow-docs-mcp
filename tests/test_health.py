@@ -87,3 +87,31 @@ def test_cli_needs_an_index_and_an_existing_file(tmp_path, capsys):
 def test_the_floors_cover_every_count(brazil_db):
     assert set(health.FLOORS) == set(health.counts(brazil_db, "brazil"))
     assert DOCS  # the standard fixture is what australia_db extends
+
+
+def test_cli_says_when_a_file_is_not_an_index(tmp_path, capsys):
+    bogus = tmp_path / "not-an-index.db"
+    bogus.write_text("this is not a database")
+    assert health.run_cli(["--australia", str(bogus)]) == 2
+    err = capsys.readouterr().err
+    assert "not a docs index" in err and "Traceback" not in err
+
+
+def test_parameter_tables_examples_and_titles_are_counted(brazil_db):
+    c = health.counts(brazil_db, "brazil")
+    assert c["api_methods_with_parameters"] >= 1
+    assert c["api_methods_with_example"] >= 1
+    assert 0 < c["pages_with_title"] <= 1
+
+
+def test_a_renamed_parameter_header_is_noticed(tmp_path, brazil_db):
+    """If the docs rename the parameter table's "Name" column, parameters stop being read."""
+    assert "Name" in PAGE
+    renamed = PAGE.replace("Name", "Parameter name")
+    docs = {**BR_DOCS, PATH: renamed, GLOBAL_PATH: GLOBAL, REST_PATH: REST}
+    broken = build_fixture_index(tmp_path / "broken.db", docs=docs, chunks=BR_CHUNKS)
+    before = health.counts(brazil_db, "brazil")["api_methods_with_parameters"]
+    after = health.counts(broken, "brazil")
+    assert after["api_methods_with_parameters"] < before
+    found = health.problems(after, {"api_methods_with_parameters": before})
+    assert len(found) == 1 and "api_methods_with_parameters" in found[0]

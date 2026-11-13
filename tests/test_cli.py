@@ -62,12 +62,68 @@ def test_check_script_reads_a_file_or_standard_input(installed, capsys, tmp_path
     script = tmp_path / "rule.js"
     script.write_text("var gr = new GlideRecord('incident');\ngr.qurey();\n", encoding="utf-8")
     code, found = run(capsys, "check-script", str(script))
-    assert code == 0 and [f["name"] for f in found["findings"]] == ["GlideRecord.qurey"]
+    # 3, not 0: a script with undocumented calls must fail a pipeline that runs the check
+    assert code == 3 and [f["name"] for f in found["findings"]] == ["GlideRecord.qurey"]
     import io
 
     monkeypatch.setattr("sys.stdin", io.StringIO("gs.nothing();"))
     code, found = run(capsys, "check-script", "-")
     assert code == 0 and found["ok"]
+
+
+def test_check_script_reads_a_file_that_is_not_utf8(installed, capsys, tmp_path):
+    script = tmp_path / "latin1.js"
+    script.write_bytes(
+        "// r\xe9sum\xe9\nvar gr = new GlideRecord('incident');\ngr.qurey();\n".encode("latin-1")
+    )
+    code, found = run(capsys, "check-script", str(script))
+    assert code == 3 and [f["name"] for f in found["findings"]] == ["GlideRecord.qurey"]
+
+
+def test_output_is_utf8_whatever_the_console_encoding(installed, monkeypatch):
+    """A Windows redirect uses cp1252, which cannot hold every character the docs contain."""
+    import io
+
+    from snow_docs_mcp import cli, server
+
+    real = server.snow_docs_status
+
+    def narrow_space():
+        result = real()
+        result.releases[0].message = "5\u202fGB \u2192 done"
+        return result
+
+    monkeypatch.setattr(server, "snow_docs_status", narrow_space)
+    raw = io.BytesIO()
+    monkeypatch.setattr("sys.stdout", io.TextIOWrapper(raw, encoding="cp1252"))
+    assert cli.run(["status"]) == 0
+    shown = json.loads(raw.getvalue().decode("utf-8"))
+    assert shown["releases"][0]["message"] == "5\u202fGB \u2192 done"
+
+
+def test_help_exits_0(installed, capsys):
+    with pytest.raises(SystemExit) as done:
+        main(["search", "--help"])
+    assert done.value.code == 0 and "--limit" in capsys.readouterr().out
+    with pytest.raises(SystemExit) as done:
+        main(["check-index", "--help"])
+    assert done.value.code == 0
+
+
+def test_the_setup_hint_is_only_printed_when_the_docs_are_missing(installed, capsys, monkeypatch):
+    with pytest.raises(SystemExit):
+        main(["search", "x", "--release", "zurich"])
+    assert "setup all" not in capsys.readouterr().err
+    import io
+
+    monkeypatch.setattr("sys.stdin", io.StringIO(""))
+    with pytest.raises(SystemExit):
+        main(["check-script", "-"])  # empty code: a failed call, and the docs are installed
+    assert "setup all" not in capsys.readouterr().err
+    monkeypatch.setattr(setup, "index_ready", lambda release: False)
+    with pytest.raises(SystemExit):
+        main(["search", "x"])
+    assert "setup all" in capsys.readouterr().err
 
 
 def test_bad_usage_exits_2_and_a_failed_call_exits_1(installed, capsys, tmp_path):

@@ -1,9 +1,10 @@
 """Command line for the docs tools: `snow-docs-mcp search "..."`, `read`, `compare`, `api`,
 `check-script`, `browse`, `status`, `sdk-status`, `sdk-explain`.
 
-Each command prints the tool's result as one JSON document on stdout and exits 0 when the
-result is ok, 1 when it is not, 2 on bad usage. Anything else a tool or a model prints goes to
-stderr, so the output can be piped. The docs index and the search models must be installed
+Each command prints the tool's result as one JSON document on stdout, always UTF-8, and exits
+0 when the result is ok, 1 when it is not, 2 on bad usage; `check-script` exits 3 when the
+script has calls or table names the docs do not have. Anything else a tool or a model prints
+goes to stderr, so the output can be piped. The docs index and the search models must be installed
 (`snow-docs-mcp setup`); each call loads what it needs, so a search takes a few seconds.
 """
 
@@ -67,6 +68,37 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
+FOUND_SOMETHING = 3  # check-script: the check ran, and the script has findings
+
+
+def _script(file: str) -> str:
+    """The script's text. Bytes that are not UTF-8 are replaced, not fatal: the calls and table
+    names the check reads are ASCII whatever encoding the comments are in."""
+    if file != "-":
+        return Path(file).read_bytes().decode("utf-8", errors="replace")
+    raw = getattr(sys.stdin, "buffer", None)
+    return raw.read().decode("utf-8", errors="replace") if raw is not None else sys.stdin.read()
+
+
+def _emit(text: str) -> None:
+    """Write the result as UTF-8 whatever the console encoding is: a redirect on Windows uses
+    a code page that cannot hold every character the docs contain."""
+    raw = getattr(sys.stdout, "buffer", None)
+    if raw is None:
+        print(text)
+        return
+    sys.stdout.flush()
+    raw.write((text + "\n").encode("utf-8"))
+    raw.flush()
+
+
+def _docs_missing(args: argparse.Namespace) -> bool:
+    from snow_docs_mcp import config, setup
+
+    release = getattr(args, "release", None) or config.default_release()
+    return release in config.RELEASES and not setup.index_ready(release)
+
+
 def _call(args: argparse.Namespace):
     from snow_docs_mcp import server  # late: loading it is the slow part
 
@@ -79,8 +111,7 @@ def _call(args: argparse.Namespace):
     if args.command == "api":
         return server.snow_docs_api(args.name, args.release)
     if args.command == "check-script":
-        code = sys.stdin.read() if args.file == "-" else Path(args.file).read_text(encoding="utf-8")
-        return server.snow_docs_check_script(code, args.release)
+        return server.snow_docs_check_script(_script(args.file), args.release)
     if args.command == "browse":
         return server.snow_docs_browse(args.product, args.folder, args.release, args.offset)
     if args.command == "sdk-status":
@@ -93,14 +124,18 @@ def _call(args: argparse.Namespace):
 def run(argv: list[str]) -> int:
     try:
         args = _parser().parse_args(argv)
-    except SystemExit:
-        return 2
+    except SystemExit as stop:  # --help exits 0, bad usage 2
+        return 0 if stop.code in (0, None) else 2
     if args.command == "check-script" and args.file != "-" and not Path(args.file).is_file():
         print(f"check-script: no file at {args.file}", file=sys.stderr)
         return 2
     with contextlib.redirect_stdout(sys.stderr):  # stdout is for the result alone
         result = _call(args)
-    print(json.dumps(result.model_dump(), indent=2, ensure_ascii=False))
+    _emit(json.dumps(result.model_dump(), indent=2, ensure_ascii=False))
     if not result.ok:
-        print("If the docs are not installed yet, run: snow-docs-mcp setup all", file=sys.stderr)
-    return 0 if result.ok else 1
+        if _docs_missing(args):
+            print("The docs are not installed yet; run: snow-docs-mcp setup all", file=sys.stderr)
+        return 1
+    if args.command == "check-script" and result.findings:
+        return FOUND_SOMETHING
+    return 0

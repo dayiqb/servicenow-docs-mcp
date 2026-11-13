@@ -266,7 +266,8 @@ Claude to run `now-sdk build`, which type-checks locally, after it changes a Flu
 ## Command line and library
 
 The same tools work without Claude, from a terminal, a script or another agent. Each command
-prints one JSON result and exits 0 when it is ok:
+prints one JSON result (UTF-8) and exits 0 when it is ok, 1 when it is not and 2 on bad usage;
+`check-script` exits 3 when the script has calls or table names the docs do not have:
 
 ```bash
 snow-docs-mcp search "how is incident priority calculated" --limit 3
