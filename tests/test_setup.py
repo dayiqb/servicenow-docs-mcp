@@ -80,6 +80,13 @@ class _Server:
         self.httpd.server_close()
 
 
+@pytest.fixture(autouse=True)
+def _a_server_of_a_fixed_version(monkeypatch):
+    """The tests about older and newer servers name index formats around 0.2.0. The server they
+    run against is 0.1.0 whatever the release is called, so a new version number changes none."""
+    monkeypatch.setattr(config, "VERSION", "0.1.0")
+
+
 @pytest.fixture
 def payload(tmp_path) -> tuple[bytes, str, bytes]:
     """(gz payload, gz sha256, raw db bytes) of the fixture index."""

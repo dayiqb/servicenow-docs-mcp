@@ -1,6 +1,6 @@
 {
   "name": "servicenow-docs-sources",
-  "version": "0.1.7",
+  "version": "2.0.0",
   "description": "A pane that lists the ServiceNow documentation passages Claude found and read in this session",
   "types": "./types/index.d.ts",
   "license": "MIT",
