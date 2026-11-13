@@ -545,3 +545,23 @@ def source_url(db_path: str | Path, file_path: str) -> str:
     if not repo.startswith("https://github.com/") or not re.fullmatch(r"[0-9a-f]{7,40}", commit):
         return ""
     return f"{repo.rstrip('/')}/blob/{commit}/{quote(file_path)}"
+
+
+PER_INDEX_ENTRIES = 2  # one index per release (australia, brazil)
+_per_index_lock = threading.Lock()
+
+
+def per_index(cache: dict, db, load):
+    """What `load` reads out of an index file, kept for one index per release: calls that
+    alternate between the releases do not load again, and a new snapshot takes the place of
+    the oldest entry. Tools run in worker threads, so loading and replacing happen under a
+    lock and the value is returned from a local, never read back from the cache."""
+    key = str(db)
+    with _per_index_lock:
+        value = cache.get(key)
+        if value is None:
+            value = load(db)
+            while len(cache) >= PER_INDEX_ENTRIES:
+                del cache[next(iter(cache))]
+            cache[key] = value
+        return value

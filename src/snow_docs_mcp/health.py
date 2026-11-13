@@ -14,7 +14,7 @@ import sqlite3
 import sys
 from pathlib import Path
 
-from snow_docs_mcp import store, tables
+from snow_docs_mcp import notes, store, tables
 from snow_docs_mcp.compare import compare_pages
 
 # Floors, about 80 % of the 2026-11-06 indexes (4,560 methods in 520 classes, 94 % with a
@@ -40,7 +40,6 @@ FLOORS: dict[str, float] = {
 # 2026-11-06 indexes; a jump means a rendering difference is being read as a change.
 MAX_COMPARE_NOISE = 0.05
 COMPARE_SAMPLE = 200
-NOTES_RELEASE = "brazil"  # the release whose docs hold the combined release notes
 
 
 def counts(db: str | Path, release: str) -> dict[str, float]:
@@ -73,8 +72,8 @@ def counts(db: str | Path, release: str) -> dict[str, float]:
     out["table_names"] = len(tables.scan(db))
     titles = store.titles_by_path(db)
     out["pages_with_title"] = share(sum(bool(t) for t in titles.values()), len(titles))
-    if release == NOTES_RELEASE:
-        apps, families, _ = server._notes_index(db)
+    if release == notes.RELEASE:
+        apps, families, _ = notes.index(db)
         out["release_notes_applications"] = len(apps)
         out["release_notes_families"] = len(families)
     return out
