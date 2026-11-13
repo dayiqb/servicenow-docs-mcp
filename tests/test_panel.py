@@ -525,8 +525,8 @@ def test_a_figure_with_steps_to_pick_is_a_group_of_buttons_and_a_plain_one_is_an
     assert not any("tabindex" in n["attrs"] or "role" in n["attrs"] for n in plain["nodes"])
 
 
-def _show(result: dict, args: dict | None = None) -> ET.Element:
-    (markup,) = _render({"op": "show", "result": result, "args": args or {}})
+def _show(result: dict, args: dict | None = None, open: list[int] | None = None) -> ET.Element:
+    (markup,) = _render({"op": "show", "result": result, "args": args or {}, "open": open or []})
     return _dom(markup)
 
 
@@ -559,7 +559,7 @@ def test_each_reader_in_a_comparison_names_its_release():
     page = {"page": "markdown/x.md", "page_title": "A", "product": "x", "sections": [section]}
     root = _show({"ok": True, "message": "", "release_notes": [], "more_release_notes": [],
                   "changed_pages": [page], "only_in_australia": [], "only_in_brazil": []})  # fmt: skip
-    buttons = [_text(b) for b in root.iter("button")]
+    buttons = [_text(b) for b in root.iter("button") if b.get("class") == "act"]
     assert buttons == ["Read in Australia", "Read in Brazil"]
 
 
@@ -688,3 +688,181 @@ def test_a_first_heading_that_repeats_the_title_is_not_shown_twice():
     (other,) = _render({"op": "document", "text": text, "title": "Another title"})
     (body,) = _dom(other["html"])
     assert next(n.tag for n in body) == "h2" and len(other["anchors"]) == 2
+
+
+# ---- results as a tree: closed rows that open in place (2026-11-13) -----------------------------
+
+
+def _hit(n: int, product: str, title: str, section: str = "") -> dict:
+    path = title + (" > " + section if section else "")
+    return {"id": f"australia:markdown/{product}/p{n}.md::{section or title}", "page_title": title,
+            "full_title": title, "heading_path": path, "product": product,
+            "snippet": f"{path} Passage number {n} says something.",
+            "url": f"https://docs.test/p{n}"}  # fmt: skip
+
+
+def _search(*hits: dict) -> dict:
+    return {"ok": True, "message": "", "release": "australia", "snapshot": "2026-11-06",
+            "hits": list(hits)}  # fmt: skip
+
+
+def _has(node: ET.Element, name: str) -> bool:
+    return name in (node.get("class") or "").split()
+
+
+def _part(node: ET.Element, name: str) -> str:
+    return " ".join(_text(s) for s in node.iter("span") if _has(s, name))
+
+
+def _folds(root: ET.Element, heading: str) -> list[ET.Element]:
+    return [h.find("button") for h in root.iter(heading) if h.find("button") is not None]
+
+
+def _bodies(root: ET.Element) -> list[ET.Element]:
+    return [d for d in root.iter("div") if _has(d, "fold-body")]
+
+
+@needs_node
+def test_search_hits_are_grouped_by_product_area_and_start_closed():
+    root = _show(
+        _search(
+            _hit(1, "it-service-management", "Create an SLA definition"),
+            _hit(2, "employee-service-management", "Create an SLA Definition", "Procedure"),
+            _hit(3, "it-service-management", "SLA definition", "Schedule"),
+        ),
+        {"query": "sla"},
+    )
+    areas = _folds(root, "h2")
+    assert [(_part(a, "fold-name"), _part(a, "fold-count"), a.get("aria-expanded")) for a in areas] == [
+        ("IT Service Management", "2 passages", "true"),
+        ("Employee Service Management", "1 passage", "true"),
+    ]  # fmt: skip
+    hits = _folds(root, "h3")
+    # an area stands where its best hit is, and every hit keeps the rank the search gave it
+    assert [(_part(h, "rank"), _part(h, "fold-name"), _part(h, "fold-more")) for h in hits] == [
+        ("1", "Create an SLA definition", ""),
+        ("3", "SLA definition", "Schedule"),
+        ("2", "Create an SLA Definition", "Procedure"),
+    ]
+    assert [h.get("aria-expanded") for h in hits] == ["false"] * 3
+    bodies = _bodies(root)
+    assert len(bodies) == 3 and all(b.get("hidden") is not None for b in bodies)
+    assert [h.get("aria-controls") for h in hits] == [b.get("id") for b in bodies]
+
+
+@needs_node
+def test_opening_a_hit_shows_its_passage_and_what_can_be_done_with_it():
+    result = _search(_hit(1, "it-service-management", "Create an SLA definition"))
+    root = _show(result, {"query": "sla"}, open=[1])  # fold 0 is the area, fold 1 the hit
+    (hit,) = _folds(root, "h3")
+    (body,) = _bodies(root)
+    assert hit.get("aria-expanded") == "true" and body.get("hidden") is None
+    assert _text(body.find("blockquote")) == "Passage number 1 says something."
+    assert [_text(b) for b in body.iter("button")] == ["Read section", "Open docs"]
+    (again,) = _bodies(_show(result, {"query": "sla"}, open=[1, 1]))
+    assert again.get("hidden") is not None
+
+
+@needs_node
+def test_an_area_can_be_closed():
+    result = _search(_hit(1, "it-service-management", "A"), _hit(2, "it-service-management", "B"))
+    root = _show(result, {"query": "x"}, open=[0])
+    (area,) = _folds(root, "h2")
+    (leaves,) = [u for u in root.iter("ul") if _has(u, "leaves")]
+    assert area.get("aria-expanded") == "false" and leaves.get("hidden") is not None
+    assert area.get("aria-controls") == leaves.get("id")
+
+
+def _change(heading: str, change: str = "changed", small: bool = False) -> dict:
+    return {"heading_path": heading, "change": change, "changed_words": 2, "small": small,
+            "australia_id": "australia:markdown/x.md::A", "brazil_id": "brazil:markdown/x.md::A",
+            "australia_excerpt": "kept for 30 days", "brazil_excerpt": "kept for 90 days"}  # fmt: skip
+
+
+def _compare(pages: list[dict], notes: list[dict] | None = None) -> dict:
+    return {"ok": True, "message": "", "release_notes": notes or [], "more_release_notes": [],
+            "changed_pages": pages, "only_in_australia": [], "only_in_brazil": []}  # fmt: skip
+
+
+@needs_node
+def test_changed_pages_are_closed_rows_that_open_into_their_sections():
+    pages = [
+        {"page": "markdown/x.md", "page_title": "Retention", "product": "customer-service-management",
+         "sections": [_change("Retention > Closed cases", small=True), _change("Retention > Overview", "added")]},
+        {"page": "markdown/y.md", "page_title": "Archiving", "product": "it-service-management",
+         "sections": [_change("Archiving > Rules")]},
+    ]  # fmt: skip
+    root = _show(_compare(pages), {"query": "retention"})
+    rows = _folds(root, "h3")
+    assert [(_part(r, "fold-name"), _part(r, "fold-more"), _part(r, "fold-count"), r.get("aria-expanded")) for r in rows] == [
+        ("Retention", "Customer Service Management", "2 sections", "false"),
+        ("Archiving", "IT Service Management", "1 section", "false"),
+    ]  # fmt: skip
+    sections = _folds(root, "h4")
+    assert [
+        (_part(s, "fold-name"), _part(s, "kind"), s.get("aria-expanded")) for s in sections
+    ] == [
+        ("Closed cases", "Small rewording", "false"),
+        ("Overview", "Added", "false"),
+        ("Rules", "Changed", "false"),
+    ]
+    assert all(b.get("hidden") is not None for b in _bodies(root))
+    opened = _show(
+        _compare(pages), {"query": "retention"}, open=[0, 1]
+    )  # the page, then its first section
+    shown = [b for b in _bodies(opened) if b.get("hidden") is None]
+    assert len(shown) == 1 and [_text(d) for d in shown[0].iter("del")] == ["30"]
+
+
+@needs_node
+def test_one_page_asked_for_lists_its_sections_without_a_row_for_the_page():
+    page = {"page": "markdown/x.md", "page_title": "Retention", "product": "customer-service-management",
+            "sections": [_change("Retention > Closed cases"), _change("Retention > Overview")]}  # fmt: skip
+    root = _show(_compare([page]), {"page": "australia:markdown/x.md::"})
+    assert _text(root.find(".//h1")) == "Retention"
+    sections = _folds(root, "h3")
+    # the page's title is the heading of the panel, so a row does not say it again
+    assert [_part(s, "fold-name") for s in sections] == ["Closed cases", "Overview"]
+    assert [s.get("aria-expanded") for s in sections] == ["false", "false"] and not _folds(
+        root, "h4"
+    )
+    assert "null" not in _text(root) and "undefined" not in _text(root)
+
+
+@needs_node
+def test_release_notes_are_closed_rows_too():
+    note = {**_hit(1, "delta-brazil", "Combined Now Assist release notes for upgrades from Australia", "Changed"),
+            "page_title": "Combined Now Assist release notes for upgrades from Australia"}  # fmt: skip
+    root = _show(_compare([], [note]), {"query": "now assist"})
+    (row,) = _folds(root, "h3")
+    assert (_part(row, "fold-name"), _part(row, "fold-more"), row.get("aria-expanded")) == (
+        "Now Assist",
+        "Changed",
+        "false",
+    )
+    (body,) = _bodies(root)
+    assert body.get("hidden") is not None and [_text(b) for b in body.iter("button")] == [
+        "Read section",
+        "Open docs",
+    ]
+
+
+def test_what_is_hidden_is_not_drawn_and_long_text_scrolls_inside_the_panel():
+    css = _style()
+    assert re.search(r"\[hidden\]\s*\{\s*display:\s*none\s*!important", css)
+    for box in (".reader-body", ".doc-body", ".rows"):
+        rule = re.escape(box) + r"\s*\{[^}]*max-height:\s*\d+rem[^}]*overflow:\s*auto"
+        assert re.search(rule, css), box
+    # the frame is as tall as its content, so a height taken from the frame feeds on itself
+    assert "100vh" not in css
+
+
+@needs_node
+def test_a_document_that_scrolls_can_be_reached_with_the_keyboard():
+    (shown,) = _render({"op": "document", "text": "Intro.\n", "title": "A page"})
+    (body,) = _dom(shown["html"])
+    assert (body.get("tabindex"), body.get("role"), body.get("aria-label")) == (
+        "0",
+        "region",
+        "A page",
+    )

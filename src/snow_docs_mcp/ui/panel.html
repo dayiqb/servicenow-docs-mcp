@@ -48,6 +48,7 @@ ol, ul { list-style: none; }
 button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; text-align: inherit; }
 :focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; border-radius: var(--radius-sm); }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+[hidden] { display: none !important; }
 
 /* Head: what was asked, how much came back, and which release it is from. */
 .head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: var(--s3) var(--s6);
@@ -68,18 +69,29 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .key { display: inline-block; width: 8px; height: 8px; margin-right: var(--s2); border-radius: 2px; }
 .key.australia { background: var(--au); } .key.brazil { background: var(--br); }
 
-/* Entries: one ranked list, best match first. The number is the rank. */
-.entries > li { display: grid; grid-template-columns: var(--s8) minmax(0, 1fr); column-gap: var(--s2);
-  padding: var(--s6) 0; border-bottom: 1px solid var(--line); }
-.entries > li > * { grid-column: 2; }
-/* The rank is set at the title size and shares the entry title's line, so the list reads by number. */
-.entries .rank { grid-column: 1; grid-row: 1; color: var(--ink-2); font: 500 var(--title)/1.25rem var(--sans); font-variant-numeric: tabular-nums; }
-.entries.plain > li { grid-template-columns: minmax(0, 1fr); } .entries.plain > li > * { grid-column: 1; }
-.entry h2, .entry h3 { font: 600 var(--body)/1.25 var(--sans); }
+/* A tree of closed rows. A product area or a page holds its hits or sections; a row opens in
+   place to the passage and what can be done with it. Every row is one line, 32px high. */
+.tree > li { padding: var(--s1) 0; border-bottom: 1px solid var(--line); }
+.fold { display: flex; align-items: baseline; gap: var(--s2); width: 100%; padding: var(--s1) 0; font: 500 var(--body)/1.5rem var(--sans); }
+h2 > .fold { font: 600 var(--secondary)/1.5rem var(--sans); }
+.fold .chev { flex: none; align-self: flex-start; width: 16px; height: 1.5rem; color: var(--ink-2); }
+.fold[aria-expanded="true"] > .chev { transform: rotate(90deg); }
+.fold-text { flex: 1 1 auto; min-width: 0; }
+.fold:hover .fold-name { text-decoration: underline; text-underline-offset: 2px; text-decoration-color: var(--ink-2); }
+.fold-count { color: var(--ink-2); font: 400 var(--secondary)/1.5rem var(--sans); }
+/* Smaller words on the name's own line: they take its line height, so every row is as high. */
+.fold-more, .fold .kind { margin-left: var(--s1); color: var(--ink-2); font: 400 var(--secondary)/1 var(--sans); }
+.fold-count { flex: none; font-variant-numeric: tabular-nums; }
+/* The rank the search gave the hit: it stays with the hit, whichever area the hit stands in. */
+.fold .rank { flex: none; width: 2ch; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.leaves, .branch-body { padding-left: var(--s6); }
+.branch-body > .leaves { padding-left: 0; }
+/* What a row opens to starts under the row's name: past the arrow, and past the rank if it has one. */
+.fold-body { padding: var(--s1) 0 var(--s4) var(--s6); }
+.ranked > .fold-body { padding-left: calc(var(--s8) + 2ch); }
 .where { margin-top: var(--s1); color: var(--ink-2); font-size: var(--secondary); line-height: 1.4; }
-.where .sep { margin: 0 var(--s2); }
-.quote { margin-top: var(--s2); max-width: var(--prose); font: 400 var(--body)/1.55 var(--serif); }
-.acts { display: flex; flex-wrap: wrap; gap: var(--s2); margin-top: var(--s4); }
+.quote { max-width: var(--prose); font: 400 var(--body)/1.55 var(--serif); }
+.acts { display: flex; flex-wrap: wrap; gap: var(--s2); margin-top: var(--s3); }
 .act { min-height: 32px; padding: var(--s1) var(--s3); border: 1px solid var(--line); border-radius: var(--radius-sm);
   font: 500 var(--secondary)/1.4 var(--sans); }
 .act:hover { background: var(--bg-quiet); }
@@ -118,16 +130,12 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 
 /* Compare: Australia beside Brazil. The words only one of them has are marked: struck through
    in Australia, underlined in Brazil, each on its release's wash. */
-.part { margin-top: var(--s8); }
+.part { margin-top: var(--s4); }
 .part > h2 { font: 600 var(--secondary)/1.4 var(--sans); color: var(--ink-2); padding-bottom: var(--s2); border-bottom: 1px solid var(--line); }
-.page { padding: var(--s6) 0; border-bottom: 1px solid var(--line); }
-.page > h3 { font: 600 var(--body)/1.25 var(--sans); }
-.change { margin-top: var(--s6); }
-.change-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s2); }
-.change-name { font: 500 var(--secondary)/1.4 var(--sans); }
-.kind { font-size: var(--secondary); line-height: 1.4; color: var(--ink-2); }
-.kind.added { color: var(--br); } .kind.removed { color: var(--au); }
-.sides { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: var(--s4); margin-top: var(--s2); }
+.page { padding: var(--s4) 0; border-bottom: 1px solid var(--line); }
+.page > h3 { font: 600 var(--secondary)/1.4 var(--sans); }
+.fold .kind.added { color: var(--br); } .fold .kind.removed { color: var(--au); }
+.sides { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: var(--s4); }
 .side { border: 1px solid var(--line); border-radius: var(--radius); }
 .side .rel { display: block; padding: var(--s2) var(--s4); border-bottom: 1px solid var(--line); font: 500 var(--meta)/1.4 var(--sans); color: var(--ink-2); }
 .side p { padding: var(--s3) var(--s4) var(--s4); font: 400 var(--body)/1.55 var(--serif); }
@@ -142,7 +150,10 @@ ins { background: var(--br-wash); color: var(--br); text-decoration: underline; 
 .doc-acts[hidden] { display: none; }
 .doc { margin-top: var(--s4); }
 .doc.with-toc { display: grid; grid-template-columns: minmax(0, 1fr) 14rem; gap: var(--s8); align-items: start; }
-.doc.with-toc .toc { grid-column: 2; grid-row: 1; position: sticky; top: var(--s4); max-height: calc(100vh - var(--s8)); overflow: auto; }
+.doc.with-toc .toc { grid-column: 2; grid-row: 1; max-height: 32rem; overflow: auto; }
+/* The text scrolls inside the panel, so a long page takes no more of the conversation than a
+   short one, and the list of its sections stays beside it. */
+.doc-body { max-height: 32rem; overflow: auto; padding: var(--s1) var(--s4) var(--s1) var(--s1); }
 .doc.with-toc .doc-body { grid-column: 1; grid-row: 1; }
 .doc.with-toc .reader-note { grid-column: 1; }
 .toc h2 { font: 600 var(--secondary)/1.4 var(--sans); color: var(--ink-2); margin-bottom: var(--s2); }
@@ -154,8 +165,12 @@ ins { background: var(--br-wash); color: var(--br); text-decoration: underline; 
 .trail button { text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 2px; }
 .trail button:hover { color: var(--ink); text-decoration-color: var(--ink-2); }
 .trail .sep { margin: 0 var(--s2); } .trail [aria-current] { color: var(--ink); }
+/* A long listing scrolls inside the panel. The focus ring is drawn inside the row, where the
+   edge of the scrolling box cannot cut it. */
+.rows { max-height: 25rem; overflow: auto; }
 .rows > li { border-bottom: 1px solid var(--line); }
-.row { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s4); width: 100%; min-height: 40px; padding: var(--s2) 0; }
+.row { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s4); width: 100%; padding: var(--s1) 0; line-height: 1.5rem; }
+.row:focus-visible { outline-offset: -2px; }
 .row:hover .row-name { text-decoration: underline; text-underline-offset: 2px; text-decoration-color: var(--ink-2); }
 .row-count { flex: none; color: var(--ink-2); font-size: var(--secondary); font-variant-numeric: tabular-nums; }
 
@@ -182,8 +197,8 @@ ins { background: var(--br-wash); color: var(--br); text-decoration: underline; 
 .notice { margin-top: var(--s3); padding: var(--s2) var(--s3); border-radius: var(--radius-sm); background: var(--bg-quiet); border: 1px solid var(--line); font: 400 var(--secondary)/1.4 var(--sans); }
 .pulse { display: inline-block; width: 8px; height: 8px; margin-right: var(--s2); border-radius: 50%; background: var(--ink-2); animation: pulse 1.1s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: 0.25; } }
-@media (max-width: 44rem) { .doc.with-toc { display: block; } .doc.with-toc .toc { position: static; max-height: none; margin-bottom: var(--s6); padding-bottom: var(--s4); border-bottom: 1px solid var(--line); } }
-@media (max-width: 30rem) { body { padding: var(--s3) var(--s4) var(--s4); } .entries > li { grid-template-columns: minmax(0, 1fr); } .entries > li > *, .entries .rank { grid-column: 1; grid-row: auto; }
+@media (max-width: 44rem) { .doc.with-toc { display: block; } .doc.with-toc .toc { max-height: 12rem; margin-bottom: var(--s6); padding-bottom: var(--s4); border-bottom: 1px solid var(--line); } }
+@media (max-width: 30rem) { body { padding: var(--s3) var(--s4) var(--s4); } .ranked > .fold-body { padding-left: var(--s6); }
   .reader-body, .reader-head, .reader-note { padding-left: var(--s4); padding-right: var(--s4); } }
 @media (prefers-reduced-motion: reduce) { .pulse { animation: none; } * { scroll-behavior: auto !important; } }
 @media (forced-colors: active) {
@@ -222,6 +237,7 @@ const WORDS = {
     readIn: (r) => "Read in " + r, hideIn: (r) => "Hide " + r + " section",
     onThisPage: "On this page", back: "Back", docs: "Docs", areas: "Product areas", folders: "Folders", pages: "Pages",
     nFolders: (n) => (n === 1 ? "1 folder" : n + " folders"), nPages: (n) => (n === 1 ? "1 page" : n + " pages"),
+    nSections: (n) => (n === 1 ? "1 section" : n + " sections"),
     more: (n) => "Show " + n + " more", moreFailed: "Could not load more pages", showFlow: "Show as flow", hideFlow: "Hide flow", stepsTitle: "Steps",
     nSteps: (n) => (n === 1 ? "1 step" : n + " steps"), inLanes: (n) => "in " + n + " lanes", leadsTo: "Then", source: "Read source", hideSource: "Hide source",
     start: "Start", end: "End", decision: "Decision", flowOf: (s) => "Flow: " + s, loadingPage: "Opening the page…",
@@ -243,6 +259,7 @@ const WORDS = {
     readIn: (r) => "Les i " + r, hideIn: (r) => "Skjul seksjonen fra " + r,
     onThisPage: "På denne siden", back: "Tilbake", docs: "Dokumentasjon", areas: "Produktområder", folders: "Mapper", pages: "Sider",
     nFolders: (n) => (n === 1 ? "1 mappe" : n + " mapper"), nPages: (n) => (n === 1 ? "1 side" : n + " sider"),
+    nSections: (n) => (n === 1 ? "1 seksjon" : n + " seksjoner"),
     more: (n) => "Vis " + n + " til", moreFailed: "Kunne ikke hente flere sider", showFlow: "Vis som flyt", hideFlow: "Skjul flyten", stepsTitle: "Steg",
     nSteps: (n) => n + " steg", inLanes: (n) => "i " + n + " baner", leadsTo: "Deretter", source: "Les kilden", hideSource: "Skjul kilden",
     start: "Start", end: "Slutt", decision: "Valg", flowOf: (s) => "Flyt: " + s, loadingPage: "Åpner siden…",
@@ -694,21 +711,33 @@ function releaseSwitch(current, name, pick) {
   return group;
 }
 
+// ---- rows that open in place -----------------------------------------------------------------
+let folds = 0;
+function fold(tag, parts, body, open) {
+  // A heading that is a button: it shows or hides `body`, which stands right after it. A row
+  // starts closed unless `open`. The words of a row are separate text, so they are read apart.
+  body.id = "fold-" + ++folds; body.hidden = !open;
+  const arrow = svg("svg", { class: "chev", viewBox: "0 0 16 16", "aria-hidden": "true", focusable: "false" },
+    svg("path", { d: "M6 4l4 4-4 4", fill: "none", stroke: "currentColor", "stroke-width": "1.5", "stroke-linecap": "round", "stroke-linejoin": "round" }));
+  const button = el("button", { class: "fold", type: "button", "aria-expanded": String(!!open), "aria-controls": body.id }, arrow, parts);
+  button.addEventListener("click", () => { body.hidden = !body.hidden; button.setAttribute("aria-expanded", String(!body.hidden)); });
+  return el(tag, {}, button);
+}
+// A row's words: its name, then what says more about it in a quieter voice.
+const rowText = (name, more) => el("span", { class: "fold-text" }, el("span", { class: "fold-name", text: name }), more ? " " : null, more || null);
+const quiet = (text) => (text ? el("span", { class: "fold-more", text }) : null);
+const branch = (tag, parts, inside, open) => el("li", { class: "branch" }, fold(tag, parts, inside, open), inside);
+
 // ---- search --------------------------------------------------------------------------------
 function entry(hit, titleTag, rank) {
+  // One row: the page, and the section of it the passage is from. It opens to the passage.
   const crumbs = crumbsOf(hit.heading_path);
   const name = hit.page_title || crumbs[0] || hit.id;
   const section = (crumbs[0] === name || crumbs[0] === hit.full_title ? crumbs.slice(1) : crumbs).join(" › ");
-  const li = el("li", { class: "entry" });
-  if (rank) li.append(el("span", { class: "rank", "aria-hidden": "true", text: String(rank) }));
-  li.append(
-    el(titleTag || "h2", { text: name }),
-    el("p", { class: "where" }, el("span", { text: areaName(hit.product) }),
-      section ? el("span", { class: "sep", "aria-hidden": "true", text: "/" }) : null, section ? el("span", { text: section }) : null),
-    quote(hit),
-  );
-  li.append(el("div", { class: "acts" }, readerButton(hit.id, t("read"), li, { hide: t("hide"), name: section ? name + ", " + section : name }), openButton(hit.url)));
-  return li;
+  const body = el("div", { class: "fold-body" }, quote(hit));
+  body.append(el("div", { class: "acts" }, readerButton(hit.id, t("read"), body, { hide: t("hide"), name: section ? name + ", " + section : name }), openButton(hit.url)));
+  const parts = [...(rank ? [el("span", { class: "rank", text: String(rank) }), " "] : []), rowText(name, quiet(section))];
+  return el("li", { class: rank ? "entry ranked" : "entry" }, fold(titleTag, parts, body, false), body);
 }
 function quote(hit) {
   // The snippet opens with the section's own breadcrumb; the entry already shows it.
@@ -741,7 +770,15 @@ function showSearch(result) {
   const head = el("header", { class: "head" },
     el("div", { class: "head-text" }, title(sentence(state.args.query) || "ServiceNow Docs"), el("p", { class: "count", text: count })),
     releaseSwitch(result.release, "release", switchRelease));
-  const body = hits.length ? el("ol", { class: "entries" }, hits.map((h, i) => entry(h, "h2", i + 1)))
+  // The hits stand under their product area, and an area stands where its best hit is.
+  const areas = new Map();
+  hits.forEach((h, i) => {
+    const area = areaName(h.product) || t("docs");
+    if (!areas.has(area)) areas.set(area, []);
+    areas.get(area).push(entry(h, "h3", i + 1));
+  });
+  const body = hits.length ? el("ul", { class: "tree" }, [...areas].map(([area, rows]) =>
+      branch("h2", [rowText(area), " ", el("span", { class: "fold-count", text: t("passages", rows.length) })], el("ul", { class: "leaves" }, rows), true)))
     : el("div", { class: "state" }, el("strong", { text: t("noHits") }), el("span", { text: t("tryOther") }));
   app.replaceChildren(head, body);
   say(count);
@@ -778,22 +815,25 @@ function marked(mine, other, tag) {
 function side(release, text, other) {
   return el("div", { class: "side " + release }, el("span", { class: "rel" }, releaseKey(release)), marked(text, other, release === "australia" ? "del" : "ins"));
 }
-function changeBlock(section, holder, nameTag) {
-  const heading = crumbsOf(section.heading_path).slice(-2).join(" › ");
+function changeBlock(section, nameTag, pageTitle) {
+  // One changed section as a row: its heading and what kind of change it is. It opens to the
+  // two releases side by side. A small rewording is a change of a few words, and says so.
+  // The page's own title is already above the row, so the heading starts after it.
+  const crumbs = crumbsOf(section.heading_path);
+  if (crumbs.length > 1 && crumbs[0] === pageTitle) crumbs.shift();
+  const heading = crumbs.slice(-2).join(" › ");
   const kind = KINDS.includes(section.change) ? section.change : "changed";
-  // A small rewording is a change of a few words: it says so in words, beside the heading.
-  const block = el("div", { class: "change" },
-    el("div", { class: "change-head" }, el(nameTag, { class: "change-name", text: heading || t("readPage") }),
-      el("span", { class: "kind " + kind, text: section.small ? t("rewording") : t(kind) })));
+  const body = el("div", { class: "fold-body" });
   const sides = el("div", { class: "sides" });
   const acts = el("div", { class: "acts" });
   for (const r of RELEASES) {
     const text = section[r + "_excerpt"], id = section[r + "_id"];
     if (text) sides.append(side(r, text, section[(r === "australia" ? "brazil" : "australia") + "_excerpt"] || ""));
-    if (id) acts.append(readerButton(id, t("readIn", NAME[r]), block, { hide: t("hideIn", NAME[r]), head: releaseKey(r), name: NAME[r] + (heading ? ", " + heading : "") }));
+    if (id) acts.append(readerButton(id, t("readIn", NAME[r]), body, { hide: t("hideIn", NAME[r]), head: releaseKey(r), name: NAME[r] + (heading ? ", " + heading : "") }));
   }
-  block.append(sides, acts);
-  holder.append(block);
+  body.append(sides, acts);
+  const words = rowText(heading || t("readPage"), el("span", { class: "kind " + kind, text: section.small ? t("rewording") : t(kind) }));
+  return el("li", { class: "entry" }, fold(nameTag, [words], body, false), body);
 }
 function showCompare(result) {
   const notes = result.release_notes || [], more = result.more_release_notes || [], pages = result.changed_pages || [];
@@ -805,7 +845,7 @@ function showCompare(result) {
   const parts = [head];
   if (notes.length || more.length) {
     const part = el("section", { class: "part" }, el("h2", { text: t("notes") }));
-    if (notes.length) part.append(el("ol", { class: "entries plain" }, notes.map((n) => entry({ ...n, full_title: n.page_title, page_title: String(n.page_title || "").replace(/^Combined (.+) release notes for upgrades.*$/, "$1") }, "h3"))));
+    if (notes.length) part.append(el("ul", { class: "tree" }, notes.map((n) => entry({ ...n, full_title: n.page_title, page_title: String(n.page_title || "").replace(/^Combined (.+) release notes for upgrades.*$/, "$1") }, "h3"))));
     if (more.length) {
       // Each name opens that application's notes; the open ones say above the text whose they are.
       const holder = el("div", { class: "page" }, el("h3", { text: t("moreNotes") }));
@@ -816,13 +856,21 @@ function showCompare(result) {
   }
   const docs = el("section", { class: "part" }, el("h2", { text: t("changedDocs") }));
   if (!pages.length) docs.append(el("p", { class: "state", text: t("noChanges") }));
-  for (const page of pages) {
-    // One page asked for: its title is already the heading of the panel.
-    const holder = el("article", { class: "page" }, onePage ? null : el("h3", { text: page.page_title || page.page }),
-      el("p", { class: "where", text: areaName(page.product) }));
-    (page.sections || []).forEach((s) => changeBlock(s, holder, onePage ? "h3" : "h4"));
-    if (page.sections_left_out) holder.append(el("div", { class: "foot" }, el("p", { text: t("leftOut", page.sections_left_out) })));
-    docs.append(holder);
+  const leftOut = (page) => (page.sections_left_out ? el("div", { class: "foot" }, el("p", { text: t("leftOut", page.sections_left_out) })) : null);
+  if (onePage) {
+    // One page asked for: its title is already the heading of the panel, so its sections are the rows.
+    const page = pages[0];
+    docs.append(el("p", { class: "where", text: areaName(page.product) }),
+      el("ul", { class: "tree" }, (page.sections || []).map((s) => changeBlock(s, "h3", page.page_title))));
+    if (page.sections_left_out) docs.append(leftOut(page));
+  } else if (pages.length) {
+    // A page is a closed row that says how many of its sections changed; it opens to them.
+    docs.append(el("ul", { class: "tree" }, pages.map((page) => {
+      const sections = page.sections || [];
+      const inside = el("div", { class: "branch-body" }, el("ul", { class: "leaves" }, sections.map((s) => changeBlock(s, "h4", page.page_title))), leftOut(page));
+      const count = el("span", { class: "fold-count", text: t("nSections", sections.length + (page.sections_left_out || 0)) });
+      return branch("h3", [rowText(page.page_title || page.page, quiet(areaName(page.product))), " ", count], inside, false);
+    })));
   }
   const only = [];
   for (const r of RELEASES) { const n = (result["only_in_" + r] || []).length; if (n) only.push(t("onlyIn", NAME[r], n)); }
@@ -1091,7 +1139,8 @@ function documentBody(content, title) {
   // A page's text as a document, with its headings listed. A first heading that only repeats
   // the title is left out: the title is already the h1 above it.
   const anchors = [];
-  const body = el("div", { class: "doc-body prose" }, markdown(content || "", anchors));
+  // The text scrolls inside the panel, so the box takes the keyboard and says what it holds.
+  const body = el("div", { class: "doc-body prose", tabindex: "0", role: "region", "aria-label": title || t("docs") }, markdown(content || "", anchors));
   const first = body.firstElementChild;
   if (first && /^H[23]$/.test(first.tagName) && first.textContent.trim() === String(title || "").trim()) { first.remove(); anchors.shift(); }
   return { body, anchors };

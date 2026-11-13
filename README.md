@@ -151,10 +151,13 @@ the same check itself with the `snow_docs_check_script` tool.
 In Claude Desktop, results can appear in a panel next to Claude's answer, so you can read the
 source yourself. It follows Claude's light or dark theme and your language (English or
 Norwegian), works with the keyboard, and needs no network: it is one page inside the extension.
+It stays small in the conversation: a result is a tree of closed rows that open in place, and
+long text scrolls inside the panel.
 
-- **Search results.** A ranked list with the page, the section and the passage. *Read section*
-  opens the full section in place; *Open docs* opens the page on servicenow.com; the switch at
-  the top runs the same search in the other release.
+- **Search results.** The hits stand under their product area, one row each with its rank, page
+  and section. A row opens to the passage. *Read section* opens the full section in place;
+  *Open docs* opens the page on servicenow.com; the switch at the top runs the same search in
+  the other release.
 - **A page as a document.** Ask *"show me that page"*: the page is laid out for reading, with
   its sections listed beside it, notes set apart, and tables and code as they should be. A
   numbered procedure can also be shown as a flow, one box per step. The switch shows the same
@@ -164,8 +167,9 @@ Norwegian), works with the keyboard, and needs no network: it is one page inside
 - **Diagrams.** Ask *"draw the major incident process as swimlanes"*: Claude takes the steps
   from the docs and the panel draws a flow, or swimlanes when several roles take part. Every
   step lists the passage it comes from, and you can open it.
-- **What changed.** A comparison of Australia and Brazil, side by side, with the words that
-  differ marked.
+- **What changed.** A comparison of Australia and Brazil. Each changed page is a row that says
+  how many of its sections changed; it opens to those sections, and a section opens to the two
+  releases side by side, with the words that differ marked.
 
 Claude Code and other clients without panels get the same results as text; a diagram comes as
 Mermaid text there.

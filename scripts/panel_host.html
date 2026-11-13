@@ -77,6 +77,11 @@ const BUILT_IN = {
   "read": { ok: true, message: "", id: "x", title: "Define priority lookup rules", url: "", heading_path: "Procedure", truncated: false,
     content: "## Procedure\n\nRole required: **admin**\n\n1.  Navigate to **All** > **System Policy** > **Priority Lookup Rules**.\n2.  Open the row for a combination of impact and urgency.\n3.  Choose the priority, then select **Update**.\n\n|Impact|Urgency|Priority|\n|------|-------|--------|\n|1 - High|1 - High|1 - Critical|\n|2 - Medium|1 - High|2 - High|\n\n```\nvar gr = new GlideRecord('dl_u_priority');\ngr.query();\n```\n\nSee [Priority](https://www.servicenow.com/docs/r/priority.html) for the defaults." },
 };
+// A topic that changed on two pages: the comparison shows them as rows that open into their sections.
+BUILT_IN.compare.changed_pages = [BUILT_IN["compare-page"].changed_pages[0],
+  { page: "markdown/customer-service-management/case-priority.md", page_title: "Case priority", product: "customer-service-management", minor_changes: 0, sections_left_out: 2,
+    sections: [{ heading_path: "Case priority > Before you begin", change: "removed", changed_words: 12, small: false, australia_id: "australia:markdown/y.md::A", brazil_id: "",
+      australia_excerpt: "The case priority is set by the agent who opens the case.", brazil_excerpt: "" }] }];
 const lane = (id, label) => ({ id, label });
 Object.assign(BUILT_IN, {
   "open": { ok: true, message: "", id: "australia:markdown/it-service-management/page-1.md::", focus: "Define priority lookup rules > Procedure", title: "Define priority lookup rules",

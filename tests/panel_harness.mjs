@@ -9,7 +9,8 @@
 //   { op: "plain", text }             -> docs text as plain words
 //   { op: "flow", text, index }       -> the steps of the index-th "Show as flow" figure
 //   { op: "diagram", spec, pick }     -> the figure as a tree: { tag, attrs, text, kids }
-//   { op: "show", result, args }      -> the whole panel after a tool result, as a string
+//   { op: "show", result, args, open } -> the whole panel after a tool result, as a string;
+//                                        `open` lists the fold buttons to click first, by position
 //   { op: "words" }                   -> the keys of the strings, per language
 import { readFileSync } from "node:fs";
 
@@ -63,7 +64,7 @@ class Element {
   #take(items) {
     const out = [];
     for (const item of items) {
-      if (item == null) continue;
+      if (item == null) { out.push(new Text(String(item))); continue; } // as a browser does: append(null) writes "null"
       if (typeof item === "string" || typeof item === "number") out.push(new Text(item));
       else if (item.nodeType === 11) { out.push(...item.childNodes); item.childNodes = []; }
       else { item.remove(); out.push(item); }
@@ -123,13 +124,14 @@ if (!tail.test(script)) throw new Error("the panel's script no longer ends with 
 (0, eval)(script.replace(tail, "globalThis.panel = { markdown, inline, plainText, diagram, documentBody, show, state, WORDS }; })();"));
 const { markdown, inline, plainText, diagram, documentBody, show, state, WORDS } = globalThis.panel;
 
-const KEPT = ["class", "start", "href", "colspan", "rowspan", "scope", "role", "aria-label", "aria-expanded", "tabindex", "id"];
+const KEPT = ["class", "start", "href", "colspan", "rowspan", "scope", "role", "aria-label", "aria-expanded", "aria-controls", "tabindex", "id"];
 const escape = (text) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 function html(node) {
   if (node.nodeType === 3) return escape(node.data);
   const inner = node.childNodes.map(html).join("");
   if (node.nodeType === 11) return inner;
-  const attrs = KEPT.filter((k) => node.attrs.has(k)).map((k) => ` ${k}="${escape(node.attrs.get(k))}"`).join("");
+  const attrs = KEPT.filter((k) => node.attrs.has(k)).map((k) => ` ${k}="${escape(node.attrs.get(k))}"`).join("")
+    + (node.hidden ? ' hidden=""' : "");
   return `<${node.localName}${attrs}>${inner}</${node.localName}>`;
 }
 function tree(node) {
@@ -152,7 +154,11 @@ const run = {
     return { toggles: toggles.length, steps: toggles[c.index || 0].querySelectorAll("g.node").map((g) => g.querySelectorAll("tspan").map((s) => s.textContent).join(" ")) };
   },
   diagram: (c) => tree(diagram(c.spec, c.label || "Flow", c.pick ? () => {} : undefined)),
-  show: (c) => { state.args = c.args || {}; show(c.result); return html(byId.app); },
+  show: (c) => {
+    state.args = c.args || {}; show(c.result);
+    for (const at of c.open || []) byId.app.querySelectorAll("button.fold")[at].click();
+    return html(byId.app);
+  },
   words: () => Object.fromEntries(Object.entries(WORDS).map(([language, words]) => [language, Object.keys(words)])),
 };
 const cases = JSON.parse(readFileSync(0, "utf8"));
