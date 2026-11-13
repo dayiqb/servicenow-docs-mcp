@@ -32,5 +32,9 @@ Answer ServiceNow questions from the official product documentation, not from me
 8. Table and field names depend on the instance. If a tool for the user's own ServiceNow
    instance is connected, check them there (ask first); otherwise say they are unverified.
 
+To see what the docs have on a product rather than search them, call `snow_docs_browse`:
+without arguments for the product areas, with `product` (and `folder`) for the folders and
+pages by title.
+
 If a tool says the docs are still being set up, tell the user it's a one-time download
 and to try again in a minute or two; `snow_docs_status` shows progress.

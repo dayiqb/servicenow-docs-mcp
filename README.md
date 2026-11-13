@@ -4,7 +4,7 @@ Ask Claude questions about ServiceNow and get answers taken from the **official 
 documentation**, for the **Australia** and **Brazil** releases, each claim with a citation you can
 open.
 
-It adds six read-only tools to Claude:
+It adds seven read-only tools to Claude:
 
 | Tool | What it does |
 |---|---|
@@ -13,6 +13,7 @@ It adds six read-only tools to Claude:
 | `snow_docs_compare` | Shows what changed between the Australia and Brazil docs for a topic or page |
 | `snow_docs_api` | Looks up a scripting class or method exactly: its methods, parameters and return type |
 | `snow_docs_check_script` | Checks a script: which method calls and table names the docs do not have |
+| `snow_docs_browse` | Lists the docs as a tree: product areas, folders and pages by title |
 | `snow_docs_status` | Shows download/update progress and which docs snapshot is loaded |
 
 Claude writes the answer from the passages and cites them. The server itself runs no AI model
@@ -179,6 +180,14 @@ searching text:
 
 A name the API reference does not have gets a clear "not found" with the closest names, so
 Claude checks its methods before it writes script code instead of guessing.
+
+## Browse
+
+Ask what the docs have on something instead of searching for words you may not know, for
+example *"What is documented under Incident Management?"* Claude calls `snow_docs_browse`:
+without arguments it lists the 54 product areas with their page counts; with a product it
+lists that area's folders and pages by title; with a folder it goes further down. Every page
+can be opened in full.
 
 ## Troubleshooting
 

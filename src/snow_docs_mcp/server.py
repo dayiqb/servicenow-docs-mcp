@@ -7,6 +7,7 @@ Tools (all read-only):
     snow_docs_compare  what changed between the australia and brazil docs for a topic or page
     snow_docs_api      a class's methods, or a method's parameters and return type, exactly
     snow_docs_check_script  which calls and tables in a script the docs do not have
+    snow_docs_browse   the docs as a tree: product areas, folders and pages
     snow_docs_status   setup/update progress per release, and where data lives
 
 Prompt:
@@ -294,6 +295,30 @@ class ApiResult(BaseModel):
     methods: list[ApiMethod] = []
     endpoints: list[ApiEndpoint] = []
     suggestions: list[str] = []
+
+
+class BrowseFolder(BaseModel):
+    name: str
+    path: str = Field(description="Pass as `folder` to open it.")
+    pages: int = Field(description="Pages in it, at any depth.")
+
+
+class BrowsePage(BaseModel):
+    title: str
+    id: str = Field(description="Pass to snow_docs_read for the whole page; cite it as [id].")
+
+
+class BrowseResult(BaseModel):
+    ok: bool
+    message: str
+    release: str = ""
+    snapshot: str = ""
+    path: str = Field(
+        "", description="Where this listing is, e.g. it-service-management/incident-management."
+    )
+    folders: list[BrowseFolder] = []
+    pages: list[BrowsePage] = []
+    pages_left_out: int = 0
 
 
 class ScriptFinding(BaseModel):
@@ -1429,6 +1454,138 @@ def snow_docs_check_script(code: str, release: str | None = None) -> ScriptCheck
     except Exception as e:  # tools report errors, never raise
         logger.exception("snow_docs_check_script failed")
         return ScriptCheckResult(ok=False, message=f"Script check failed: {e}")
+
+
+# --- browse -------------------------------------------------------------------------------
+
+BROWSE_PAGES_SHOWN = 100
+_titles: dict[str, dict[str, str]] = {}
+
+
+def _page_titles(db) -> dict[str, str]:
+    key = str(db)
+    if key not in _titles:
+        _titles.clear()
+        _titles[key] = store.titles_by_path(db)
+    return _titles[key]
+
+
+@mcp.tool(name="snow_docs_browse", annotations=READ_ONLY)
+def snow_docs_browse(
+    product: str | None = None,
+    folder: str | None = None,
+    release: str | None = None,
+    offset: int = 0,
+) -> BrowseResult:
+    """Browse the ServiceNow docs as a tree instead of searching them.
+
+    Use this to see what the docs have on a product: its sub-areas and the pages in each, by
+    title. Without arguments it lists the product areas. With `product` it lists that area's
+    folders (with page counts) and its own pages; with `folder` it goes further down. Open a
+    page with snow_docs_read(id). Good for "what is documented about X", for finding a page
+    whose words you do not know, and for the release notes (product "release-notes" or
+    "delta-australia-brazil").
+
+    Args:
+        product: A product area, as in snow_docs_search ("it-service-management", "itsm", ...).
+        folder: A folder inside the product ("incident-management"), or a whole path as a
+            listing returned it ("it-service-management/incident-management").
+        release: "australia" or "brazil". Defaults to the configured release.
+        offset: Skip this many pages of a long folder (the message says when there are more).
+    """
+    try:
+        rel = config.normalize_release(release)
+        if rel is None:
+            return BrowseResult(ok=False, message=_unknown_release(str(release)))
+        db = setup.active_index(rel)
+        if db is None:
+            setup.request(rel)
+            return BrowseResult(ok=False, release=rel, message=_not_ready(rel))
+        _release_unused_indexes()
+        parts: list[str] = []
+        if product and product.strip():
+            known = store.products(db)
+            top, how = products.resolve(product, known)
+            if how not in ("exact", "alias"):
+                return BrowseResult(
+                    ok=False, release=rel, message=_product_problem(product, top, rel, db, known)
+                )
+            parts.append(top)
+        parts += [p for p in (folder or "").replace("\\", "/").strip("/").split("/") if p]
+        if parts[:1] == ["markdown"]:
+            parts = parts[1:]
+        if len(parts) > 1 and parts[0] == parts[1] and product:  # folder given as a whole path
+            parts = parts[1:]
+        path = "/".join(parts)
+        prefix = f"markdown/{path}/" if path else "markdown/"
+        titles = _page_titles(db)
+        under = sorted(p for p in titles if p.startswith(prefix))
+        if not under:
+            parent = "/".join(parts[:-1])
+            parent_prefix = f"markdown/{parent}/" if parent else "markdown/"
+            siblings = sorted(
+                {
+                    p[len(parent_prefix) :].split("/", 1)[0]
+                    for p in titles
+                    if p.startswith(parent_prefix) and "/" in p[len(parent_prefix) :]
+                }
+            )
+            close = difflib.get_close_matches(parts[-1], siblings, n=3, cutoff=0.6)
+            hint = f" Did you mean: {', '.join(close)}?" if close else ""
+            return BrowseResult(
+                ok=False,
+                release=rel,
+                message=f"No folder '{path}' in the {rel} docs.{hint} Browse "
+                f"'{parent or 'without arguments'}' to see what is there.",
+            )
+        counts: dict[str, int] = {}
+        own: list[str] = []
+        for p in under:
+            rest = p[len(prefix) :]
+            if "/" in rest:
+                name = rest.split("/", 1)[0]
+                counts[name] = counts.get(name, 0) + 1
+            else:
+                own.append(p)
+        result = BrowseResult(
+            ok=True, message="", release=rel, snapshot=_snapshot_of(rel), path=path
+        )
+        result.folders = [
+            BrowseFolder(name=n, path=f"{path}/{n}" if path else n, pages=c)
+            for n, c in sorted(counts.items())
+        ]
+        listed = sorted(
+            ((titles[p] or p.rsplit("/", 1)[-1], p) for p in own), key=lambda x: x[0].lower()
+        )
+        start = max(0, int(offset))
+        result.pages = [
+            BrowsePage(title=sections.unescape_markdown(t), id=make_id(rel, p, ""))
+            for t, p in listed[start : start + BROWSE_PAGES_SHOWN]
+        ]
+        result.pages_left_out = max(0, len(listed) - start - BROWSE_PAGES_SHOWN)
+        if not path:
+            result.message = (
+                f"{_count(len(result.folders), 'product area')} in the {rel} docs, with their "
+                "page counts. Pass `product` to open one."
+            )
+        else:
+            result.message = (
+                f"{path}: {_count(len(result.folders), 'folder')} and "
+                f"{_count(len(listed), 'page')} ({rel} docs)."
+            )
+            if result.pages_left_out:
+                result.message += (
+                    f" {_count(result.pages_left_out, 'more page')} after these: call again "
+                    f"with offset={start + BROWSE_PAGES_SHOWN}."
+                )
+            result.message += (
+                " Pass a folder's `path` as `folder` to go deeper; read a page with "
+                "snow_docs_read(id)."
+            )
+        return result
+    except Exception as e:  # tools report errors, never raise
+        logger.exception("snow_docs_browse failed")
+        return BrowseResult(ok=False, message=f"Browse failed: {e}")
 
 
 @mcp.tool(name="snow_docs_status", annotations=READ_ONLY)

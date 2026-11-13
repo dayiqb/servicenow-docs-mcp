@@ -404,6 +404,20 @@ def documents(db_path: str | Path, prefix: str) -> list[tuple[str, str]]:
         conn.close()
 
 
+def titles_by_path(db_path: str | Path) -> dict[str, str]:
+    """Every page's path -> its front-matter title ("" when it has none)."""
+    conn = _connect(db_path)
+    try:
+        rows = conn.execute("SELECT file_path, substr(content, 1, 400) FROM documents").fetchall()
+    finally:
+        conn.close()
+    out: dict[str, str] = {}
+    for path, head in rows:
+        m = _TITLE_RE.search(head) if head.startswith("---") else None
+        out[path] = m.group(1).strip().strip("\"'") if m else ""
+    return out
+
+
 def contents(db_path: str | Path):
     """Every page's text, one at a time."""
     conn = _connect(db_path)
