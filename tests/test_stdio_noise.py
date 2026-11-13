@@ -192,6 +192,8 @@ def test_clean_stdio_handshake() -> None:
         "snow_docs_browse",
         "snow_docs_check_script",
         "snow_docs_compare",
+        "snow_docs_diagram",
+        "snow_docs_open",
         "snow_docs_read",
         "snow_docs_sdk_explain",
         "snow_docs_sdk_status",

@@ -4,7 +4,7 @@ Ask Claude questions about ServiceNow and get answers taken from the **official 
 documentation**, for the **Australia** and **Brazil** releases, each claim with a citation you can
 open.
 
-It adds nine read-only tools to Claude:
+It adds eleven read-only tools to Claude:
 
 | Tool | What it does |
 |---|---|
@@ -16,6 +16,8 @@ It adds nine read-only tools to Claude:
 | `snow_docs_browse` | Lists the docs as a tree: product areas, folders and pages by title |
 | `snow_docs_sdk_status` | Shows whether the ServiceNow SDK is installed, its version and the instances it is set up for |
 | `snow_docs_sdk_explain` | Reads the ServiceNow SDK's own documentation (Fluent) for the installed version |
+| `snow_docs_open` | Shows a page to you as a readable document, in a panel |
+| `snow_docs_diagram` | Shows a process from the docs as a flow diagram or swimlanes, in a panel |
 | `snow_docs_status` | Shows download/update progress and which docs snapshot is loaded |
 
 Claude writes the answer from the passages and cites them. The server itself runs no AI model
@@ -137,6 +139,30 @@ skipped. Field names are not checked: they depend on your instance. The hook tak
 second, never blocks a write and stays silent for code that checks out; turn it off with
 `SNOW_DOCS_SCRIPT_HOOK=off`. Hooks exist in Claude Code only: in Claude Desktop, Claude runs
 the same check itself with the `snow_docs_check_script` tool.
+
+## The panel in Claude Desktop
+
+In Claude Desktop, results can appear in a panel next to Claude's answer, so you can read the
+source yourself. It follows Claude's light or dark theme and your language (English or
+Norwegian), works with the keyboard, and needs no network: it is one page inside the extension.
+
+- **Search results.** A ranked list with the page, the section and the passage. *Read section*
+  opens the full section in place; *Open docs* opens the page on servicenow.com; the switch at
+  the top runs the same search in the other release.
+- **A page as a document.** Ask *"show me that page"*: the page is laid out for reading, with
+  its sections listed beside it, notes set apart, and tables and code as they should be. A
+  numbered procedure can also be shown as a flow, one box per step. The switch shows the same
+  page in the other release.
+- **Browse.** Product areas, folders and pages as lists you click through; a page opens as a
+  document.
+- **Diagrams.** Ask *"draw the major incident process as swimlanes"*: Claude takes the steps
+  from the docs and the panel draws a flow, or swimlanes when several roles take part. Every
+  step lists the passage it comes from, and you can open it.
+- **What changed.** A comparison of Australia and Brazil, side by side, with the words that
+  differ marked.
+
+Claude Code and other clients without panels get the same results as text; a diagram comes as
+Mermaid text there.
 
 ## Compare releases
 

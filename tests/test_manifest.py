@@ -84,6 +84,8 @@ def test_plugin_skill_exists_and_names_the_tools() -> None:
         "snow_docs_compare",
         "snow_docs_api",
         "snow_docs_browse",
+        "snow_docs_open",
+        "snow_docs_diagram",
         "snow_docs_sdk_status",
         "snow_docs_sdk_explain",
         "snow_docs_check_script",

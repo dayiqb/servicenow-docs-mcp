@@ -20,12 +20,16 @@
      It answers the panel's requests the way a host does and plays back a tool call:
        /scripts/panel_host.html                  built-in sample data
        /scripts/panel_host.html?samples=<dir>    real results saved as <dir>/search-au.json,
-                                                 search-br.json, compare.json, compare-page.json, read.json
+                                                 search-br.json, compare.json, compare-page.json, read.json,
+                                                 open.json, read-page.json, browse-root.json, browse.json,
+                                                 browse-folder.json, diagram.json, diagram-flow.json
      Serve the repository root (python -m http.server) and open it in a browser. -->
 <form id="controls">
   <label>View <select name="view">
     <option value="search">Search</option><option value="empty">Search, no hits</option>
     <option value="compare">Compare a topic</option><option value="compare-page">Compare a page</option>
+    <option value="open">Document</option><option value="browse-root">Browse: product areas</option><option value="browse">Browse: a product</option>
+    <option value="diagram">Diagram: swimlanes</option><option value="diagram-flow">Diagram: flow</option>
     <option value="error">Error</option><option value="loading">Loading</option></select></label>
   <label>Theme <select name="theme"><option>light</option><option>dark</option></select></label>
   <label>Language <select name="locale"><option value="en-US">English</option><option value="nb-NO">Norsk</option></select></label>
@@ -63,13 +67,39 @@ const BUILT_IN = {
   "read": { ok: true, message: "", id: "x", title: "Define priority lookup rules", url: "", heading_path: "Procedure", truncated: false,
     content: "## Procedure\n\nRole required: **admin**\n\n1.  Navigate to **All** > **System Policy** > **Priority Lookup Rules**.\n2.  Open the row for a combination of impact and urgency.\n3.  Choose the priority, then select **Update**.\n\n|Impact|Urgency|Priority|\n|------|-------|--------|\n|1 - High|1 - High|1 - Critical|\n|2 - Medium|1 - High|2 - High|\n\n```\nvar gr = new GlideRecord('dl_u_priority');\ngr.query();\n```\n\nSee [Priority](https://www.servicenow.com/docs/r/priority.html) for the defaults." },
 };
+const lane = (id, label) => ({ id, label });
+Object.assign(BUILT_IN, {
+  "open": { ok: true, message: "", id: "australia:markdown/it-service-management/page-1.md::", focus: "Define priority lookup rules > Procedure", title: "Define priority lookup rules",
+    url: "https://www.servicenow.com/docs/r/it-service-management/page-1.html", release: "australia", product: "it-service-management", headings: [] },
+  "read-page": { ok: true, message: "", id: "x", title: "Define priority lookup rules", url: "", heading_path: "", truncated: false,
+    content: "# Define priority lookup rules\n\nPriority lookup rules set the priority of a record from its impact and urgency.\n\n## Before you begin\n\nRole required: **admin**\n\n**Note:** A group with its own rules uses those instead of the shared ones.\n\n" + BUILT_IN.read.content + "\n\n## Result\n\nNew records get their priority from the rules.\n\n## What to do next\n\nTest the rules with an incident.\n" },
+  "browse-root": { ok: true, message: "", release: "australia", snapshot: "2026-11-06", path: "", pages: [], pages_left_out: 0,
+    folders: [{ name: "it-service-management", path: "it-service-management", pages: 2311 }, { name: "customer-service-management", path: "customer-service-management", pages: 3104 }, { name: "api-reference", path: "api-reference", pages: 1258 }] },
+  "browse": { ok: true, message: "", release: "australia", snapshot: "2026-11-06", path: "it-service-management", pages_left_out: 17,
+    folders: [{ name: "incident-management", path: "it-service-management/incident-management", pages: 134 }, { name: "change-management", path: "it-service-management/change-management", pages: 222 }],
+    pages: [{ title: "Define priority lookup rules", id: "australia:markdown/it-service-management/page-1.md::" }, { title: "IT Service Management overview", id: "australia:markdown/it-service-management/page-2.md::" }] },
+  "diagram": { ok: true, message: "", title: "Incident, from report to closure", kind: "swimlane", mermaid: "",
+    lanes: [lane("caller", "Caller"), lane("desk", "Service desk")],
+    steps: [{ id: "a", label: "Incident is created", kind: "start", lane: "caller", detail: "", source_id: "" },
+      { id: "b", label: "Set impact and urgency", kind: "step", lane: "desk", detail: "Priority is looked up from the two.", source_id: "australia:markdown/x.md::A" },
+      { id: "c", label: "Can it be resolved now?", kind: "decision", lane: "desk", detail: "", source_id: "australia:markdown/x.md::A" },
+      { id: "d", label: "Assign to a group", kind: "step", lane: "desk", detail: "", source_id: "" },
+      { id: "e", label: "Resolve the incident", kind: "step", lane: "desk", detail: "", source_id: "australia:markdown/x.md::A" },
+      { id: "f", label: "Confirm it works", kind: "end", lane: "caller", detail: "", source_id: "" }],
+    links: [{ source: "a", target: "b", label: "" }, { source: "b", target: "c", label: "" }, { source: "c", target: "e", label: "Yes" }, { source: "c", target: "d", label: "No" }, { source: "d", target: "e", label: "" }, { source: "e", target: "f", label: "" }] },
+});
+BUILT_IN["browse-folder"] = { ...BUILT_IN.browse, path: "it-service-management/incident-management", folders: [], pages_left_out: 0 };
+BUILT_IN["diagram-flow"] = { ...BUILT_IN.diagram, kind: "flow", title: "Incident triage", lanes: [], steps: BUILT_IN.diagram.steps.map((st) => ({ ...st, lane: "" })),
+  links: [...BUILT_IN.diagram.links, { source: "e", target: "b", label: "Reopened" }] };
 async function sample(name) {
   if (!params.get("samples")) return BUILT_IN[name];
   try { return await (await fetch(`${params.get("samples")}/${name}.json`)).json(); } catch { return BUILT_IN[name]; }
 }
-const TOOL = { search: "snow_docs_search", empty: "snow_docs_search", error: "snow_docs_search", loading: "snow_docs_search", compare: "snow_docs_compare", "compare-page": "snow_docs_compare" };
+const TOOL = { search: "snow_docs_search", empty: "snow_docs_search", error: "snow_docs_search", loading: "snow_docs_search", compare: "snow_docs_compare", "compare-page": "snow_docs_compare",
+  open: "snow_docs_open", "browse-root": "snow_docs_browse", browse: "snow_docs_browse", diagram: "snow_docs_diagram", "diagram-flow": "snow_docs_diagram" };
 const ARGS = { search: { query: "how is incident priority calculated", limit: 5 }, empty: { query: "zebra migration patterns", limit: 5 }, error: { query: "incident", limit: 5 },
-  loading: { query: "how is incident priority calculated", limit: 5 }, compare: { query: "AI Control Tower", limit: 5 }, "compare-page": { page: "markdown/release-notes/ai-control-tower-rn.md" } };
+  loading: { query: "how is incident priority calculated", limit: 5 }, compare: { query: "AI Control Tower", limit: 5 }, "compare-page": { page: "markdown/release-notes/ai-control-tower-rn.md" },
+  open: { id: "australia:markdown/x.md::" }, "browse-root": {}, browse: { product: "itsm" }, diagram: { title: "Major incident" }, "diagram-flow": { title: "Incident triage" } };
 const send = (message) => frame.contentWindow.postMessage(message, "*");
 const wrap = (data) => ({ content: [{ type: "text", text: JSON.stringify(data) }], structuredContent: data });
 const note = (text) => { log.textContent = (text + "\n" + log.textContent).slice(0, 1500); };
@@ -92,7 +122,12 @@ window.addEventListener("message", async (event) => {
     frame.style.height = Math.min(Math.max(m.params.height + 2, 80), 4000) + "px";
   } else if (m.method === "tools/call") {
     note(`tools/call ${m.params.name} ${JSON.stringify(m.params.arguments).slice(0, 120)}`);
-    const data = m.params.name === "snow_docs_read" ? await sample("read") : await sample(m.params.arguments.release === "brazil" ? "search-br" : "search-au");
+    const args = m.params.arguments || {};
+    const data = m.params.name === "snow_docs_read"
+      ? await sample(/::$/.test(args.id) ? (/^brazil:/.test(args.id) ? "read-page-br" : "read-page") : "read")
+      : m.params.name === "snow_docs_browse"
+        ? await sample(!args.folder && !args.product ? "browse-root" : /\//.test(args.folder || "") ? "browse-folder" : "browse")
+        : await sample(args.release === "brazil" ? "search-br" : "search-au");
     setTimeout(() => send({ jsonrpc: "2.0", id: m.id, result: wrap(data) }), 300);
   } else if (m.method === "ui/open-link") {
     note(`ui/open-link ${m.params.url}`); send({ jsonrpc: "2.0", id: m.id, result: {} });

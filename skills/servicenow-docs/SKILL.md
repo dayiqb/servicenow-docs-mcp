@@ -36,6 +36,11 @@ Answer ServiceNow questions from the official product documentation, not from me
    the documentation of the SDK version installed on this computer. `snow_docs_sdk_status`
    shows whether the SDK is set up and for which instances. After changing a Fluent file,
    suggest `now-sdk build`, which type-checks it locally.
+10. To show something to the user rather than read it yourself: `snow_docs_open` displays a
+   page as a document, and `snow_docs_diagram` draws a process as a flow, or as swimlanes
+   when several roles take part. Take every step from the docs you read and give its source
+   id. In Claude Code no panel appears: show the returned `mermaid` text in a code block, or
+   give the page's `url`.
 
 To see what the docs have on a product rather than search them, call `snow_docs_browse`:
 without arguments for the product areas, with `product` (and `folder`) for the folders and
