@@ -213,3 +213,29 @@ def test_a_very_large_file_is_not_checked():
     big = payload("Write", file_path="bundle.js", content=huge)
     assert not script_hook._worth_a_look(big)
     assert script_hook.note(big, TABLE, "australia") is None
+
+
+def test_the_hooks_never_install_anything():
+    """Without --no-sync, the first hook after an install or update makes `uv run` build the
+    environment (a large download) inside the hook's 15 to 20 second timeout. The server
+    builds it; until then the hooks say nothing."""
+    events = json.loads((ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8"))["hooks"]
+    commands = [hook for groups in events.values() for group in groups for hook in group["hooks"]]
+    assert len(commands) == 2
+    for hook in commands:
+        assert (
+            hook["command"] == "uv" and "--no-sync" in hook["args"] and "--frozen" in hook["args"]
+        )
+
+
+def test_the_hook_is_silent_when_the_package_is_not_installed():
+    """What --no-sync leaves on a fresh install: a Python without the package."""
+    out = subprocess.run(
+        [sys.executable, "-I", "-S", str(SCRIPT)],
+        input=json.dumps(payload("Write", file_path="a.js", content=BAD)),
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert out.returncode == 0 and out.stdout == "" and out.stderr == ""

@@ -9,6 +9,7 @@
             "args": [
               "run",
               "--frozen",
+              "--no-sync",
               "--quiet",
               "--directory",
               "${CLAUDE_PLUGIN_ROOT}",
@@ -30,6 +31,7 @@
             "args": [
               "run",
               "--frozen",
+              "--no-sync",
               "--quiet",
               "--directory",
               "${CLAUDE_PLUGIN_ROOT}",
