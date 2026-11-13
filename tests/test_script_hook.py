@@ -130,3 +130,86 @@ def test_a_fluent_file_gets_a_reminder_to_build_and_to_use_explain():
     assert "now-sdk build" in text and "snow_docs_sdk_explain" in text
     both = script_hook.note(payload("Write", file_path="a.now.ts", content=BAD), TABLE, "australia")
     assert "GlideRecord.addEncodedQuerry" in both and "now-sdk build" in both
+
+
+# --- review findings: other people's JavaScript, and edits ----------------------------------
+
+REACT = """import React from "react";
+
+export function List({ list, value, previous }) {
+  let current = list.head;
+  while (current) {
+    current.visit();
+    current = current.next;
+  }
+  const node = new TreeNode(value);
+  return previous.equals(node) ? null : <ul />;
+}
+"""
+
+
+def test_javascript_that_is_not_servicenow_is_left_alone():
+    """`current`, `previous` and `new Foo(` are ordinary JavaScript; they are not a reason to
+    read a React component as a business rule (or to load the API table for it)."""
+    react = payload("Write", file_path="List.tsx", content=REACT)
+    assert not script_hook._worth_a_look(react)
+    assert script_hook.note(react, TABLE, "australia") is None
+    rule = "(function executeRule(current, previous) {\n    current.addEncodedQuerry('x');\n})();"
+    assert script_hook._worth_a_look(payload("Write", file_path="br.js", content=rule))
+
+
+def test_an_edit_is_checked_in_the_file_it_was_made_in(tmp_path):
+    """The edited text alone has no types: `gr` is declared further up in the file."""
+    script = tmp_path / "br.js"
+    script.write_text(
+        "// rule\n\nvar gr = new GlideRecord('incident');\ngr.query();\n"
+        "gr.addEncodedQuerry('active=true');\n",
+        encoding="utf-8",
+    )
+    edit = payload(
+        "Edit",
+        file_path=str(script),
+        old_string="gr.addEncodedQuery('active=true');",
+        new_string="gr.addEncodedQuerry('active=true');",
+    )
+    assert script_hook._worth_a_look(edit)
+    note = script_hook.note(edit, TABLE, "australia")
+    assert note and "GlideRecord.addEncodedQuerry" in note and "line 5" in note
+
+
+def test_an_edit_does_not_report_what_was_already_in_the_file(tmp_path):
+    script = tmp_path / "br.js"
+    script.write_text(
+        "var gr = new GlideRecord('incident');\ngr.oldMistake();\ngr.query();\n", encoding="utf-8"
+    )
+    edit = payload("Edit", file_path=str(script), old_string="gr.next();", new_string="gr.query();")
+    assert script_hook.note(edit, TABLE, "australia") is None
+
+
+def test_a_multi_edit_reports_each_edited_place_by_its_line_in_the_file(tmp_path):
+    script = tmp_path / "br.js"
+    script.write_text(
+        "var gr = new GlideRecord('incident');\ngr.frist();\ngr.query();\n\n\ngr.secnd();\n",
+        encoding="utf-8",
+    )
+    multi = payload(
+        "MultiEdit",
+        file_path=str(script),
+        edits=[{"new_string": "gr.frist();"}, {"new_string": "gr.secnd();"}],
+    )
+    note = script_hook.note(multi, TABLE, "australia")
+    assert "GlideRecord.frist() at line 2" in note and "GlideRecord.secnd() at line 6" in note
+
+
+def test_an_edit_whose_file_cannot_be_read_is_checked_by_its_new_text(tmp_path):
+    edit = payload("Edit", file_path=str(tmp_path / "gone.js"), old_string="x", new_string=BAD)
+    note = script_hook.note(edit, TABLE, "australia")
+    assert note and "GlideRecord.addEncodedQuerry" in note and "line 2" in note
+
+
+def test_a_very_large_file_is_not_checked():
+    """The check must end well inside the hook's timeout; a bundle is not hand-written code."""
+    huge = BAD + "gs.info('x');\n" * (script_hook.MAX_CHARS // 14 + 1)
+    big = payload("Write", file_path="bundle.js", content=huge)
+    assert not script_hook._worth_a_look(big)
+    assert script_hook.note(big, TABLE, "australia") is None

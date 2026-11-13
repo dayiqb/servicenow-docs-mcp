@@ -13,7 +13,7 @@ import json
 import os
 import re
 import sys
-from pathlib import PurePath
+from pathlib import Path, PurePath
 
 from snow_docs_mcp.api_table import ApiTable
 from snow_docs_mcp.script_check import check
@@ -21,10 +21,20 @@ from snow_docs_mcp.script_check import check
 # Files that can hold ServiceNow script: JavaScript and TypeScript, exported records (XML),
 # widgets and UI pages (HTML), and files without an extension.
 _CODE_SUFFIXES = {"", ".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx", ".xml", ".html", ".htm"}
-# Cheap first look: is there anything the check could resolve at all?
-_LOOKS_LIKE_SCRIPT = re.compile(
-    r"\bnew\s+[A-Z]\w*\s*\(|\b(?:gs|current|previous|g_\w+)\s*\.|\$sp\s*\.|\bGlide\w+\s*\."
+# Cheap first look: is this ServiceNow script at all? Only names that mean ServiceNow count.
+# `current`, `previous` and `new Foo(` are ordinary JavaScript too, and reading a React
+# component as a business rule gives false alarms.
+_SERVICENOW = re.compile(
+    r"\bGlide[A-Z]\w*"  # GlideRecord, GlideDateTime, GlideAjax, ...
+    r"|\bgs\s*\.\s*\w+\s*\("  # gs.info(
+    r"|\bg_[a-z]\w*\s*\."  # g_form., g_user., g_scratchpad.
+    r"|\$sp\s*\."  # Service Portal
+    r"|\bsn_\w+\s*\."  # scoped namespaces: sn_ws.RESTMessageV2
+    r"|\bClass\.create\s*\("  # a script include
+    r"|\bexecuteRule\s*\("  # a business rule
 )
+# Larger than hand-written code: the check would not end inside the hook's timeout.
+MAX_CHARS = 300_000
 _WRITERS = {"Write", "Edit", "MultiEdit"}
 _FLUENT_SUFFIX = ".now.ts"  # ServiceNow SDK source files
 
@@ -42,20 +52,75 @@ def code_of(payload: dict) -> str:
     return "\n".join(p for p in parts if isinstance(p, str) and p)
 
 
+def _path_of(payload: dict) -> str:
+    tool_input = payload.get("tool_input")
+    return str(tool_input.get("file_path") or "") if isinstance(tool_input, dict) else ""
+
+
+def _lines_of(text: str, written: list[str]) -> list[range] | None:
+    """The line ranges of `text` that hold the strings just written (None when one of them
+    is not in the text: the file changed again, or is not the one that was edited)."""
+    found: list[range] = []
+    for new in written:
+        at = text.find(new)
+        if at < 0:
+            return None
+        while at >= 0:
+            first = text.count("\n", 0, at) + 1
+            found.append(range(first, first + new.count("\n") + 1))
+            at = text.find(new, at + len(new))
+    return found
+
+
+def checked_text(payload: dict) -> tuple[str, list[range] | None]:
+    """(the text to check, the line ranges of it that were just written; None = all of it).
+
+    A Write holds the whole file. An Edit holds only the new text, which has no types on its
+    own (`gr` is declared further up), so the file is read from disk, where the edit has
+    already been made, and findings are kept for the edited lines only. When the file cannot
+    be read, the new text is checked by itself.
+    """
+    code = code_of(payload)
+    tool_input = payload.get("tool_input")
+    if not code or not isinstance(tool_input, dict) or isinstance(tool_input.get("content"), str):
+        return code, None
+    edits = tool_input.get("edits")
+    written = (
+        [e.get("new_string") for e in edits if isinstance(e, dict)]
+        if isinstance(edits, list)
+        else [tool_input.get("new_string")]
+    )
+    written = [w for w in written if isinstance(w, str) and w.strip()]
+    try:
+        file = Path(_path_of(payload))
+        if not file.is_file() or file.stat().st_size > MAX_CHARS * 4:
+            return code, None
+        text = file.read_bytes().decode("utf-8", errors="replace")
+    except (OSError, ValueError):
+        return code, None
+    lines = _lines_of(text, written)
+    return (text, lines) if lines is not None else (code, None)
+
+
+def _servicenow_script(text: str) -> bool:
+    return len(text) <= MAX_CHARS and bool(_SERVICENOW.search(text))
+
+
 def note(
     payload: dict, table: ApiTable, release: str, tables: frozenset[str] | None = None
 ) -> str | None:
     """What to tell Claude about the code it just wrote, if anything."""
-    tool_input = payload.get("tool_input")
-    path = str(tool_input.get("file_path", "")) if isinstance(tool_input, dict) else ""
+    path = _path_of(payload)
     if PurePath(path).suffix.lower() not in _CODE_SUFFIXES:
         return None
-    code = code_of(payload)
+    code, written = checked_text(payload)
     if not code:
         return None
     name = PurePath(path).name or "the file"
     parts: list[str] = []
-    findings = check(code, table, tables) if _LOOKS_LIKE_SCRIPT.search(code) else []
+    findings = check(code, table, tables) if _servicenow_script(code) else []
+    if written is not None:
+        findings = [f for f in findings if any(f.line in lines for lines in written)]
     if findings:
         lines = []
         for f in findings:
@@ -83,13 +148,12 @@ def note(
 
 
 def _worth_a_look(payload: dict) -> bool:
-    """Cheap first look, before the slower imports: script-like text, or a Fluent file."""
-    tool_input = payload.get("tool_input")
-    path = str(tool_input.get("file_path", "")) if isinstance(tool_input, dict) else ""
-    code = code_of(payload)
-    return bool(code) and (
-        path.lower().endswith(_FLUENT_SUFFIX) or bool(_LOOKS_LIKE_SCRIPT.search(code))
-    )
+    """Cheap first look, before the slower imports: ServiceNow script, or a Fluent file."""
+    path = _path_of(payload)
+    if PurePath(path).suffix.lower() not in _CODE_SUFFIXES:
+        return False
+    code, _ = checked_text(payload)
+    return bool(code) and (path.lower().endswith(_FLUENT_SUFFIX) or _servicenow_script(code))
 
 
 def main() -> int:
