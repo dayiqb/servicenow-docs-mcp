@@ -1,0 +1,11 @@
+{
+  "name": "servicenow-docs-sources",
+  "version": "0.1.7",
+  "description": "A pane that lists the ServiceNow documentation passages Claude found and read in this session",
+  "types": "./types/index.d.ts",
+  "license": "MIT",
+  "author": {
+    "name": "Dayan Iqbal"
+  },
+  "homepage": "https://github.com/dayiqb/servicenow-docs-mcp"
+}

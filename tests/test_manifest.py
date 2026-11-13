@@ -246,5 +246,20 @@ def test_plugin_agent_names_the_tools_it_should_use() -> None:
 
 def test_the_desktop_extension_leaves_out_the_claude_code_only_folders() -> None:
     ignored = (ROOT / ".mcpbignore").read_text(encoding="utf-8").split()
-    for folder in ("skills/", "hooks/", "agents/", "commands/"):
+    for folder in ("skills/", "hooks/", "agents/", "commands/", "mods/"):
         assert folder in ignored
+
+
+def test_the_sources_pane_mod_is_complete_and_not_yet_offered_for_install() -> None:
+    mod = ROOT / "mods" / "servicenow-docs-sources"
+    manifest = json.loads((mod / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
+    assert manifest["name"] == "servicenow-docs-sources" and manifest["version"] == __version__
+    # Not in the marketplace until it has been seen working in Claude Code: the marketplace
+    # file is what Claude Desktop reads, and it has exactly one plugin today.
+    assert [p["name"] for p in MARKET["plugins"]] == ["servicenow-docs"]
+    assert json.loads((mod / "hooks" / "hooks.json").read_text(encoding="utf-8")) == {"modules": ["./register.tsx"]}
+    module = (mod / "hooks" / "register.tsx").read_text(encoding="utf-8")
+    assert "snow_docs_(search|read|compare)" in module and (mod / "hooks" / "register.test.tsx").is_file()
+    assert (mod / "types" / "index.d.ts").is_file() and (mod / "README.md").is_file()
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "servicenow-docs-sources" in readme and "/docs-sources" in readme
