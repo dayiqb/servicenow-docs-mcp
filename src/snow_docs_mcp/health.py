@@ -17,7 +17,7 @@ from pathlib import Path
 from snow_docs_mcp import store, tables
 from snow_docs_mcp.compare import compare_pages
 
-# Floors, about 80 % of the 2026-11-06 indexes (4,539 methods in 521 classes, 94 % with a
+# Floors, about 80 % of the 2026-11-06 indexes (4,560 methods in 520 classes, 94 % with a
 # return type, 2,966 with described parameters, 3,848 with a code example; 681 REST endpoints
 # in 136 APIs, 99 % with parameters, all with a default URL; 10,533 table and field names in
 # brackets; every page with a title; 315 release-notes applications in 30 families).

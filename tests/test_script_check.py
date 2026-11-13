@@ -152,3 +152,286 @@ def test_review_counts_what_it_could_check():
         tables=frozenset({"incident"}),
     )
     assert (r.checked_calls, r.checked_tables, len(r.findings)) == (2, 1, 1)
+
+
+# --- scopes, declared names and what counts as code ------------------------------------------
+
+from test_api_table import CLIENT, UIB_API, UIB_HELPERS, _page
+
+AGGREGATE = PAGE.replace("Scoped GlideRecord", "GlideAggregate").replace(
+    "addEncodedQuery", "addAggregate"
+)
+WIDE = ApiTable(
+    parse_page(GLOBAL_PATH, GLOBAL)
+    + parse_page("agg.md", AGGREGATE)
+    + parse_page("u.md", USER)
+    + parse_page("g.md", GETTERS)
+    + parse_page("api.md", UIB_API)
+    + parse_page("helpers.md", UIB_HELPERS)
+    + parse_page("client.md", CLIENT)
+    + [
+        m
+        for name in ("sb", "logger", "action", "Event", "Message")
+        for m in parse_page(
+            f"{name}.md", _page(f"{name} - Global", "A class.", f"{name} - run\\(\\)")
+        )
+    ]
+    + parse_page(
+        "table.md",
+        _page(
+            "Table - Scoped, Global",
+            "It is provided within the `sn_pdfgeneratorutils` namespace.",
+            "Table - addCell\\(String text\\)",
+        ),
+    )
+)
+
+
+def wide(code: str, **kw) -> list[str]:
+    return [f.call for f in check(code, WIDE, **kw)]
+
+
+def test_a_variable_has_the_class_its_own_function_gives_it():
+    code = """
+    var Util = Class.create();
+    Util.prototype = {
+        close: function(id) {
+            var gr = new GlideRecord('incident');
+            gr.addEncodedQuery('x'); gr.query(); gr.addAggregate('COUNT');
+        },
+        count: function() {
+            var gr = new GlideAggregate('incident');
+            gr.addAggregate('COUNT'); gr.query(); gr.addEncodedQuery('x');
+        },
+        type: 'Util'
+    };
+    """
+    assert wide(code) == ["GlideRecord.addAggregate", "GlideAggregate.addEncodedQuery"]
+
+
+def test_a_variable_given_another_class_is_checked_against_the_latest():
+    code = (
+        "var x = new GlideRecord('a'); x.addAggregate('COUNT');\n"
+        "x = new GlideAggregate('a'); x.addAggregate('COUNT'); x.addEncodedQuery('q');\n"
+        "x = other(); x.anything();"
+    )
+    assert wide(code) == ["GlideRecord.addAggregate", "GlideAggregate.addEncodedQuery"]
+
+
+def test_a_function_sees_the_variables_around_it():
+    code = (
+        "function run() { gr.qurey(); inner(); function inner() { gr.query(); } }\n"
+        "var gr = new GlideRecord('x');"
+    )
+    assert wide(code) == ["GlideRecord.qurey"]
+
+
+def test_a_jsdoc_type_belongs_to_the_function_it_is_written_above():
+    code = """
+    var U = Class.create();
+    U.prototype = {
+        /** @param {GlideRecord} record */
+        a: function(record) { return record.getValue('x') + record.getValeu('x'); },
+        /** @param {Object} record a plain object */
+        b: function(record) { return record.save(); },
+        /**
+         * @param {GlideDateTime} start
+         * @param {GlideUser} [user] optional
+         */
+        c: function(start, user) { return user.getNmae(); },
+        d: function() { var user = 5; return user.toFixed(2); },
+        type: 'U'
+    };"""
+    assert wide(code) == ["GlideRecord.getValeu", "GlideUser.getNmae"]
+    typed_var = "/** @type {GlideUser} */\nvar u = find();\nu.getNmae();"
+    assert wide(typed_var) == ["GlideUser.getNmae"]
+
+
+def test_a_declared_variable_is_never_taken_for_a_class_of_the_same_name():
+    code = """
+    var sb = []; sb.push('a');
+    var logger = this.logger; logger.debug('x');
+    var action = {}; action.go();
+    var helpers = this._h(); helpers.doIt();
+    var api = new x_acme.Api(); api.call();
+    function Message() {} Message.send();
+    let Event = require('events'); Event.emit('x');
+    const { api: mine, gs } = tools; mine.emitt(); gs.nope();
+    current = other; current.nope();
+    """
+    assert wide(code) == []
+    # the same names, not declared: the platform's
+    assert wide("action.go(); logger.debug('x'); Event.emit('x');") == [
+        "action.go",
+        "logger.debug",
+        "Event.emit",
+    ]
+    assert wide("current.nope(); current = other;") == ["GlideRecord.nope"]
+
+
+def test_a_ui_builder_script_gets_api_and_helpers_as_one_object():
+    code = """
+    function handler({api, event, helpers, imports}) {
+        api.emit('NAV', {}); api.emitt('NAV', {}); api.setState('a', 1);
+        helpers.snHttp('/api/now/table/incident').then(function(r) { api.setState('rows', r); });
+        helpers.navigate.to('home'); helpers.navigate.too('home');
+        event.preventDefault(); imports.x.y();
+    }"""
+    found = check(code, WIDE)
+    assert [f.call for f in found] == ["api.emitt", "helpers.navigate.too"]
+    assert found[0].suggestions == ["api.emit"] and found[1].suggestions == ["helpers.navigate.to"]
+    arrow = "export default ({ api, helpers: h }) => { api.emitt('x'); h.snHttp('/x'); };"
+    assert wide(arrow) == ["api.emitt"]
+
+
+def test_a_plain_parameter_is_not_taken_for_a_class():
+    code = "function log(logger, sb, api, action) { logger.debug(); sb.push(); api.get(); action.go(); }"
+    assert wide(code) == []
+    # ... but the platform's variables and the usual names are, as before
+    rule = "(function executeRule(current, previous, gr) { current.nope(); gr.qurey(); })(current, previous);"
+    assert wide(rule) == ["GlideRecord.nope", "GlideRecord.qurey"]
+
+
+def test_a_type_that_is_not_the_docs_class_types_nothing():
+    ts = (
+        "export function onClick(event: Event, table: Table, n: number): void "
+        "{ event.preventDefault(); table.addRow(); }"
+    )
+    assert wide(ts) == []  # the browser's Event; the docs' Table is in a namespace
+    assert wide("import { Message } from './types';\nfunction f(m: Message) { m.send(); }") == []
+    jsdoc = (
+        "/** @typedef {Object} Message */\n/** @param {Message} m */\nfunction f(m) { m.send(); }"
+    )
+    assert wide(jsdoc) == []
+    assert wide("/** @param {Event} e */\nfunction f(e) { e.stopPropagation(); }") == []
+    # with its namespace, or without one in the docs, the docs' class is meant
+    named = "function f(t: sn_pdfgeneratorutils.Table, m: Message) { t.addRow(); m.send(); }"
+    assert wide(named) == ["Table.addRow", "Message.send"]
+    assert wide("const t = new sn_pdfgeneratorutils.Table(); t.addRow();") == ["Table.addRow"]
+
+
+def test_a_typescript_declaration_names_the_class():
+    code = (
+        "let r: GlideRecord = make(); r.qurey();\n"
+        "const u: GlideUser | null = find(); u.getNmae();\n"
+        "const o = { rec: GlideUser }; rec.anything();"
+    )
+    assert wide(code) == ["GlideRecord.qurey", "GlideUser.getNmae"]
+
+
+def test_code_inside_a_template_literal_is_checked():
+    code = (
+        "var gr = new GlideRecord('incident');\n"
+        "gs.getProperty(`Number ${gr.getValeu('number')} by ${gs.getPropertee('x')}`);\n"
+    )
+    assert [(f.call, f.line) for f in check(code, WIDE)] == [
+        ("GlideRecord.getValeu", 2),
+        ("GlideSystem.getPropertee", 2),
+    ]
+    # the text of a template is not code, however deep it is
+    nested = "var t = `gs.nope() ${cond ? `gs.fooBar() ${gs.getProperty('x')}` : ''} gs.bar()`;"
+    assert wide(nested) == []
+    assert wide("var t = `a ${ {b: gs.nope()}.b } c`; gs.nope2();") == [
+        "GlideSystem.nope",
+        "GlideSystem.nope2",
+    ]
+
+
+def test_a_regex_literal_with_a_quote_does_not_hide_the_rest_of_the_line():
+    assert wide('var re = /"/g; var gr = new GlideRecord("incident"); gr.qurey("a");') == [
+        "GlideRecord.qurey"
+    ]
+    assert wide("var re = /'/; gs.getPropertee('x'); var s = 'it';") == ["GlideSystem.getPropertee"]
+    assert wide("if (/[/'\"]/.test(s)) { gs.getPropertee('x'); }") == ["GlideSystem.getPropertee"]
+    # a division is not a regex, and what a regex holds is not code
+    assert wide("var half = total / 2; var s = 'a' / gs.getPropertee('x') / 2;") == [
+        "GlideSystem.getPropertee"
+    ]
+    assert wide("var re = /gs.nope()/; var n = a / b; gs.getProperty('x') / 2;") == []
+
+
+def test_a_chain_is_followed_through_nested_parentheses():
+    assert typed("gs.getUser(gs.getProperty('a')).getNmae();") == ["GlideUser.getNmae"]
+    assert typed("var u = gs.getUser(f(1, g(2)))\n    .getNmae();\nu.anything();") == [
+        "GlideUser.getNmae"
+    ]
+    assert typed("new GlideRecord(name()).qurey(); new GlideRecord('x').query();") == [
+        "GlideRecord.qurey"
+    ]
+    assert typed("global.GlideSystem.getUser().getNmae(); sn_x.GlideUser.nope();") == [
+        "GlideUser.getNmae",
+        "GlideUser.nope",
+    ]
+
+
+def test_methods_the_docs_have_for_the_client_side_class_pass():
+    code = "var gr = new GlideRecord('sys_user'); gr.addOrderBy('name'); gr.addOrderBi('name');"
+    assert wide(code) == ["GlideRecord.addOrderBi"]
+
+
+def test_methods_every_object_has_are_not_reported():
+    code = "var gr = new GlideRecord('x'); gr.toString(); gr.hasOwnProperty('a'); gr.valueOf(); gs.toString();"
+    assert wide(code) == []
+
+
+def test_arrow_functions_and_imports():
+    arrows = (
+        "const f = (rec: GlideRecord, n) => rec.qurey(); list.forEach(gr => gr.qurey2()); "
+        "list.map(logger => logger.x());"
+    )
+    assert wide(arrows) == ["GlideRecord.qurey", "GlideRecord.qurey2"]
+    glide = (
+        "import { gs, GlideRecord } from '@servicenow/glide';\n"
+        "gs.getPropertee('x'); new GlideRecord('x').qurey();"
+    )
+    assert wide(glide) == ["GlideSystem.getPropertee", "GlideRecord.qurey"]
+    fluent = (
+        "import { Table, Event as E } from '@servicenow/sdk/core';\nTable.nope(); Event.emit();"
+    )
+    assert wide(fluent) == ["Event.emit"]
+
+
+def test_a_variable_given_a_value_made_from_itself_is_followed():
+    code = (
+        "var u = gs.getUser(); u.getNmae(); u = u.getName(); u.anything();\nvar n = n.toFixed(2);"
+    )
+    assert typed(code) == ["GlideUser.getNmae"]
+
+
+def test_a_class_of_the_same_name_in_another_namespace_is_not_the_docs_class():
+    code = (
+        "var a = new SNC.Notify.Table(cfg); a.init();\n"
+        "var b = new x_acme.Table(); b.init(); new x_acme.Table().init();\n"
+        "function f(t: x_acme.Table) { t.init(); }\nx_acme.Table.init();"
+    )
+    assert wide(code) == []
+    assert wide("sn_pdfgeneratorutils.Table.init(); new sn_pdfgeneratorutils.Table().init();") == [
+        "Table.init"
+    ]
+
+
+def test_unfinished_code_is_read_without_failing():
+    for code in (
+        "x => ",
+        "(a, b) =>",
+        "function f(a",
+        "gs.getUser(",
+        "var t = `a ${gs.getPropertee(",
+        "var s = 'open",
+        "}}} ) ]",
+        "/* open",
+        "var a = 1,",
+        "import { a } from",
+        "function f({a: {b}}) { b.c(); }",
+    ):
+        assert isinstance(check(code, WIDE), list), code
+    assert wide("gs.getPropertee('x'); (a) =>") == ["GlideSystem.getPropertee"]
+
+
+def test_service_portal_services_are_handed_to_a_controller_by_name():
+    sp = _page(
+        "spUtil - Client", "Utility methods for widgets.", "spUtil - recordWatch\\(Object scope\\)"
+    )
+    table = ApiTable(TABLE_MEMBERS + parse_page("sp.md", sp))
+    code = "api.controller = function($scope, spUtil, $http) { spUtil.recordWatch($scope); spUtil.recordWach($scope); $http.get('/x'); };"
+    assert [f.call for f in check(code, table)] == ["spUtil.recordWach"]

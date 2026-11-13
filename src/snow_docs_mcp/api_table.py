@@ -26,12 +26,26 @@ _TAG = re.compile(r"<[^>]+>")
 _PIPE = re.compile(r"(?<!\\)\|")
 _SEPARATOR = re.compile(r"^[\s|:-]+$")
 _WS = re.compile(r"\s+")
-_VARIANT = re.compile(r"^scoped\s+|\s*\(.*\)\s*$", re.IGNORECASE)
+# "Scoped GlideRecord", "GlideForm (Next Experience)", "GlideNavigation [Next Experience]"
+_VARIANT = re.compile(r"^scoped\s+|\s*(?:\(.*\)|\[.*\])\s*$", re.IGNORECASE)
 
 _REST_HEADING = re.compile(
     r"^(?P<api>.+?)\s+[-–—]\s+(?P<verb>GET|POST|PUT|PATCH|DELETE)\s+(?P<path>/\S*)\s*$"
 )
-_ENDPOINT_QUERY = re.compile(r"^(?:(GET|POST|PUT|PATCH|DELETE)\s+)?(/\S*)$", re.IGNORECASE)
+# A path as people paste it: with a verb, an instance address or neither.
+_ENDPOINT_QUERY = re.compile(
+    r"^(?:(GET|POST|PUT|PATCH|DELETE)\s+)?"
+    r"(?:https?://[^/\s?#]+|[\w-]+(?:\.[\w-]+)+(?::\d+)?(?=/api/))?(/\S*)$",
+    re.IGNORECASE,
+)
+_URL_VERB = re.compile(r"^(?:GET|POST|PUT|PATCH|DELETE)\s+", re.IGNORECASE)
+_NEW = re.compile(r"^new\s+")
+_ARGUMENTS = re.compile(r"(?<=[\w$])\([^()]*\)")  # of a call: not "GlideForm (Next Experience)"
+# The namespace a script writes before a class: sn_ws.RESTMessageV2, global.GlideQuery.
+_NAMESPACE_PREFIX = re.compile(r"^(?:sn_\w+|global)\.(?=.)", re.IGNORECASE)
+_NAMESPACE = re.compile(
+    r"`?\b(sn\\?_[a-z0-9_\\]+)`?\s+namespace|namespace[^.\n]{0,30}?`?\b(sn\\?_[a-z0-9_\\]+)"
+)
 _DEFAULT_URL = re.compile(r"Default URL:\s*`([^`]+)`")
 _CODE_URL = re.compile(r"`(/?api/[^`\s]+)`")
 _DATA_TYPE = re.compile(r"Data type:\s*([A-Za-z]\w*)")
@@ -60,6 +74,11 @@ VARIABLES: dict[str, tuple[str, ...]] = {
     "g_response": ("glideservletresponse",),
     "g_ui_scripts": ("glideuiscripts",),
     "$sp": ("glidespscriptable",),
+    # Service Portal's client services: a widget's controller is handed them by these names
+    "spUtil": ("sputil",),
+    "spModal": ("spmodal",),
+    "spAriaUtil": ("spariautil",),
+    "spContextManager": ("spcontextmanager",),
 }
 
 
@@ -84,6 +103,12 @@ class Member:
     returns: str = ""
     returns_description: str = ""
     example: str = ""
+    namespace: str = ""  # "sn_ws" when the page says the class is in that namespace
+    short: str = ""  # the name as a script writes it after the class: "emit" for "api.emit"
+
+    def __post_init__(self) -> None:
+        if not self.short:
+            self.short = self.name.removeprefix(_plain(self.class_name) + ".")
 
 
 @dataclass
@@ -99,6 +124,16 @@ class Endpoint:
     path_params: list[Param] = field(default_factory=list)
     query_params: list[Param] = field(default_factory=list)
     body_params: list[Param] = field(default_factory=list)
+
+
+def _plain(class_name: str) -> str:
+    """'Scoped GlideRecord' and 'GlideForm (Next Experience)' -> 'GlideRecord', 'GlideForm'."""
+    name = class_name.strip()
+    while True:
+        shorter = _VARIANT.sub("", name).strip()
+        if shorter == name:
+            return name
+        name = shorter
 
 
 def _text(cell: str) -> str:
@@ -243,7 +278,14 @@ def parse_rest_page(file_path: str, text: str) -> list[Endpoint]:
 
 
 def _without_version(url: str) -> str:
-    return "/" + "/".join(p for p in url.strip("/").split("/") if p != "{api_version}")
+    """A URL as the docs give it, as a default URL: no verb in front, no version part, no
+    space inside, and starting with '/api' when it starts with a namespace (now, sn_...)."""
+    url = _WS.sub("", _URL_VERB.sub("", url.strip()))  # the docs break a few with a space
+    parts = [p for p in url.strip("/").split("/") if p]
+    parts = [p for p in parts if p != "{api_version}"]
+    if parts and (parts[0] == "now" or parts[0].startswith("sn_")):
+        parts.insert(0, "api")
+    return "/" + "/".join(parts)
 
 
 def _default_url(block: str) -> str:
@@ -269,6 +311,7 @@ def _url_from_path(path: str) -> str:
 
 def _segments(path: str) -> list[str]:
     """A REST path's parts, without the '/api' start and the version."""
+    path = path.split("?", 1)[0].split("#", 1)[0]
     parts = [p for p in path.strip().strip("/").split("/") if p]
     if parts and parts[0].lower() == "api":
         parts = parts[1:]
@@ -280,7 +323,10 @@ def parse_page(file_path: str, text: str) -> list[Member]:
     members: list[Member] = []
     current: Member | None = None
     seen: dict[str, int] = {}
-    for sec in sections.split_into_sections(sections.strip_front_matter(text)):
+    text = sections.strip_front_matter(text)
+    named = _NAMESPACE.search(text.split("\n## ", 1)[0])  # the page's introduction
+    namespace = (named.group(1) or named.group(2)).replace("\\", "") if named else ""
+    for sec in sections.split_into_sections(text):
         crumb = " > ".join(sec.heading_path)
         seen[crumb] = seen.get(crumb, 0) + 1
         if len(sec.heading_path) > 2:  # a subheading inside a member's section
@@ -315,6 +361,7 @@ def parse_page(file_path: str, text: str) -> list[Member]:
                 seen[crumb],
             )
         if current is not None:
+            current.namespace = namespace
             _fill(current, sec.body)
             members.append(current)
     for member in members:  # a few methods have no parameter table: read the signature
@@ -336,31 +383,35 @@ def load(db_path) -> ApiTable:
 
 def _base(class_name: str) -> str:
     """'Scoped GlideRecord' and 'GlideForm (Next Experience)' -> 'gliderecord', 'glideform'."""
-    name = class_name.strip()
-    while True:
-        shorter = _VARIANT.sub("", name).strip()
-        if shorter == name:
-            return name.lower()
-        name = shorter
+    return _plain(class_name).lower()
 
 
 class ApiTable:
     def __init__(self, members: list[Member], endpoints: list[Endpoint] | None = None):
         self.endpoints = list(endpoints or [])
         self.by_api: dict[str, list[Endpoint]] = {}  # lowercase API name -> its endpoints
+        # every endpoint by the parts of its path, and of its default URL when that differs
+        self._paths: list[tuple[Endpoint, list[str]]] = []
         for e in self.endpoints:
             self.by_api.setdefault(e.api.lower(), []).append(e)
+            ways = [_segments(e.path)]
+            if e.default_url and _segments(e.default_url) not in ways:
+                ways.append(_segments(e.default_url))
+            self._paths += [(e, way) for way in ways]
         self.by_class: dict[
             str, dict[str, list[Member]]
         ] = {}  # base -> class as written -> members
         self.by_method: dict[str, list[Member]] = {}  # lowercase method name -> members
+        self.by_name: dict[str, list[Member]] = {}  # name, exact, as the docs or a script write it
         self.display: dict[str, str] = {}  # base -> the class name without its variant
         self.names: set[str] = set()  # class names as the docs write them, exact case
         for m in members:
             base = _base(m.class_name)
             self.by_class.setdefault(base, {}).setdefault(m.class_name, []).append(m)
             self.by_method.setdefault(m.name.lower(), []).append(m)
-            plain = _VARIANT.sub("", m.class_name).strip()
+            for name in dict.fromkeys((m.name, m.short)):
+                self.by_name.setdefault(name, []).append(m)
+            plain = _plain(m.class_name)
             if base not in self.display or len(plain) < len(self.display[base]):
                 self.display[base] = plain
             self.names.update((plain, m.class_name))
@@ -370,7 +421,8 @@ class ApiTable:
 
     def _endpoints(self, verb: str, path: str) -> tuple[str, object]:
         """Endpoints a (verb and) path means: the documented path it fits, or everything
-        under it when it is only the start of one."""
+        under it when it is only the start of one. A documented path fits by its fixed parts:
+        one made of placeholders only fits nothing."""
         given = _segments(path)
 
         def fits(doc: list[str], n: int) -> bool:
@@ -382,14 +434,13 @@ class ApiTable:
         def literal(doc: list[str]) -> int:
             return sum(not d.startswith("{") for d in doc[: len(given)])
 
-        docs = [(e, _segments(e.path)) for e in self.endpoints]
-        same = [(e, d) for e, d in docs if len(d) == len(given) and fits(d, len(given))]
-        under = [(e, d) for e, d in docs if fits(d, len(given))] if given else []
-        for group in (same, under):
+        docs = [(e, d) for e, d in self._paths if literal(d) and fits(d, len(given))]
+        same = [(e, d) for e, d in docs if len(d) == len(given)]
+        for group in (same, docs):
             if not group:
                 continue
             best = max(literal(d) for _, d in group)
-            hits = [e for e, d in group if literal(d) == best]
+            hits = list({id(e): e for e, d in group if literal(d) == best}.values())
             wanted = [e for e in hits if not verb or e.verb == verb.upper()]
             if wanted:
                 return "endpoint", wanted
@@ -397,88 +448,156 @@ class ApiTable:
         return "not_found", []
 
     def _class(self, name: str) -> tuple[str, dict[str, list[Member]]] | None:
-        """(base, the variants a class name means): one variant when it names it exactly."""
-        wanted = name.strip().lower()
+        """(the class as the docs name it, the variants a class name means). "Scoped
+        GlideRecord" means that one variant, a plain name every variant; classes that differ
+        only in case ("API", "api") are different classes when the name is one of them."""
+        asked = name.strip()
+        wanted = asked.lower()
         base = _base(wanted)
         bases = [b for b in (*VARIABLES.get(wanted, ()), base) if b in self.by_class]
         if not bases:
             return None
-        base = bases[0]
         variants = {c: ms for b in dict.fromkeys(bases) for c, ms in self.by_class[b].items()}
-        # a plain name means every variant; "Scoped GlideRecord" means that one
         exact = {c: ms for c, ms in variants.items() if c.lower() == wanted and wanted != base}
-        return base, exact or variants
+        same_case = {c: ms for c, ms in variants.items() if _plain(c) == asked}
+        variants = exact or same_case or variants
+        return min((_plain(c) for c in variants), key=len), variants
+
+    def _client_side(self, variants: dict[str, list[Member]]) -> list[Member]:
+        """What the docs have for the same class in a client script ("Client side
+        GlideRecord"): a script may be one, and the class is written the same there."""
+        bases = dict.fromkeys(f"client side {_base(c)}" for c in variants)
+        return [m for b in bases for ms in self.by_class.get(b, {}).values() for m in ms]
+
+    def _members(self, class_name: str) -> tuple[str, list[Member]] | None:
+        """(the class as the docs name it, everything it documents) for a class name or a
+        variable that holds one, exact in case; None for anything else."""
+        if class_name not in VARIABLES and class_name not in self.names:
+            return None
+        hit = self._class(class_name)
+        if not hit:
+            return None
+        display, variants = hit
+        return display, [m for ms in variants.values() for m in ms] + self._client_side(variants)
 
     def member(self, class_name: str, method: str) -> tuple[str, bool, list[str]] | None:
         """(the class as the docs name it, whether it documents `method`, the closest
         names when it does not); None when `class_name` is neither a class nor a variable
         that holds one. Class and method names are matched exactly, as JavaScript does."""
-        if class_name not in VARIABLES and class_name not in self.names:
-            return None
-        hit = self._class(class_name)
+        hit = self._members(class_name)
         if not hit:
             return None
-        base, variants = hit
-        names = sorted({m.name for ms in variants.values() for m in ms})
-        display = self.display[base]
+        display, members = hit
+        names = sorted({m.short for m in members})
         if method in names:
             return display, True, []
         close = difflib.get_close_matches(method, names, n=3, cutoff=0.6)
         return display, False, [f"{display}.{c}" for c in close]
 
+    def member_names(self, class_name: str) -> set[str] | None:
+        """The names a class documents, as a script writes them after the class or the
+        variable ("navigate.to" for helpers); None when it is not a class."""
+        hit = self._members(class_name)
+        return {m.short for m in hit[1]} if hit else None
+
+    def namespace(self, class_name: str) -> str:
+        """The namespace the docs put a class in ("sn_ws"), or "" when they name none."""
+        hit = self._class(class_name) if class_name in self.names else None
+        spaces = {m.namespace for ms in hit[1].values() for m in ms} if hit else set()
+        return spaces.pop() if len(spaces) == 1 else ""
+
     def returns(self, class_name: str, method: str) -> str:
         """The class a documented method returns ("" when it is not a documented class, or
         the method or class is unknown)."""
-        if class_name not in VARIABLES and class_name not in self.names:
-            return ""
-        hit = self._class(class_name)
-        if not hit:
-            return ""
-        for members in hit[1].values():
-            for m in members:
-                if m.name == method and m.returns.strip() in self.names:
-                    return m.returns.strip()
+        hit = self._members(class_name)
+        for m in hit[1] if hit else ():
+            if m.short == method and m.returns.strip() in self.names:
+                return m.returns.strip()
         return ""
 
     def find(self, name: str) -> tuple[str, object]:
-        """("class", {class as written: members}), ("method", [members]) or
-        ("not_found", [closest names])."""
-        q = re.sub(r"\(.*\)\s*$", "", name.strip()).strip().strip(".")
+        """("class", {class as written: members}), ("method", [members]), ("rest_api",
+        {API: endpoints}), ("endpoint", [endpoints]) or ("not_found", [closest names]).
+
+        A class is found whatever its case, with or without its namespace (sn_ws.RESTMessageV2).
+        A chain of calls is followed by what each returns (gs.getUser().getName).
+        A method is found by its exact name, as JavaScript calls it: a name that differs only
+        in case is not found, and the right spelling is the closest name."""
+        raw = name.strip()
+        if raw.endswith(")"):  # a variant as the docs write it: "GlideForm (Next Experience)"
+            for variants in self.by_class.values():
+                for written, members in variants.items():
+                    if written.lower() == raw.lower() and _plain(written) != written:
+                        return "class", {written: members}
+        # a call's arguments say nothing; what follows a call is called on what it returns
+        calls = _NEW.sub("", raw)
+        while (fewer := _ARGUMENTS.sub("\0", calls)) != calls:
+            calls = fewer
+        links = [link for link in (part.strip().strip(".") for part in calls.split("\0")) if link]
+        q = links[0] if links else ""
+        for following in links[1:]:  # gs.getUser().getName -> GlideUser.getName
+            kind, found = self._named(q)
+            if kind == "class":  # new GlideRecord('x').query: the class itself
+                q = f"{q}.{following}"
+                continue
+            returned = {m.returns.strip() for m in found} & self.names if kind == "method" else ()
+            if len(returned) != 1:
+                return "not_found", []
+            q = f"{next(iter(returned))}.{following}"
+        q = re.sub(r"\(.*\)\s*$", "", q).strip().strip(".")
         if not q:
             return "not_found", []
         endpoint = _ENDPOINT_QUERY.match(q)
         if endpoint:
             return self._endpoints(endpoint.group(1) or "", endpoint.group(2))
+        return self._named(q)
+
+    def _named(self, q: str) -> tuple[str, object]:
+        """A class or member by name, with or without a namespace before it."""
+        answer = self._lookup(q)
+        plain = _NAMESPACE_PREFIX.sub("", q)
+        if answer[0] == "not_found" and plain != q:
+            return self._lookup(plain)
+        return answer
+
+    def _lookup(self, q: str) -> tuple[str, object]:
         whole = self._class(q)
         if whole:
             return "class", whole[1]
         api = self.by_api.get(re.sub(r"\s+api$", "", q.lower()))
         if api:
             return "rest_api", {api[0].api: api}
-        cls_part, _, method = q.rpartition(".")
-        if cls_part:
-            hit = self._class(cls_part)
-            if hit:
-                base, variants = hit
-                found = [
-                    m for ms in variants.values() for m in ms if m.name.lower() == method.lower()
-                ]
+        parts = q.split(".")
+        # Class.member: the class may have a dot (cabrillo.camera), and so may the member
+        # (helpers.navigate.to); the longest class that exists is the one meant
+        for cut in range(len(parts) - 1, 0, -1):
+            hit = self._class(".".join(parts[:cut]))
+            if not hit:
+                continue
+            display, variants = hit
+            rest = ".".join(parts[cut:])
+            own = [m for ms in variants.values() for m in ms]
+            for members in (own, self._client_side(variants)):
+                found = [m for m in members if rest in (m.short, m.name)]
                 if found:
                     return "method", found
-                names = sorted({m.name for ms in variants.values() for m in ms})
-                close = difflib.get_close_matches(method, names, n=3, cutoff=0.6)
-                return "not_found", [f"{self.display[base]}.{c}" for c in close]
-            # an unknown class: point at the classes that have the method, never answer with them
-            owners = sorted(
-                {self.display[_base(m.class_name)] for m in self.by_method.get(method.lower(), [])}
-            )
-            names = {m.name for m in self.by_method.get(method.lower(), [])}
-            return "not_found", [f"{c}.{n}" for c in owners for n in sorted(names)][:5]
-        found = self.by_method.get(q.lower(), [])
+            names = sorted({m.short for m in own + self._client_side(variants)})
+            close = [n for n in names if n.lower() == rest.lower()]
+            close = close or difflib.get_close_matches(rest, names, n=3, cutoff=0.6)
+            return "not_found", [f"{display}.{c}" for c in close]
+        found = self.by_name.get(q, [])
         if found:
             return "method", found
+        if len(parts) > 1:
+            # an unknown class: point at the classes that have the method, never answer with them
+            method = parts[-1]
+            owners = self.by_name.get(method) or self.by_method.get(method.lower(), [])
+            return "not_found", sorted({f"{_plain(m.class_name)}.{m.short}" for m in owners})[:5]
+        same = sorted(n for n in self.by_name if n.lower() == q.lower())
+        if same:  # right but for its case
+            return "not_found", same[:5]
         bases = difflib.get_close_matches(_base(q), list(self.by_class), n=3, cutoff=0.75)
         methods = difflib.get_close_matches(q.lower(), list(self.by_method), n=3, cutoff=0.8)
         close = [self.display[b] for b in bases]
         close += sorted({m.name for k in methods for m in self.by_method[k]})
-        return "not_found", close[:5]
+        return "not_found", list(dict.fromkeys(close))[:5]
