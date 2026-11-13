@@ -56,7 +56,6 @@ import logging
 import os
 import re
 import sys
-import threading
 from collections.abc import AsyncIterator
 from dataclasses import asdict
 from pathlib import Path
@@ -68,6 +67,8 @@ from mcp.types import ToolAnnotations
 from snow_docs_mcp import (
     api_table,
     config,
+    diagram,
+    entry,
     identifiers,
     models,
     products,
@@ -1542,8 +1543,6 @@ def snow_docs_browse(
 # --- views for the user -------------------------------------------------------------------
 
 OPEN_HEADINGS = 120
-DIAGRAM_STEPS = (2, 40)
-_STEP_ID = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
 
 
 @mcp.tool(name="snow_docs_open", annotations=READ_ONLY, meta=_PANEL_META)
@@ -1596,41 +1595,6 @@ def snow_docs_open(id: str) -> OpenResult:
         return OpenResult(ok=False, message=f"Open failed: {e}")
 
 
-def _mermaid(
-    title: str, lanes: list[DiagramLane], steps: list[DiagramStep], links: list[DiagramLink]
-) -> str:
-    """The diagram as Mermaid text. Steps are named s1, s2, ... and lanes lane1, ...: an id the
-    caller picked (`end`, `a--`, a lane and a step with the same id) can then never be read as
-    Mermaid syntax."""
-
-    def text(value: str) -> str:
-        return value.replace('"', "'").replace("\n", " ")
-
-    name = {step.id: f"s{n}" for n, step in enumerate(steps, 1)}
-
-    def node(step: DiagramStep) -> str:
-        label = text(step.label)
-        if step.kind in ("start", "end"):
-            return f'{name[step.id]}(["{label}"])'
-        if step.kind == "decision":
-            return f'{name[step.id]}{{"{label}"}}'
-        return f'{name[step.id]}["{label}"]'
-
-    lines = ["flowchart TD"]
-    if lanes:
-        for n, lane in enumerate(lanes, 1):
-            lines.append(f'  subgraph lane{n}["{text(lane.label)}"]')
-            lines += [f"    {node(s)}" for s in steps if s.lane == lane.id]
-            lines.append("  end")
-        lines += [f"  {node(s)}" for s in steps if not s.lane]
-    else:
-        lines += [f"  {node(s)}" for s in steps]
-    for link in links:
-        arrow = f'-- "{text(link.label)}" -->' if link.label else "-->"
-        lines.append(f"  {name[link.source]} {arrow} {name[link.target]}")
-    return "\n".join(lines)
-
-
 @mcp.tool(name="snow_docs_diagram", annotations=READ_ONLY, meta=_PANEL_META)
 def snow_docs_diagram(
     title: str,
@@ -1659,59 +1623,14 @@ def snow_docs_diagram(
     """
     try:
         lanes = lanes or []
-        problems: list[str] = []
-        low, high = DIAGRAM_STEPS
-        if not low <= len(steps) <= high:
-            problems.append(f"a diagram has {low} to {high} steps, this one has {len(steps)}")
-        seen: set[str] = set()
-        for step in steps:
-            if not _STEP_ID.match(step.id):
-                problems.append(f"step id '{step.id}' must be 1-40 letters, digits, _ or -")
-            if step.id in seen:
-                problems.append(f"the id '{step.id}' is used by more than one step")
-            seen.add(step.id)
-            if not step.label.strip():
-                problems.append(f"step '{step.id}' has no label")
-        lane_ids: set[str] = set()
-        for lane in lanes:
-            if not _STEP_ID.match(lane.id):
-                problems.append(f"lane id '{lane.id}' must be 1-40 letters, digits, _ or -")
-            if lane.id in lane_ids:
-                problems.append(f"the id '{lane.id}' is used by more than one lane")
-            lane_ids.add(lane.id)
-            if not lane.label.strip():
-                problems.append(f"lane '{lane.id}' has no label")
-        for step in steps:
-            if step.lane and step.lane not in lane_ids:
-                problems.append(
-                    f"step '{step.id}' is in lane '{step.lane}', which is not one of the lanes"
-                )
-            if lanes and not step.lane:
-                problems.append(f"step '{step.id}' has no lane")
         if links is None:
             links = [DiagramLink(source=a.id, target=b.id) for a, b in itertools.pairwise(steps)]
-        for link in links:
-            for end in (link.source, link.target):
-                if end not in seen:
-                    problems.append(f"a link names the step '{end}', which does not exist")
-        for step in steps:
-            if not step.source_id:
-                continue
-            parsed = parse_id(step.source_id)
-            rel = config.normalize_release(parsed[0]) if parsed else None
-            db = setup.active_index(rel) if rel else None
-            if parsed is None or rel is None:
-                problems.append(f"step '{step.id}' cites '{step.source_id}', which is not an id")
-            elif db is not None and store.get_document(db, parsed[1]) is None:
-                problems.append(
-                    f"step '{step.id}' cites the page '{parsed[1]}', which the {rel} docs do not have"
-                )
+        problems = diagram.problems(steps, links, lanes)
         if problems:
-            unique = list(dict.fromkeys(problems))
             return DiagramResult(
                 ok=False,
                 message="The diagram was not shown: "
-                + "; ".join(unique)
+                + "; ".join(problems)
                 + ". Fix these and call again.",
             )
         unsourced = sum(1 for s in steps if not s.source_id and s.kind in ("step", "decision"))
@@ -1733,7 +1652,7 @@ def snow_docs_diagram(
             lanes=lanes,
             steps=steps,
             links=links,
-            mermaid=_mermaid(title, lanes, steps, links),
+            mermaid=diagram.mermaid(title, lanes, steps, links),
         )
     except Exception as e:  # tools report errors, never raise
         logger.exception("snow_docs_diagram failed")
@@ -1820,82 +1739,14 @@ def setup_checklist(feature: str) -> str:
 # --- process entry points -----------------------------------------------------------------
 
 
-def _configure_logging() -> None:
-    """Send all logging to stderr; stdout belongs to the MCP wire."""
-    # force=True is REQUIRED: MCPServer() installs a root StreamHandler at construction
-    # (import time here), and basicConfig is a no-op once the root logger has handlers.
-    level = logging.getLevelName((os.environ.get("SNOW_DOCS_LOG_LEVEL") or "INFO").strip().upper())
-    logging.basicConfig(
-        level=level if isinstance(level, int) else logging.INFO,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        stream=sys.stderr,
-        force=True,
-    )
-
-
-def _noisy_startup_probe() -> None:
-    """Emit the three stdout-noise shapes that corrupt stdio framing. Test-only."""
-    print("stray-print-before-serve")
-    sys.stdout.write("\rFetching model 10%")
-    sys.stdout.flush()
-    os.write(1, b"c-level-write-to-fd1\n")
-
-
-def _run_setup_cli(args: list[str]) -> int:
-    """`snow-docs-mcp setup [RELEASE|all]`: download in the foreground, with progress."""
-    target = (args[0].lower() if args else config.default_release()).strip()
-    releases = list(config.RELEASES) if target == "all" else [target]
-    if any(r not in config.RELEASES for r in releases):
-        print(
-            f"unknown release {target!r}; use one of: {', '.join(config.RELEASES)}, all",
-            file=sys.stderr,
-        )
-        return 2
-    logging.getLogger("snow_docs_mcp.setup").setLevel(logging.WARNING)
-    print(f"ServiceNow docs MCP {__version__}: setting up in {config.data_home()}", file=sys.stderr)
-    worst = 0
-    for rel in releases:
-        done = threading.Event()
-        result: dict = {}
-
-        def run(rel: str = rel, result: dict = result, done: threading.Event = done) -> None:
-            result["s"] = setup.ensure(rel)
-            done.set()
-
-        threading.Thread(target=run, daemon=True).start()
-        last = ""
-        while not done.wait(0.5):
-            st = setup.status(rel)
-            line = f"[{rel}] {st.state}: {st.message}"
-            if line != last:
-                print(line, file=sys.stderr)
-                last = line
-        st = result["s"]
-        print(f"[{rel}] {st.state}: {st.message}", file=sys.stderr)
-        if st.state != "ready":
-            worst = 1
-    return worst
-
-
-def _use_system_certificates() -> None:
-    """Trust the OS certificate store for all HTTPS (index, latest.json, model downloads),
-    so corporate proxies that re-sign TLS with their own root certificate work."""
-    try:
-        import truststore
-
-        truststore.inject_into_ssl()
-    except Exception as e:  # noqa: BLE001 - fall back to the bundled certificates
-        logger.warning("could not use the system certificate store (%s)", e)
-
-
 def main(argv: list[str] | None = None) -> None:
     """Entry point: `snow-docs-mcp` serves MCP over stdio; `snow-docs-mcp setup` downloads."""
     args = sys.argv[1:] if argv is None else argv
-    _configure_logging()
-    _use_system_certificates()
+    entry.configure_logging()
+    entry.use_system_certificates()
 
     if args[:1] == ["setup"]:
-        sys.exit(_run_setup_cli(args[1:]))
+        sys.exit(entry.run_setup_cli(args[1:]))
     if args:
         from snow_docs_mcp import cli
 
@@ -1918,7 +1769,7 @@ def main(argv: list[str] | None = None) -> None:
     if guard_disabled:
         # Mutation control for the stdio test only: with the guard off the wire MUST corrupt.
         if noise:
-            _noisy_startup_probe()
+            entry.noisy_startup_probe()
     else:
         # fd-level guard over the startup window: point fd 1 at stderr while initialising,
         # then restore the real wire before mcp.run() (the SDK claims fd 1 inside it).
@@ -1927,7 +1778,7 @@ def main(argv: list[str] | None = None) -> None:
         os.dup2(2, 1)
         try:
             if noise:
-                _noisy_startup_probe()
+                entry.noisy_startup_probe()
         finally:
             sys.stdout.flush()
             os.dup2(wire_fd, 1)
