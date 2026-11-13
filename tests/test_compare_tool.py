@@ -172,14 +172,19 @@ def test_query_returns_release_notes_and_changed_pages(both):
     assert r["ok"], r
     assert r["australia_snapshot"] == "2026-05-15" and r["brazil_snapshot"] == "2026-05-16"
     assert r["release_notes"][0]["id"].startswith("brazil:markdown/delta-australia-brazil/")
-    (p,) = r["changed_pages"]
-    assert p["page"] == "markdown/itsm/incident.md" and p["page_title"] == "Incident management"
+    # the page that changed most first; problem.md has one small rewording
+    assert [x["page"] for x in r["changed_pages"]] == [
+        "markdown/itsm/incident.md",
+        "markdown/itsm/problem.md",
+    ]
+    p = r["changed_pages"][0]
+    assert p["page_title"] == "Incident management"
     (s,) = p["sections"]
     assert s["heading_path"] == "Incident management > Priority" and s["change"] == "changed"
     assert s["australia_id"].startswith("australia:") and s["brazil_id"].startswith("brazil:")
     assert "impact and urgency" in s["australia_excerpt"]
-    assert "lookup rules" in s["brazil_excerpt"]
-    assert "1 changed page" in r["message"]
+    assert "lookup rules" in s["brazil_excerpt"] and not s["small"]
+    assert "2 changed pages" in r["message"]
 
 
 def test_ids_round_trip_through_read(both):
@@ -288,11 +293,41 @@ def nothing(monkeypatch, fake_models):
     monkeypatch.setattr(setup, "request", lambda release: None)
 
 
-def test_small_rewordings_do_not_contradict_no_changes(both):
+def test_a_small_rewording_is_shown_and_marked_small(both):
+    """It used to be counted and hidden; "30 days" becoming "90 days" is a small rewording."""
     r = call("snow_docs_compare", page="markdown/itsm/problem.md")
-    assert r["ok"] and r["changed_pages"] == []
-    assert "No documentation changes found" not in r["message"]
-    assert "1 small rewording" in r["message"] and "nothing else changed" in r["message"]
+    assert r["ok"] and len(r["changed_pages"]) == 1
+    page = r["changed_pages"][0]
+    (sec,) = page["sections"]
+    assert sec["small"] and sec["australia_excerpt"] != sec["brazil_excerpt"]
+    assert page["minor_changes"] == 1
+    assert "1 small rewording" in r["message"] and "marked `small`" in r["message"]
+    assert "not listed" not in r["message"] and "No documentation changes" not in r["message"]
+
+
+def test_the_rules_no_longer_say_small_rewordings_are_hidden():
+    from pathlib import Path
+
+    from snow_docs_mcp import server
+
+    root = Path(__file__).parent.parent
+    texts = {
+        "ANSWER_RULES": server.ANSWER_RULES,
+        "UPGRADE_REVIEW_RULES": server.UPGRADE_REVIEW_RULES,
+        **{
+            name: (root / name).read_text(encoding="utf-8")
+            for name in (
+                "manifest.json",
+                "README.md",
+                "skills/servicenow-docs/SKILL.md",
+                "skills/servicenow-upgrade-review/SKILL.md",
+                "commands/upgrade-review.md",
+            )
+        },
+    }
+    for name, text in texts.items():
+        assert "not listed" not in text, name
+        assert "`small`" in text, name
 
 
 def test_release_notes_lead_is_only_said_when_there_are_release_notes(both):

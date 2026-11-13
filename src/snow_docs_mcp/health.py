@@ -91,8 +91,8 @@ def problems(found: dict[str, float], floors: dict[str, float] | None = None) ->
 
 
 def compare_noise(australia_db: str | Path, brazil_db: str | Path) -> tuple[float, int]:
-    """(share of sampled pages the comparison lists as changed, pages sampled), over pages
-    that both releases have."""
+    """(share of sampled pages with a change larger than a small rewording, pages sampled),
+    over pages that both releases have."""
     shared = sorted(
         p
         for p in store.page_paths(australia_db)[0] & store.page_paths(brazil_db)[0]
@@ -102,7 +102,7 @@ def compare_noise(australia_db: str | Path, brazil_db: str | Path) -> tuple[floa
     changed = 0
     for path in sample:
         old, new = store.get_document(australia_db, path), store.get_document(brazil_db, path)
-        changed += bool(compare_pages(old or "", new or "").sections)
+        changed += any(not s.small for s in compare_pages(old or "", new or "").sections)
     return (round(changed / len(sample), 3) if sample else 0.0), len(sample)
 
 

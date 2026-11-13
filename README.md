@@ -193,8 +193,9 @@ when we upgrade from Australia to Brazil?"* Claude calls `snow_docs_compare` and
   releases, section by section (added, removed or changed), with an excerpt from each release.
 
 To compare one page, give Claude its path or a citation from an earlier answer. Differences in
-page metadata and links are ignored, and small rewordings are counted but not listed. Both
-releases' docs must be downloaded; the first comparison starts the download of the one that is
+page metadata and links are ignored. A rewording of a few words is marked `small` and shown by
+the words around it, so a changed number is never hidden. Both releases' docs must be
+downloaded; the first comparison starts the download of the one that is
 missing.
 
 ## Upgrade review

@@ -29,7 +29,8 @@ Australia to Brazil. Use only the ServiceNow docs tools; do not fill gaps from m
    Take items only from the Brazil rows of the page. Where the page says
    "No updates for this release", write that for the part instead of leaving it out.
 4. Add a part "Changed in the documentation" with the `changed_pages` from step 1, if there are
-   any, and say that small rewordings are not listed.
+   any. Give a section marked `small` one line: a changed number or a "not" can be what
+   matters.
 5. If a tool for the user's own ServiceNow instance is connected, ask before using it. With a
    yes, look up the instance's release and installed applications, and mark the items that
    apply to this instance.

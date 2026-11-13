@@ -2,8 +2,11 @@
 
 The two releases' copies of a page almost always differ in ways that are not documentation
 changes: the front matter names the release, links are rendered differently (often with the
-link text missing in one release), and generated HTML tables get new ids. Those are removed
-before comparing, and a section counts as changed only by its remaining words.
+link text missing in one release, or as a `[bundle-area.topic]` placeholder), trademark signs
+come and go, and generated HTML tables get new ids. Those are removed before comparing, and a
+section counts as changed only by its remaining words. Every section that then differs is
+reported: one with only a few changed words is marked small and shown by those words, because
+"30 days" becoming "90 days" is one word and can be the change that matters.
 """
 
 from __future__ import annotations
@@ -15,15 +18,18 @@ from dataclasses import dataclass
 
 from snow_docs_mcp import sections
 
-# A changed section with fewer changed words than this is a small rewording: counted, not
-# listed. Most of them are link text that one release renders and the other drops.
+# A changed section with fewer changed words than this is a small rewording: it is marked
+# `small` and shown by the words around the change instead of a long excerpt.
 MINOR_WORDS = 8
+SMALL_EXCERPT_CHARS = 140
 # Word-by-word comparison is exact up to this many (words x words) after the shared start and
 # end are set aside; above it, words are counted instead.
 EXACT_CELLS = 250_000
 
 _LINK = re.compile(r"!?\[[^\[\]\n]*\]\([^()\s]*(?:\([^()\s]*\)[^()\s]*)*\)")
 _URL = re.compile(r"https?://\S+")
+_PLACEHOLDER = re.compile(r"\[bundle-[\w.-]+\]")  # a link one release left unresolved
+_MARKS = re.compile("[\u00ae\u2122]")  # registered and trademark signs
 _GENERATED_ATTR = re.compile(r"""\s+(?:id|headers)=(?:"[^"]*"|'[^']*')""")
 _WS = re.compile(r"\s+")
 
@@ -37,17 +43,19 @@ class SectionChange:
     before: str  # excerpt; "" when the section is new
     after: str  # excerpt; "" when the section is gone
     old_occurrence: int = 0  # its occurrence in `before`; 0 when the section is new
+    small: bool = False  # a few changed words; before/after show the words around them
 
 
 @dataclass(frozen=True)
 class PageDiff:
     sections: list[SectionChange]
-    minor: int  # changed sections below the threshold
+    minor: int  # how many of the sections are small rewordings
 
 
 def comparable(text: str, *, link_text: bool = False) -> str:
-    """Text reduced to what counts as documentation: no front matter, links, URLs, generated
-    table attributes or layout whitespace. `link_text` keeps each link's text.
+    """Text reduced to what counts as documentation: no front matter, links, link
+    placeholders, URLs, trademark signs, generated table attributes or layout whitespace.
+    `link_text` keeps each link's text.
 
     The releases render links two ways: one drops a link's text where the other has it, or
     one has plain text where the other has a link. Dropping links hides the first, keeping
@@ -55,7 +63,9 @@ def comparable(text: str, *, link_text: bool = False) -> str:
     """
     text = sections.strip_front_matter(text)
     text = sections.unlink(text) if link_text else _LINK.sub("", text)
+    text = _PLACEHOLDER.sub("", text)
     text = _URL.sub("", text)
+    text = _MARKS.sub("", text)
     text = _GENERATED_ATTR.sub("", text)
     return _WS.sub(" ", text).strip()
 
@@ -150,7 +160,8 @@ def compare_pages(
     before: str, after: str, *, minor_words: int = MINOR_WORDS, excerpt_chars: int = 300
 ) -> PageDiff:
     """Sections added, removed or reworded between two versions of a page: those of `after`
-    in page order, then the removed ones."""
+    in page order, then the removed ones. A rewording of fewer than `minor_words` words is
+    marked small."""
     old, new = _grouped(before), _grouped(after)
     listed: list[tuple[tuple[int, int], SectionChange]] = []  # (sort key, change)
     removed: list[SectionChange] = []
@@ -188,9 +199,9 @@ def compare_pages(
             n = min(_section_change(bodies_old[i], bodies_new[j], lt) for lt in (False, True))
             if n == 0:
                 continue
-            if n < minor_words:
-                minor += 1
-                continue
+            small = n < minor_words
+            minor += small
+            chars = min(excerpt_chars, SMALL_EXCERPT_CHARS) if small else excerpt_chars
             wa, wb = _display(bodies_old[i]).split(), _display(bodies_new[j]).split()
             at_a, at_b = _largest_change(wa, wb)
             listed.append(
@@ -201,9 +212,10 @@ def compare_pages(
                         j + 1,
                         "changed",
                         n,
-                        _excerpt(wa, at_a, excerpt_chars),
-                        _excerpt(wb, at_b, excerpt_chars),
+                        _excerpt(wa, at_a, chars),
+                        _excerpt(wb, at_b, chars),
                         i + 1,
+                        small,
                     ),
                 )
             )

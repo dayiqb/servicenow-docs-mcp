@@ -52,9 +52,46 @@ def test_reworded_section_above_threshold_is_listed_with_excerpts():
     assert "Install the plugin" in s.before and "store application" in s.after
 
 
-def test_small_rewording_is_counted_as_minor():
+def test_small_rewording_is_listed_as_small_with_the_words_that_differ():
     d = compare_pages(BASE, BASE.replace("admin role", "administrator role"))
-    assert d.sections == [] and d.minor == 1
+    (s,) = d.sections
+    assert s.small and s.change == "changed" and d.minor == 1
+    assert "admin role" in s.before and "administrator role" in s.after
+
+
+def test_a_changed_number_or_a_not_is_never_hidden():
+    """One word can change what an administrator must do when upgrading."""
+    kept = BASE.replace("Open the form.", "Closed records are kept for 30 days.")
+    d = compare_pages(kept, kept.replace("30 days", "90 days"))
+    (s,) = d.sections
+    assert s.small and "30 days" in s.before and "90 days" in s.after
+    d = compare_pages(kept, kept.replace("are kept", "are not kept"))
+    (s,) = d.sections
+    assert s.small and "are kept" in s.before and "are not kept" in s.after
+
+
+def test_a_long_rewording_is_not_small():
+    b = BASE.replace(
+        "Install the plugin and assign the admin role.",
+        "Request the store application, wait for approval, then assign the new delegated "
+        "developer role.",
+    )
+    d = compare_pages(BASE, b)
+    assert [s.small for s in d.sections] == [False] and d.minor == 0
+
+
+def test_an_unresolved_link_placeholder_is_no_change():
+    """One release renders a link as `[bundle-area.topic]` where the other has its text."""
+    a = BASE.replace("Open the form.", "Use the [SC Shopping Cart widget](https://x/y.md) here.")
+    b = BASE.replace("Open the form.", "Use the [bundle-platux.sc-shopping-cart] here.")
+    assert compare_pages(a, b) == PageDiff([], 0)
+    assert compare_pages(b, a) == PageDiff([], 0)
+
+
+def test_a_trademark_sign_is_no_change():
+    a = BASE.replace("Open the form.", "Runs on the ServiceNow AI Platform\u00ae.")
+    b = BASE.replace("Open the form.", "Runs on the ServiceNow AI Platform.")
+    assert compare_pages(a, b) == PageDiff([], 0)
 
 
 def test_repeated_headings_are_matched_by_occurrence():
@@ -132,7 +169,9 @@ def test_one_changed_word_in_a_huge_single_line_counts_as_one():
     a = "# P\n\n## S\n\n" + " ".join(words)
     words[4000] = "different"
     d = compare_pages(a, "# P\n\n## S\n\n" + " ".join(words))
-    assert d.sections == [] and d.minor == 1
+    (s,) = d.sections
+    assert s.small and s.changed_words == 1 and d.minor == 1
+    assert "different" in s.after and "different" not in s.before
 
 
 def test_inserted_repeated_heading_is_reported_as_added():

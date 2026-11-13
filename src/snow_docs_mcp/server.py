@@ -103,7 +103,8 @@ When answering a ServiceNow question with them:
 6. If two sources disagree, point out the conflict and cite both.
 7. For a question about what changes between Australia and Brazil (an upgrade, what's new),
    call snow_docs_compare first. Lead with its release notes, then the changed sections; cite
-   ids as usual, and say that small rewordings are not listed.
+   ids as usual. A section marked `small` is a rewording of a few words: give it one line,
+   because a changed number or a "not" can be what matters.
 8. Writing or reviewing ServiceNow script code is a docs question too: search for what the
    script relies on (when it runs, what the platform does by default) and do not state such
    behavior from memory, in the answer or in code comments. Check each class and method with
@@ -152,7 +153,8 @@ Australia to Brazil. Use only the ServiceNow docs tools; do not fill gaps from m
    Take items only from the Brazil rows of the page. Where the page says
    "No updates for this release", write that for the part instead of leaving it out.
 4. Add a part "Changed in the documentation" with the `changed_pages` from step 1, if there are
-   any, and say that small rewordings are not listed.
+   any. Give a section marked `small` one line: a changed number or a "not" can be what
+   matters.
 5. If a tool for the user's own ServiceNow instance is connected, ask before using it. With a
    yes, look up the instance's release and installed applications, and mark the items that
    apply to this instance.
@@ -289,6 +291,9 @@ class SectionDiff(BaseModel):
     brazil_id: str = Field("", description="Pass to snow_docs_read; empty when removed.")
     australia_excerpt: str = ""
     brazil_excerpt: str = ""
+    small: bool = Field(
+        False, description="A rewording of a few words; the excerpts show the words around it."
+    )
 
 
 class ChangedPage(BaseModel):
@@ -298,7 +303,7 @@ class ChangedPage(BaseModel):
     australia_url: str = ""
     brazil_url: str = ""
     sections: list[SectionDiff] = []
-    minor_changes: int = Field(0, description="Small rewordings, counted but not listed.")
+    minor_changes: int = Field(0, description="How many of the sections are marked small.")
     sections_left_out: int = Field(0, description="Dropped to keep the result short.")
 
 
@@ -970,6 +975,7 @@ def _changed_page(path: str, dbs: dict) -> tuple[str, ChangedPage | None]:
             else make_id(TO_RELEASE, path, c.heading_path, c.occurrence),
             australia_excerpt=c.before,
             brazil_excerpt=c.after,
+            small=c.small,
         )
         for c in diff.sections
     ]
@@ -1289,17 +1295,16 @@ def _compare(q: str, page: str, product: str | None, limit: int, dbs: dict) -> C
     msg = listed + f" ({FROM_RELEASE} -> {TO_RELEASE})." if parts else ""
     scope = "on this page" if page else f"among the {_count(compared, 'page')} that match"
     if not result.changed_pages and not (page and where != "both"):
-        msg += (
-            f" {_count(minor, 'small rewording')} {scope} (not listed); nothing else changed."
-            if minor
-            else f" No documentation changes found {scope}."
-        )
+        msg += f" No documentation changes found {scope}."
     for rel in (FROM_RELEASE, TO_RELEASE):
         only = getattr(result, f"only_in_{rel}")
         if only:
             msg += f" {_count(len(only), 'page')} only in the {rel} docs."
     if minor and result.changed_pages:
-        msg += f" {_count(minor, 'small rewording')} not listed."
+        msg += (
+            f" {_count(minor, 'small rewording')} among the sections, marked `small`: a changed "
+            'number or a "not" can still matter.'
+        )
     if pages_left_out:
         msg += (
             f" {_count(pages_left_out, 'more changed page')} left out to keep this short; "
@@ -1334,8 +1339,8 @@ def snow_docs_compare(
     (`release_notes`, one passage per page; `more_release_notes` lists further pages whose
     application name matches the query), then the documentation pages whose text really changed, section by
     section with an excerpt from each release (`changed_pages`). Differences in metadata and
-    links are ignored, and small rewordings are counted but not listed. Both releases' docs
-    must be installed; the result says so when one is missing.
+    links are ignored. A rewording of a few words is marked `small` and shown by the words
+    around it. Both releases' docs must be installed; the result says so when one is missing.
 
     Args:
         query: A topic in English, using ServiceNow's terms, e.g. "document intelligence" or

@@ -22,8 +22,9 @@ Answer ServiceNow questions from the official product documentation, not from me
 5. If sources disagree, point out the conflict and cite both.
 6. For a question about what changes between Australia and Brazil (an upgrade, what's
    new), call `snow_docs_compare` with the topic, or with `page` for one page. Lead with
-   the release notes it returns, then the changed sections, and say that small
-   rewordings are not listed.
+   the release notes it returns, then the changed sections. A section marked `small` is
+   a rewording of a few words: give it one line, because a changed number or a "not" can
+   be what matters.
 7. Writing or reviewing ServiceNow script code is a docs question too: search for what the
    script relies on (when it runs, what the platform does by default) and do not state such
    behavior from memory, in the answer or in code comments. Check each class and method with
