@@ -83,6 +83,7 @@ def test_plugin_skill_exists_and_names_the_tools() -> None:
         "snow_docs_read",
         "snow_docs_compare",
         "snow_docs_api",
+        "snow_docs_check_script",
         "snow_docs_status",
     ):
         assert tool in skill

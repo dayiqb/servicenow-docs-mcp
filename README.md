@@ -4,7 +4,7 @@ Ask Claude questions about ServiceNow and get answers taken from the **official 
 documentation**, for the **Australia** and **Brazil** releases, each claim with a citation you can
 open.
 
-It adds five read-only tools to Claude:
+It adds six read-only tools to Claude:
 
 | Tool | What it does |
 |---|---|
@@ -12,6 +12,7 @@ It adds five read-only tools to Claude:
 | `snow_docs_read` | Opens the full section behind a search result |
 | `snow_docs_compare` | Shows what changed between the Australia and Brazil docs for a topic or page |
 | `snow_docs_api` | Looks up a scripting class or method exactly: its methods, parameters and return type |
+| `snow_docs_check_script` | Checks a script: which method calls and table names the docs do not have |
 | `snow_docs_status` | Shows download/update progress and which docs snapshot is loaded |
 
 Claude writes the answer from the passages and cites them. The server itself runs no AI model
@@ -117,13 +118,22 @@ Claude Code; in Claude Desktop the extension's built-in instructions do the same
 
 **Script check, automatically.** A second hook runs after Claude writes or edits a file with
 ServiceNow script code (JavaScript, TypeScript, exported XML, widget HTML). It looks up every
-call it can name a class for, such as `gr.addEncodedQuery()` on a variable assigned
-`new GlideRecord(...)`, or calls on `gs`, `current` and `g_form`, in the API reference, and
-tells Claude which ones are not documented, with the closest documented names. Claude then
-fixes the code or tells you the method is undocumented. It takes about a second, never blocks
-a write and stays silent for code that checks out; turn it off with
-`SNOW_DOCS_SCRIPT_HOOK=off`. (Claude Code only; in Claude Desktop the instructions tell Claude
-to check methods with `snow_docs_api` itself.)
+method call on an object whose class it can tell, and every table opened by name, and tells
+Claude what the docs do not have, with the closest documented names. Claude then fixes the
+code or tells you what could not be verified. It tells an object's class from:
+
+- `new GlideRecord(...)` and other documented classes;
+- what a documented method returns (`var user = gs.getUser()`), also in a chain
+  (`gs.getUser().getName()`);
+- a JSDoc `@param {GlideRecord} rec` or a TypeScript `rec: GlideRecord`;
+- the platform's variables (`gs`, `current`, `g_form`, `$sp`, ...) and the usual names (`gr`,
+  `now_GR`, `gdt`).
+
+Table names are compared with the names the docs mention; customer tables (`u_`, `x_`) are
+skipped. Field names are not checked: they depend on your instance. The hook takes about a
+second, never blocks a write and stays silent for code that checks out; turn it off with
+`SNOW_DOCS_SCRIPT_HOOK=off`. Hooks exist in Claude Code only: in Claude Desktop, Claude runs
+the same check itself with the `snow_docs_check_script` tool.
 
 ## Compare releases
 

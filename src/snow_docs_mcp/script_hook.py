@@ -41,7 +41,9 @@ def code_of(payload: dict) -> str:
     return "\n".join(p for p in parts if isinstance(p, str) and p)
 
 
-def note(payload: dict, table: ApiTable, release: str) -> str | None:
+def note(
+    payload: dict, table: ApiTable, release: str, tables: frozenset[str] | None = None
+) -> str | None:
     """What to tell Claude about the code it just wrote, if anything."""
     tool_input = payload.get("tool_input")
     path = str(tool_input.get("file_path", "")) if isinstance(tool_input, dict) else ""
@@ -50,18 +52,22 @@ def note(payload: dict, table: ApiTable, release: str) -> str | None:
     code = code_of(payload)
     if not code or not _LOOKS_LIKE_SCRIPT.search(code):
         return None
-    findings = check(code, table)
+    findings = check(code, table, tables)
     if not findings:
         return None
     lines = []
     for f in findings:
-        close = f"; closest documented: {', '.join(f.suggestions)}" if f.suggestions else ""
-        lines.append(f"- {f.call}() at line {f.line} of the new text{close}")
+        close = f"; closest: {', '.join(f.suggestions)}" if f.suggestions else ""
+        if f.kind == "table":
+            lines.append(f"- table '{f.call}' at line {f.line}: the docs never mention it{close}")
+        else:
+            lines.append(f"- {f.call}() at line {f.line}: not in the API reference{close}")
     return (
-        f"ServiceNow script check: the {release} API reference does not document these calls "
-        f"in {PurePath(path).name or 'the file'}:\n" + "\n".join(lines) + "\n"
-        "Look each one up with snow_docs_api. If it is a mistake, fix the code. If the method "
-        "really exists but is undocumented, tell the user that it is not in the API reference."
+        f"ServiceNow script check ({release} docs) of the text just written to "
+        f"{PurePath(path).name or 'the file'}:\n" + "\n".join(lines) + "\n"
+        "Look each method up with snow_docs_api. If it is a mistake, fix the code. If the "
+        "method or table really exists but is not in the docs (custom or undocumented), tell "
+        "the user that it could not be verified."
     )
 
 
@@ -74,13 +80,13 @@ def main() -> int:
         return 0
     if not isinstance(payload, dict) or not _LOOKS_LIKE_SCRIPT.search(code_of(payload)):
         return 0
-    from snow_docs_mcp import api_table, config, setup  # after the cheap checks: slower imports
+    from snow_docs_mcp import api_table, config, setup, tables  # after the cheap checks
 
     release = config.default_release()
     db = setup.active_index(release)
     if db is None:  # not installed (yet): say nothing, and leave the download to the server
         return 0
-    text = note(payload, api_table.load(db), release)
+    text = note(payload, api_table.load(db), release, tables.names(db))
     if text:
         out = {"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": text}}
         sys.stdout.write(json.dumps(out))

@@ -6,6 +6,7 @@ Tools (all read-only):
     snow_docs_read     the full section behind a search hit
     snow_docs_compare  what changed between the australia and brazil docs for a topic or page
     snow_docs_api      a class's methods, or a method's parameters and return type, exactly
+    snow_docs_check_script  which calls and tables in a script the docs do not have
     snow_docs_status   setup/update progress per release, and where data lives
 
 Prompt:
@@ -52,7 +53,18 @@ from mcp.server import MCPServer
 from mcp.types import ToolAnnotations
 from pydantic import BaseModel, Field
 
-from snow_docs_mcp import api_table, config, identifiers, models, products, sections, setup, store
+from snow_docs_mcp import (
+    api_table,
+    config,
+    identifiers,
+    models,
+    products,
+    script_check,
+    sections,
+    setup,
+    store,
+    tables,
+)
 from snow_docs_mcp.compare import compare_pages
 from snow_docs_mcp.read import ReadResult as _ReadResult
 from snow_docs_mcp.read import not_an_id, page_url, read_section
@@ -79,7 +91,10 @@ When answering a ServiceNow question with them:
    ids as usual, and say that small rewordings are not listed.
 8. Before writing or reviewing ServiceNow script code, check each class and method with
    snow_docs_api. If it answers not_found, do not use that method; say so, and offer the
-   closest documented one."""
+   closest documented one. After writing or changing a script, pass the whole script to
+   snow_docs_check_script and act on what it finds before showing the code.
+9. Table and field names depend on the instance. If a tool for the user's own ServiceNow
+   instance is connected, check them there (ask first); otherwise say they are unverified."""
 
 # The upgrade review recipe: the `upgrade_review` prompt, manifest.json and the
 # servicenow-upgrade-review skill carry this text word for word (tests keep them in step).
@@ -279,6 +294,23 @@ class ApiResult(BaseModel):
     methods: list[ApiMethod] = []
     endpoints: list[ApiEndpoint] = []
     suggestions: list[str] = []
+
+
+class ScriptFinding(BaseModel):
+    kind: str = Field(description="method or table")
+    name: str = Field(description='"GlideRecord.addEncodedQuerry", or a table name')
+    line: int
+    suggestions: list[str] = []
+
+
+class ScriptCheckResult(BaseModel):
+    ok: bool
+    message: str
+    release: str = ""
+    snapshot: str = ""
+    checked_calls: int = Field(0, description="Calls on objects whose class could be told.")
+    checked_tables: int = 0
+    findings: list[ScriptFinding] = []
 
 
 def _not_ready(release: str) -> str:
@@ -1333,6 +1365,70 @@ def snow_docs_api(name: str, release: str | None = None) -> ApiResult:
     except Exception as e:  # tools report errors, never raise
         logger.exception("snow_docs_api failed")
         return ApiResult(ok=False, message=f"API lookup failed: {e}")
+
+
+@mcp.tool(name="snow_docs_check_script", annotations=READ_ONLY)
+def snow_docs_check_script(code: str, release: str | None = None) -> ScriptCheckResult:
+    """Check ServiceNow script code against the docs: every method call on an object whose
+    class can be told, and every table name it opens.
+
+    Call this with the whole script after writing or changing ServiceNow script code, before
+    showing it to the user. It follows `new GlideRecord(...)`, return types of documented
+    methods, JSDoc and TypeScript types, the platform's variables (gs, current, g_form, ...)
+    and the usual names (gr, gdt). A finding means the API reference does not document the
+    method, or the docs never mention the table: fix it, or tell the user it could not be
+    verified (custom tables and undocumented methods exist). Field names are not checked:
+    they depend on the instance.
+
+    Args:
+        code: The script (JavaScript or TypeScript).
+        release: "australia" or "brazil". Defaults to the configured release.
+    """
+    try:
+        if not (code or "").strip():
+            return ScriptCheckResult(ok=False, message="The code is empty. Pass the script.")
+        rel = config.normalize_release(release)
+        if rel is None:
+            return ScriptCheckResult(ok=False, message=_unknown_release(str(release)))
+        db = setup.active_index(rel)
+        if db is None:
+            setup.request(rel)
+            return ScriptCheckResult(ok=False, release=rel, message=_not_ready(rel))
+        _release_unused_indexes()
+        found = script_check.review(code, _api_table(db), tables.names(db), limit=30)
+        result = ScriptCheckResult(
+            ok=True,
+            message="",
+            release=rel,
+            snapshot=_snapshot_of(rel),
+            checked_calls=found.checked_calls,
+            checked_tables=found.checked_tables,
+            findings=[
+                ScriptFinding(kind=f.kind, name=f.call, line=f.line, suggestions=f.suggestions)
+                for f in found.findings
+            ],
+        )
+        what = f"{_count(found.checked_calls, 'call')} and {_count(found.checked_tables, 'table name')}"
+        if not found.checked_calls and not found.checked_tables:
+            result.message = (
+                "Nothing to check: the code has no calls on objects whose class can be told, "
+                "and opens no table by name. Field names are never checked."
+            )
+        elif result.findings:
+            result.message = (
+                f"Checked {what}: {len(result.findings)} of them are not in the {rel} docs. "
+                "Look methods up with snow_docs_api; fix mistakes, and tell the user about "
+                "anything that could not be verified. Field names are not checked."
+            )
+        else:
+            result.message = (
+                f"Checked {what} against the {rel} docs: all documented. Field names are not "
+                "checked; they depend on the instance."
+            )
+        return result
+    except Exception as e:  # tools report errors, never raise
+        logger.exception("snow_docs_check_script failed")
+        return ScriptCheckResult(ok=False, message=f"Script check failed: {e}")
 
 
 @mcp.tool(name="snow_docs_status", annotations=READ_ONLY)

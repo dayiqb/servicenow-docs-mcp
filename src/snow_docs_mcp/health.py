@@ -13,12 +13,12 @@ import argparse
 import sys
 from pathlib import Path
 
-from snow_docs_mcp import store
+from snow_docs_mcp import store, tables
 from snow_docs_mcp.compare import compare_pages
 
 # Floors, about 80 % of the 2026-11-06 indexes (4,539 methods in 521 classes, 94 % with a
 # return type; 681 REST endpoints in 136 APIs, 99 % with parameters, all with a default URL;
-# 315 release-notes applications in 30 families).
+# 10,533 table and field names in brackets; 315 release-notes applications in 30 families).
 FLOORS: dict[str, float] = {
     "api_methods": 3600,
     "api_classes": 400,
@@ -27,6 +27,7 @@ FLOORS: dict[str, float] = {
     "rest_apis": 100,
     "rest_endpoints_with_parameters": 0.85,
     "rest_endpoints_with_default_url": 0.95,
+    "table_names": 8000,
     "release_notes_applications": 250,
     "release_notes_families": 20,
 }
@@ -62,6 +63,7 @@ def counts(db: str | Path, release: str) -> dict[str, float]:
             sum(bool(e.default_url) for e in endpoints), len(endpoints)
         ),
     }
+    out["table_names"] = len(tables.scan(db))
     if release == NOTES_RELEASE:
         apps, families, _ = server._notes_index(db)
         out["release_notes_applications"] = len(apps)

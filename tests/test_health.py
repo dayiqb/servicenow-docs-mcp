@@ -31,6 +31,7 @@ SMALL = {
     "rest_apis": 1,
     "rest_endpoints_with_parameters": 1.0,
     "rest_endpoints_with_default_url": 0.5,
+    "table_names": 0,
     "release_notes_applications": 5,
     "release_notes_families": 2,
 }

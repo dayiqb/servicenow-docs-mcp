@@ -404,6 +404,16 @@ def documents(db_path: str | Path, prefix: str) -> list[tuple[str, str]]:
         conn.close()
 
 
+def contents(db_path: str | Path):
+    """Every page's text, one at a time."""
+    conn = _connect(db_path)
+    try:
+        for (text,) in conn.execute("SELECT content FROM documents"):
+            yield text
+    finally:
+        conn.close()
+
+
 _TITLE_RE = re.compile(r"^title:[ \t]*(.*)$", re.MULTILINE)
 
 

@@ -109,3 +109,14 @@ def test_the_hook_is_wired_after_write_and_edit():
 
 def test_readme_says_how_to_turn_it_off():
     assert "SNOW_DOCS_SCRIPT_HOOK=off" in (ROOT / "README.md").read_text(encoding="utf-8")
+
+
+def test_a_table_the_docs_never_mention_is_named_in_the_note():
+    code = "var gr = new GlideRecord('incidnet');\ngr.query();\n"
+    text = script_hook.note(
+        payload("Write", file_path="a.js", content=code),
+        TABLE,
+        "australia",
+        frozenset({"incident"}),
+    )
+    assert "table 'incidnet'" in text and "line 1" in text and "incident" in text

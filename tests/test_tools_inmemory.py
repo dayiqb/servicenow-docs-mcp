@@ -69,6 +69,7 @@ def test_surface_tools_annotations_prompt_and_instructions(ready) -> None:
     tools, prompts, prompt = anyio.run(go)
     assert sorted(t.name for t in tools.tools) == [
         "snow_docs_api",
+        "snow_docs_check_script",
         "snow_docs_compare",
         "snow_docs_read",
         "snow_docs_search",

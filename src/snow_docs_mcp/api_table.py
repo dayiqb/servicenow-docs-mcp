@@ -426,6 +426,20 @@ class ApiTable:
         close = difflib.get_close_matches(method, names, n=3, cutoff=0.6)
         return display, False, [f"{display}.{c}" for c in close]
 
+    def returns(self, class_name: str, method: str) -> str:
+        """The class a documented method returns ("" when it is not a documented class, or
+        the method or class is unknown)."""
+        if class_name not in VARIABLES and class_name not in self.names:
+            return ""
+        hit = self._class(class_name)
+        if not hit:
+            return ""
+        for members in hit[1].values():
+            for m in members:
+                if m.name == method and m.returns.strip() in self.names:
+                    return m.returns.strip()
+        return ""
+
     def find(self, name: str) -> tuple[str, object]:
         """("class", {class as written: members}), ("method", [members]) or
         ("not_found", [closest names])."""

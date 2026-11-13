@@ -20,6 +20,7 @@ def api(monkeypatch, tmp_path, fake_models):
     monkeypatch.setattr(config, "BUILTIN_ENTRIES", {"australia": make_entry()})
     monkeypatch.delenv("SNOW_DOCS_INDEX_URL", raising=False)
     docs = {**DOCS, PATH: PAGE, GLOBAL_PATH: GLOBAL, REST_PATH: REST}
+    docs["markdown/itsm/tables.md"] = "# Tables\n\nThe Incident [incident] table.\n"
     install_index(
         build_fixture_index(tmp_path / "au.db", docs=docs), config.BUILTIN_ENTRIES["australia"]
     )
@@ -129,3 +130,28 @@ def test_an_unknown_endpoint_is_a_clear_no(api):
     r = call("snow_docs_api", name="DELETE /now/table/incident")
     assert r["ok"] and r["kind"] == "not_found"
     assert r["suggestions"] == ["POST /now/table/{tableName}"]
+
+
+def test_check_script_reports_undocumented_calls_and_unknown_tables(api):
+    code = "var gr = new GlideRecord('incidnet');\ngr.addEncodedQuerry('a');\ngr.query();\n"
+    r = call("snow_docs_check_script", code=code)
+    assert r["ok"] and r["release"] == "australia"
+    assert (r["checked_calls"], r["checked_tables"]) == (2, 1)
+    assert r["findings"] == [
+        {"kind": "table", "name": "incidnet", "line": 1, "suggestions": ["incident"]},
+        {
+            "kind": "method",
+            "name": "GlideRecord.addEncodedQuerry",
+            "line": 2,
+            "suggestions": ["GlideRecord.addEncodedQuery"],
+        },
+    ]
+    assert "2 of them are not in the australia docs" in r["message"]
+
+
+def test_check_script_says_so_when_everything_checks_out_or_nothing_can_be_checked(api):
+    good = call("snow_docs_check_script", code="var gr = new GlideRecord('incident'); gr.query();")
+    assert good["ok"] and good["findings"] == [] and "all documented" in good["message"]
+    none = call("snow_docs_check_script", code="function add(a, b) { return a + b; }")
+    assert none["ok"] and none["checked_calls"] == 0 and "Nothing to check" in none["message"]
+    assert not call("snow_docs_check_script", code="  ")["ok"]

@@ -91,3 +91,64 @@ def test_class_names_are_matched_with_their_exact_case():
         "Document.nope"
     ]
     assert [f.call for f in check("var d = new document(); d.x(); gliderecord.y();", table)] == []
+
+
+USER = PAGE.replace("Scoped GlideRecord", "GlideUser").replace("getValue", "getName")
+GETTERS = (
+    "# GlideSystem\n\n## GlideSystem - getUser\\(\\)\n\nReturns the user.\n\n"
+    "|Type|Description|\n|----|-----------|\n|GlideUser|The current user.|\n\n"
+    "## GlideSystem - getProperty\\(String key\\)\n\nReturns a property.\n\n"
+    "|Type|Description|\n|----|-----------|\n|String|The value.|\n"
+)
+TYPED = ApiTable(
+    parse_page(GLOBAL_PATH, GLOBAL) + parse_page("u.md", USER) + parse_page("g.md", GETTERS)
+)
+
+
+def typed(code: str, **kw) -> list[str]:
+    return [f.call for f in check(code, TYPED, **kw)]
+
+
+def test_a_variable_gets_the_class_a_documented_method_returns():
+    assert typed("var u = gs.getUser(); u.getName(); u.getNmae();") == ["GlideUser.getNmae"]
+    # a method that returns a plain value gives no class to check against
+    assert typed("var p = gs.getProperty('x'); p.anything();") == []
+
+
+def test_a_chained_call_is_checked_against_the_returned_class():
+    assert typed("gs.getUser().getName(); gs.getUser().getNmae();") == ["GlideUser.getNmae"]
+
+
+def test_type_annotations_name_the_class():
+    jsdoc = "/** @param {GlideRecord} rec */\nfunction f(rec) { rec.qurey(); }"
+    ts = "function f(rec: GlideRecord, n: number) { rec.qurey(); n.toFixed(); }"
+    assert typed(jsdoc) == ["GlideRecord.qurey"] and typed(ts) == ["GlideRecord.qurey"]
+
+
+def test_the_usual_variable_names_are_taken_for_their_classes():
+    assert typed(
+        "function f(gr, grTask, now_GR) { gr.qurey(); grTask.qurey(); now_GR.qurey(); }"
+    ) == ["GlideRecord.qurey"]
+    # ... unless the code assigns the name something we cannot type
+    assert typed("var gr = somethingElse(); gr.qurey();") == []
+
+
+def test_table_names_the_docs_never_mention_are_reported():
+    tables = frozenset({"incident", "sys_user", "change_request"})
+    code = "var a = new GlideRecord('incidnet');\nvar b = new GlideRecord(\"sys_user\");\nvar c = new GlideRecord('u_my_table'); var d = new GlideRecord('x_acme_app_thing'); var e = new GlideRecord(name);"
+    found = check(code, TYPED, tables=tables)
+    assert [(f.kind, f.call, f.line, f.suggestions) for f in found] == [
+        ("table", "incidnet", 1, ["incident"])
+    ]
+    assert check(code, TYPED) == []  # no table list: tables are not checked
+
+
+def test_review_counts_what_it_could_check():
+    from snow_docs_mcp.script_check import review
+
+    r = review(
+        "var gr = new GlideRecord('incident'); gr.query(); gr.qurey(); list.push(1);",
+        TYPED,
+        tables=frozenset({"incident"}),
+    )
+    assert (r.checked_calls, r.checked_tables, len(r.findings)) == (2, 1, 1)
