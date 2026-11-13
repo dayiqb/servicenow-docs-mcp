@@ -15,3 +15,5 @@ skills/
 .github/
 index/
 hooks/
+agents/
+commands/

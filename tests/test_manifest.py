@@ -221,3 +221,30 @@ def test_setup_checklist_text_is_the_same_in_prompt_manifest_and_skill() -> None
         assert needed in SETUP_CHECKLIST_RULES
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     assert "setup_checklist" in readme and "servicenow-setup-checklist" in readme
+
+
+def test_plugin_commands_carry_the_recipes_word_for_word() -> None:
+    from snow_docs_mcp.server import SETUP_CHECKLIST_RULES, UPGRADE_REVIEW_RULES
+
+    for name, rules, argument in (
+        ("upgrade-review", UPGRADE_REVIEW_RULES, "Product: $ARGUMENTS"),
+        ("setup-checklist", SETUP_CHECKLIST_RULES, "Feature: $ARGUMENTS"),
+    ):
+        text = (ROOT / "commands" / f"{name}.md").read_text(encoding="utf-8")
+        assert text.startswith("---\ndescription: ") and "argument-hint: " in text.split("---")[1]
+        assert rules in text and text.rstrip().endswith(argument)
+
+
+def test_plugin_agent_names_the_tools_it_should_use() -> None:
+    text = (ROOT / "agents" / "servicenow-docs-researcher.md").read_text(encoding="utf-8")
+    assert text.startswith("---\nname: servicenow-docs-researcher\ndescription: ")
+    for tool in ("snow_docs_search", "snow_docs_read", "snow_docs_api", "snow_docs_check_script", "snow_docs_compare"):
+        assert tool in text
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "servicenow-docs-researcher" in readme and "/servicenow-docs:upgrade-review" in readme
+
+
+def test_the_desktop_extension_leaves_out_the_claude_code_only_folders() -> None:
+    ignored = (ROOT / ".mcpbignore").read_text(encoding="utf-8").split()
+    for folder in ("skills/", "hooks/", "agents/", "commands/"):
+        assert folder in ignored

@@ -164,6 +164,19 @@ Norwegian), works with the keyboard, and needs no network: it is one page inside
 Claude Code and other clients without panels get the same results as text; a diagram comes as
 Mermaid text there.
 
+## In Claude Code
+
+The plugin adds a few things that only Claude Code has:
+
+- **Commands.** `/servicenow-docs:upgrade-review <product>` and
+  `/servicenow-docs:setup-checklist <feature>` run the two checklists directly.
+- **A docs researcher.** The `servicenow-docs-researcher` agent answers a question that needs
+  several searches and full sections read, and reports back a short, cited answer, so the
+  search results stay out of your main conversation. Claude uses it on its own for larger
+  questions; you can also ask for it by name.
+- **Two hooks**, described above: docs first for ServiceNow questions, and the script check
+  after Claude writes ServiceNow code.
+
 ## Compare releases
 
 Ask what changes between the two releases, for example *"What changes for Document Intelligence
