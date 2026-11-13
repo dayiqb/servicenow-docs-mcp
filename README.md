@@ -134,10 +134,16 @@ code or tells you what could not be verified. It tells an object's class from:
 - the platform's variables (`gs`, `current`, `g_form`, `$sp`, ...) and the usual names (`gr`,
   `now_GR`, `gdt`).
 
+A name the script declares itself (`var logger = ...`, a parameter, an import) is never taken
+for a documented class of the same name. Other JavaScript is left alone: a file counts as
+ServiceNow script only when it names something of ServiceNow's (a Glide class, `gs.`,
+`g_form.`, `$sp.`, an `sn_` namespace). After an edit, the edited lines are checked in the
+file as a whole, where the variables are declared. Files over 300,000 characters are skipped.
+
 Table names are compared with the names the docs mention; customer tables (`u_`, `x_`) are
 skipped. Field names are not checked: they depend on your instance. The hook takes about a
-second, never blocks a write and stays silent for code that checks out; turn it off with
-`SNOW_DOCS_SCRIPT_HOOK=off`. Hooks exist in Claude Code only: in Claude Desktop, Claude runs
+second, never blocks a write, never installs anything and stays silent for code that checks
+out; turn it off with `SNOW_DOCS_SCRIPT_HOOK=off`. Hooks exist in Claude Code only: in Claude Desktop, Claude runs
 the same check itself with the `snow_docs_check_script` tool.
 
 ## The panel in Claude Desktop
