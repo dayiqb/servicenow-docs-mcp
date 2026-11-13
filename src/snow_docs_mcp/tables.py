@@ -28,12 +28,27 @@ def scan(db_path: str | Path) -> frozenset[str]:
     )
 
 
+CACHE_PREFIX = "tables-"
+
+
+def cache_file(db_path: str | Path) -> Path:
+    """Where the names of one index are kept: `tables-<index file name>.json`."""
+    return config.data_home() / f"{CACHE_PREFIX}{Path(db_path).stem}.json"
+
+
+def forget(db_path: str | Path) -> None:
+    """Drop the names of an index that is being deleted: from memory and from disk."""
+    _memory.pop(str(db_path), None)
+    with contextlib.suppress(OSError):
+        cache_file(db_path).unlink(missing_ok=True)
+
+
 def names(db_path: str | Path) -> frozenset[str]:
     """The names for one index: from memory, else its cache file, else a scan (cached)."""
     key = str(db_path)
     if key in _memory:
         return _memory[key]
-    cache = config.data_home() / f"tables-{Path(db_path).stem}.json"
+    cache = cache_file(db_path)
     found: frozenset[str] | None = None
     with contextlib.suppress(OSError, ValueError, TypeError):
         found = frozenset(json.loads(cache.read_text(encoding="utf-8")))

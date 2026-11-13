@@ -51,7 +51,7 @@ from pathlib import Path
 
 from filelock import FileLock, Timeout
 
-from snow_docs_mcp import config, models, store
+from snow_docs_mcp import config, models, store, tables
 from snow_docs_mcp.config import IndexEntry
 
 logger = logging.getLogger(__name__)
@@ -619,13 +619,14 @@ _PART_FILE = re.compile(
 
 
 def _delete_index(path: Path) -> bool:
-    """Delete an index file, then its marker. If the file is in use (Windows), keep the
-    marker so the next start sees it and tries again."""
+    """Delete an index file, then its marker and the table names read from it. If the file is
+    in use (Windows), keep the marker so the next start sees it and tries again."""
     store.forget(path)
     try:
         path.unlink(missing_ok=True)
     except OSError:
         return False
+    tables.forget(path)
     with contextlib.suppress(OSError):
         path.with_suffix(".ok").unlink(missing_ok=True)
     return True
@@ -672,7 +673,8 @@ def _migrate_legacy(home: Path) -> None:
 
 def _sweep(release: str, keep_part_keys: set[str]) -> None:
     """Remove leftovers: unpack temps, orphaned index files without a valid marker, marker
-    and latest.json temps, and partial downloads nobody is known to want."""
+    and latest.json temps, table-name files whose index is gone, and partial downloads nobody
+    is known to want."""
     home = config.data_home()
     for stale in [*home.glob(".index-*.part"), *home.glob("index-*.ok.tmp")]:
         with contextlib.suppress(OSError):
@@ -686,6 +688,11 @@ def _sweep(release: str, keep_part_keys: set[str]) -> None:
     for db in home.glob(f"index-{release}-*.db"):
         if db.name not in valid and _INDEX_FILE.fullmatch(db.with_suffix(".ok").name):
             _delete_index(db)
+    for names in home.glob(f"{tables.CACHE_PREFIX}index-{release}-*.json"):
+        index = home / f"{names.stem[len(tables.CACHE_PREFIX) :]}.db"
+        if not index.exists():  # left behind by a version that did not delete it
+            with contextlib.suppress(OSError):
+                names.unlink()
     for part in home.glob(f"index-{release}-*.db.gz.part"):
         m = _PART_FILE.fullmatch(part.name)
         if not m or m.group("key") in keep_part_keys:
