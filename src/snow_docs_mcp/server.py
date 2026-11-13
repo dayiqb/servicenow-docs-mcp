@@ -1060,24 +1060,25 @@ def _phrase(text: str) -> str:
 
 def _notes_index(
     db,
-) -> tuple[dict[str, tuple[str, str]], dict[str, set[str]], dict[str, set[str]]]:
-    """(application phrase -> (page path, application name), family phrase -> application
-    phrases, application phrase -> the product areas its own docs are in) for the
-    release-notes pages. An application's own docs are the pages titled with its name; their
+) -> tuple[dict[str, list[tuple[str, str]]], dict[str, set[str]], dict[str, set[str]]]:
+    """(application phrase -> its pages as (page path, application name), family phrase ->
+    application phrases, application phrase -> the product areas its own docs are in) for the
+    release-notes pages. An application can have two pages (one named with its abbreviation);
+    both are kept, in path order. An application's own docs are the pages titled with its name; their
     top folder is the product area. Families come from the breadcrumb of the
     per-application release notes: "<application> release notes" under "<family> release
     notes" (more than one level, e.g. Workflow Studio under App development and low-code)."""
     key = str(db)
     if key not in _notes_cache:
-        apps: dict[str, tuple[str, str]] = {}
+        apps: dict[str, list[tuple[str, str]]] = {}
         chains: list[list[str]] = []
-        for path in store.page_paths(db)[0]:
+        for path in sorted(store.page_paths(db)[0]):  # sorted: the same answer every start
             if path.startswith(RELEASE_NOTES_PREFIX):
                 page = store.get_document(db, path) or ""
                 m = _NOTES_TITLE.match(sections.front_matter_value(page, "title"))
                 if m:
                     name = sections.unescape_markdown(m.group(1))
-                    apps[_phrase(_PARENS.sub("", name))] = (path, name)
+                    apps.setdefault(_phrase(_PARENS.sub("", name)), []).append((path, name))
             elif path.startswith(_NOTES_FOLDER):
                 page = (store.get_document(db, path) or "")[:3000]
                 crumbs = _BREADCRUMB.search(page)
@@ -1103,6 +1104,21 @@ def _notes_index(
     return _notes_cache[key]
 
 
+def _families_documented_in(
+    folder: str, families: dict[str, set[str]], areas: dict[str, set[str]]
+) -> set[str]:
+    """The families whose applications have their own docs in a product folder: most of the
+    members whose product area is known. The folder is often not named like the family
+    (governance-risk-compliance holds "Governance, Risk, and Compliance"; security-management
+    holds "Security Operations")."""
+    out = set()
+    for family, members in families.items():
+        known = [areas[a] for a in members if areas.get(a)]
+        if known and sum(folder in area for area in known) * 2 > len(known):
+            out.add(family)
+    return out
+
+
 def _notes_by_name(db, q: str, already: set[str]) -> list[NotesPage]:
     """Release-notes pages found by name rather than by search: search misses a page when
     the docs call the product something else ("Flow Designer" is under "Flows, subflows, and
@@ -1123,23 +1139,31 @@ def _notes_by_name(db, q: str, already: set[str]) -> list[NotesPage]:
     if not phrase:
         return []
     folder, how = products.resolve(q, store.products(db))
-    family_names = {phrase} | ({_phrase(folder)} if how in ("exact", "alias") and folder else set())
+    family_names = {phrase}
+    if how in ("exact", "alias") and folder:
+        family_names |= {_phrase(folder)} | _families_documented_in(folder, families, areas)
     members = {a for f in family_names for a in families.get(f, ())}
 
     def abbreviations(name: str) -> set[str]:
         return {_phrase(x) for x in _PARENS.findall(name)}
 
-    names_one = phrase in apps or any(phrase in abbreviations(n) for _, n in apps.values())
+    names_one = phrase in apps or any(
+        phrase in abbreviations(n) for pages in apps.values() for _, n in pages
+    )
     words = {w for w in phrase.split() if len(w) > 1 and w not in _GENERIC_WORDS}
     has = {
-        a: {w for w in words if any(n.startswith(w) for n in _phrase(name).split())}
-        for a, (_, name) in apps.items()
+        a: {
+            w
+            for w in words
+            if any(n.startswith(w) for _, name in pages for n in _phrase(name).split())
+        }
+        for a, pages in apps.items()
     }
     if names_one and not members:
         named = {
             a
-            for a, (_, name) in apps.items()
-            if f" {phrase} " in f" {a} " or phrase in abbreviations(name)
+            for a, pages in apps.items()
+            if f" {phrase} " in f" {a} " or any(phrase in abbreviations(n) for _, n in pages)
         }
     else:
         in_names = {w: sum(w in h for h in has.values()) for w in words}
@@ -1154,9 +1178,10 @@ def _notes_by_name(db, q: str, already: set[str]) -> list[NotesPage]:
         elsewhere |= {a for a in named if home and areas.get(a) and not areas[a] & home}
         named -= elsewhere - members
     found = sorted(
-        (-len(has[a]), apps[a][1], apps[a][0])
+        (-len(has[a]), name, path)
         for a in members | named
-        if f"{TO_RELEASE}:{apps[a][0]}" not in already
+        for path, name in apps[a]
+        if f"{TO_RELEASE}:{path}" not in already
     )
     return [
         NotesPage(id=make_id(TO_RELEASE, path, ""), application=name)

@@ -72,6 +72,10 @@ for _path, _app in (
     (_DELTA + "workflowstudioreports-release-notes.md", "Workflow Studio Reports"),
     (_DELTA + "predictiveintelligence-release-notes.md", "Predictive Intelligence"),
     (_DELTA + "threatintelligence-release-notes.md", "Threat Intelligence Center"),
+    (_DELTA + "policycompliance-release-notes.md", "Policy and Compliance Management"),
+    (_DELTA + "riskmanagement-release-notes.md", "Risk Management"),
+    # a second page for the same application, named with its abbreviation
+    (_DELTA + "riskmanagementrm-release-notes.md", "Risk Management \\(RM\\)"),
 ):
     BR_DOCS[_path] = (
         f"---\ntitle: Combined {_app} release notes for upgrades from Australia to Brazil\n---\n\n"
@@ -90,11 +94,24 @@ for _file, _title, _crumbs in (
         "notes, Features and changes by product, Brazil release notes]\n---\n\n# Notes\n\nText.\n"
     )
 
+# A family whose docs folder is not named like it: "GRC" is an alias of the folder
+# governance-risk-compliance, and the family is "Governance, Risk, and Compliance".
+for _file, _title in (
+    ("policy-rn", "Policy and Compliance Management release notes"),
+    ("risk-rn", "Risk Management release notes"),
+):
+    BR_DOCS[f"markdown/release-notes/{_file}.md"] = (
+        f"---\ntitle: {_title}\nbreadcrumb: [Governance, Risk, and Compliance release notes, "
+        "Features and changes by product, Brazil release notes]\n---\n\n# Notes\n\nText.\n"
+    )
+
 # Each application's own docs: the product area (top folder) they are in.
 for _docs_path, _title in (
     ("markdown/build-workflows/flows/flows.md", "Flows, subflows, and actions"),
     ("markdown/build-workflows/templates/templates.md", "Workflow Studio Templates"),
     ("markdown/analytics/reports/reports.md", "Workflow Studio Reports"),
+    ("markdown/governance-risk-compliance/policy/policy.md", "Policy and Compliance Management"),
+    ("markdown/governance-risk-compliance/risk/risk.md", "Risk Management"),
 ):
     BR_DOCS[_docs_path] = f"---\ntitle: {_title}\n---\n\n# {_title}\n\nAbout it.\n"
 
@@ -113,6 +130,14 @@ BR_CHUNKS = [
         "Incident release notes > Changes",
         "Release notes for incident.",
         "Priority lookup rules can be maintained per assignment group.",
+    ),
+    # last, so the passages above keep their numbers: makes governance-risk-compliance a
+    # product folder of the index
+    (
+        "markdown/governance-risk-compliance/risk/risk.md",
+        "Risk Management",
+        "Risk docs.",
+        "About it.",
     ),
 ]
 
@@ -243,7 +268,7 @@ def test_delta_pages_are_never_compared_as_documentation(both):
     r = call("snow_docs_compare", query="priority lookup rules release notes")
     assert r["ok"], r
     assert all(not p["page"].startswith("markdown/delta-") for p in r["changed_pages"])
-    assert r["only_in_brazil"] == []
+    assert all(not p.startswith("markdown/delta-") for p in r["only_in_brazil"])
 
 
 def test_limit_is_clamped_and_said(both):
@@ -477,3 +502,25 @@ def test_a_query_that_names_a_product_family_lists_its_applications(both):
         "Playbooks",
         "Workflow Studio Insights",
     ]
+
+
+def test_an_abbreviation_finds_its_family_when_the_folder_is_named_differently(both):
+    """GRC -> the folder governance-risk-compliance; the family is "Governance, Risk, and
+    Compliance". The family is the one whose applications are documented in that folder."""
+    both.rerank_scores = {"": -5.0}
+    r = call("snow_docs_compare", query="GRC")
+    assert sorted(m["application"] for m in r["more_release_notes"]) == [
+        "Policy and Compliance Management",
+        "Risk Management",
+        "Risk Management (RM)",
+    ]
+
+
+def test_two_pages_with_one_application_name_are_both_listed(both):
+    both.rerank_scores = {"": -5.0}
+    r = call("snow_docs_compare", query="Risk Management")
+    assert [m["application"] for m in r["more_release_notes"]] == [
+        "Risk Management",
+        "Risk Management (RM)",
+    ]
+    assert len({m["id"] for m in r["more_release_notes"]}) == 2
