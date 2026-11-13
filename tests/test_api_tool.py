@@ -155,3 +155,28 @@ def test_check_script_says_so_when_everything_checks_out_or_nothing_can_be_check
     none = call("snow_docs_check_script", code="function add(a, b) { return a + b; }")
     assert none["ok"] and none["checked_calls"] == 0 and "Nothing to check" in none["message"]
     assert not call("snow_docs_check_script", code="  ")["ok"]
+
+
+def test_both_releases_stay_loaded_when_calls_alternate(tmp_path, monkeypatch):
+    """A comparison of releases looks things up in one, then the other, then the first again;
+    each index is parsed once, not on every switch."""
+    from snow_docs_mcp import api_table, server, store
+
+    docs = {**DOCS, PATH: PAGE, GLOBAL_PATH: GLOBAL}
+    au = build_fixture_index(tmp_path / "au.db", docs=docs)
+    br = build_fixture_index(tmp_path / "br.db", docs=docs)
+    newer = build_fixture_index(tmp_path / "au-newer.db", docs=docs)
+    loads: list[str] = []
+    real_load, real_titles = api_table.load, store.titles_by_path
+    monkeypatch.setattr(api_table, "load", lambda db: loads.append(str(db)) or real_load(db))
+    monkeypatch.setattr(
+        store, "titles_by_path", lambda db: loads.append(f"titles {db}") or real_titles(db)
+    )
+    for db in (au, br, au, br, au):
+        assert server._api_table(db).names
+        assert server._page_titles(db)
+    assert loads == [str(au), f"titles {au}", str(br), f"titles {br}"]
+    # a new snapshot takes the place of the oldest one: never more than one per release
+    assert server._api_table(newer).names and server._page_titles(newer)
+    assert len(server._api_tables) == 2 and len(server._titles) == 2
+    assert str(au) not in server._api_tables and str(br) in server._api_tables

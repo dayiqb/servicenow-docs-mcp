@@ -1058,7 +1058,7 @@ def _phrase(text: str) -> str:
     return " ".join(_WORD_RE.findall(text.lower()))
 
 
-def _notes_index(
+def _build_notes_index(
     db,
 ) -> tuple[dict[str, list[tuple[str, str]]], dict[str, set[str]], dict[str, set[str]]]:
     """(application phrase -> its pages as (page path, application name), family phrase ->
@@ -1068,40 +1068,45 @@ def _notes_index(
     top folder is the product area. Families come from the breadcrumb of the
     per-application release notes: "<application> release notes" under "<family> release
     notes" (more than one level, e.g. Workflow Studio under App development and low-code)."""
-    key = str(db)
-    if key not in _notes_cache:
-        apps: dict[str, list[tuple[str, str]]] = {}
-        chains: list[list[str]] = []
-        for path in sorted(store.page_paths(db)[0]):  # sorted: the same answer every start
-            if path.startswith(RELEASE_NOTES_PREFIX):
-                page = store.get_document(db, path) or ""
-                m = _NOTES_TITLE.match(sections.front_matter_value(page, "title"))
-                if m:
-                    name = sections.unescape_markdown(m.group(1))
-                    apps.setdefault(_phrase(_PARENS.sub("", name)), []).append((path, name))
-            elif path.startswith(_NOTES_FOLDER):
-                page = (store.get_document(db, path) or "")[:3000]
-                crumbs = _BREADCRUMB.search(page)
-                if crumbs:
-                    # family crumbs come first; the generic ones start at "Features and changes"
-                    head = crumbs.group(1).split("Features and changes", 1)[0]
-                    title = sections.unescape_markdown(sections.front_matter_value(page, "title"))
-                    chain = _FAMILY.findall(f"{title}, {head}")
-                    chains.append([_phrase(_PARENS.sub("", c)) for c in chain])
-        families: dict[str, set[str]] = {}
-        for chain in chains:
-            for i, name in enumerate(chain):
-                if name in apps:
-                    for family in chain[i + 1 :]:
-                        families.setdefault(family, set()).add(name)
-        areas: dict[str, set[str]] = {}
-        for title, paths in store.page_titles(db, "markdown/delta-").items():
-            name = _phrase(_PARENS.sub("", sections.unescape_markdown(title)))
+    apps: dict[str, list[tuple[str, str]]] = {}
+    chains: list[list[str]] = []
+    for path in sorted(store.page_paths(db)[0]):  # sorted: the same answer every start
+        if path.startswith(RELEASE_NOTES_PREFIX):
+            page = store.get_document(db, path) or ""
+            m = _NOTES_TITLE.match(sections.front_matter_value(page, "title"))
+            if m:
+                name = sections.unescape_markdown(m.group(1))
+                apps.setdefault(_phrase(_PARENS.sub("", name)), []).append((path, name))
+        elif path.startswith(_NOTES_FOLDER):
+            page = (store.get_document(db, path) or "")[:3000]
+            crumbs = _BREADCRUMB.search(page)
+            if crumbs:
+                # family crumbs come first; the generic ones start at "Features and changes"
+                head = crumbs.group(1).split("Features and changes", 1)[0]
+                title = sections.unescape_markdown(sections.front_matter_value(page, "title"))
+                chain = _FAMILY.findall(f"{title}, {head}")
+                chains.append([_phrase(_PARENS.sub("", c)) for c in chain])
+    families: dict[str, set[str]] = {}
+    for chain in chains:
+        for i, name in enumerate(chain):
             if name in apps:
-                found = {store.product_of(p) for p in paths if not p.startswith(_NOTES_FOLDER)}
-                areas.setdefault(name, set()).update(found - {""})
-        _notes_cache[key] = (apps, families, areas)
-    return _notes_cache[key]
+                for family in chain[i + 1 :]:
+                    families.setdefault(family, set()).add(name)
+    areas: dict[str, set[str]] = {}
+    for title, paths in store.page_titles(db, "markdown/delta-").items():
+        name = _phrase(_PARENS.sub("", sections.unescape_markdown(title)))
+        if name in apps:
+            found = {store.product_of(p) for p in paths if not p.startswith(_NOTES_FOLDER)}
+            areas.setdefault(name, set()).update(found - {""})
+    return apps, families, areas
+
+
+def _notes_index(
+    db,
+) -> tuple[dict[str, list[tuple[str, str]]], dict[str, set[str]], dict[str, set[str]]]:
+    """The release-notes pages of an index by application and family (see
+    `_build_notes_index`), read once per index file."""
+    return _per_index(_notes_cache, db, _build_notes_index)
 
 
 def _families_documented_in(
@@ -1424,13 +1429,28 @@ _API_EXAMPLE_CHARS = 1500
 _api_tables: dict[str, api_table.ApiTable] = {}
 
 
+_per_index_lock = threading.Lock()
+
+
+def _per_index(cache: dict, db, load):
+    """What `load` reads out of an index file, kept for one index per release: calls that
+    alternate between the releases do not load again, and a new snapshot takes the place of
+    the oldest entry. Tools run in worker threads, so loading and replacing happen under a
+    lock and the value is returned from a local, never read back from the cache."""
+    key = str(db)
+    with _per_index_lock:
+        value = cache.get(key)
+        if value is None:
+            value = load(db)
+            while len(cache) >= len(config.RELEASES):
+                del cache[next(iter(cache))]
+            cache[key] = value
+        return value
+
+
 def _api_table(db) -> api_table.ApiTable:
     """The index's API reference as a table, parsed once per index file (well under a second)."""
-    key = str(db)
-    if key not in _api_tables:
-        _api_tables.clear()  # one index at a time is enough; a new snapshot replaces the old
-        _api_tables[key] = api_table.load(db)
-    return _api_tables[key]
+    return _per_index(_api_tables, db, lambda path: api_table.load(path))
 
 
 def _member_id(rel: str, m: api_table.Member) -> str:
@@ -1802,11 +1822,7 @@ _titles: dict[str, dict[str, str]] = {}
 
 
 def _page_titles(db) -> dict[str, str]:
-    key = str(db)
-    if key not in _titles:
-        _titles.clear()
-        _titles[key] = store.titles_by_path(db)
-    return _titles[key]
+    return _per_index(_titles, db, lambda path: store.titles_by_path(path))
 
 
 @mcp.tool(name="snow_docs_browse", annotations=READ_ONLY, meta=_PANEL_META)
