@@ -1,7 +1,7 @@
 """The results panel (MCP Apps): wiring, and that the page stands on its own.
 
-A host that supports MCP Apps renders `ui://servicenow-docs/panel.html` next to the result of
-snow_docs_search and snow_docs_compare; every other client keeps getting the plain result.
+A host that supports MCP Apps renders the panel (`ui://servicenow-docs/panel-<digest>.html`) next
+to the result of snow_docs_search and snow_docs_compare; every other client keeps getting the plain result.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ import pytest
 from mcp import Client
 
 from snow_docs_mcp import setup
-from snow_docs_mcp.server import PANEL_URI, mcp, panel_html
+from snow_docs_mcp.server import PANEL_URI, mcp, panel_html, panel_uri
 
 APP_MIME = "text/html;profile=mcp-app"
 
@@ -41,7 +41,6 @@ def test_the_tools_that_show_something_point_at_the_panel():
     with_ui = {
         t.name for t in tools if (t.meta or {}).get("ui", {}).get("resourceUri") == PANEL_URI
     }
-    assert PANEL_URI == "ui://servicenow-docs/panel.html"
     assert with_ui == {
         "snow_docs_search",
         "snow_docs_compare",
@@ -49,6 +48,15 @@ def test_the_tools_that_show_something_point_at_the_panel():
         "snow_docs_open",
         "snow_docs_diagram",
     }
+
+
+def test_the_panel_address_follows_what_the_panel_holds():
+    """A host keeps the page it fetched under its address and does not ask again: after an
+    upgrade Claude Desktop went on showing the previous panel, because the address was the same.
+    So the address is made from the page, and another page has another address."""
+    assert PANEL_URI == panel_uri(panel_html())
+    assert re.fullmatch(r"ui://servicenow-docs/panel-[0-9a-f]{12}\.html", PANEL_URI)
+    assert panel_uri(panel_html() + " ") != PANEL_URI
 
 
 def test_the_panel_is_served_as_an_app_resource():

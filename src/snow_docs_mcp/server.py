@@ -50,6 +50,7 @@ from __future__ import annotations
 
 import contextlib
 import difflib
+import hashlib
 import itertools
 import json
 import logging
@@ -232,12 +233,20 @@ async def _lifespan(_server: MCPServer) -> AsyncIterator[dict]:
 # The results panel (MCP Apps): a host that supports it shows this page next to the result of
 # a search or a comparison; every other client just gets the result. One self-contained HTML
 # file, because the host's sandbox allows no external script, style, font or request.
-PANEL_URI = "ui://servicenow-docs/panel.html"
-_PANEL_META = {"ui": {"resourceUri": PANEL_URI}}
-
-
 def panel_html() -> str:
     return (Path(__file__).parent / "ui" / "panel.html").read_text(encoding="utf-8")
+
+
+def panel_uri(html: str) -> str:
+    """The address the panel is served at. A host keeps the page it fetched under its address
+    and does not ask for it again, not even after the extension is replaced. So the address is
+    made from the page itself: a panel that has changed is a page the host has never seen."""
+    digest = hashlib.sha256(html.encode("utf-8")).hexdigest()[:12]
+    return f"ui://servicenow-docs/panel-{digest}.html"
+
+
+PANEL_URI = panel_uri(panel_html())
+_PANEL_META = {"ui": {"resourceUri": PANEL_URI}}
 
 
 _apps = Apps()
