@@ -72,6 +72,33 @@ ALIASES: dict[str, str] = {
 }
 
 
+# The abbreviations that name a whole product area. The others name a product or a feature
+# inside one ("sam" is in it-asset-management, "cmdb" in servicenow-platform): asking for
+# one of those is not asking for everything else in the folder.
+WHOLE_AREA = frozenset(
+    {
+        "itsm",
+        "csm",
+        "itom",
+        "itam",
+        "itbm",
+        "spm",
+        "apm",
+        "hr",
+        "hrsd",
+        "fsm",
+        "grc",
+        "secops",
+        "security-operations",
+        "esg",
+        "fso",
+        "otsm",
+        "s2p",
+        "hls",
+        "tmt",
+    }
+)
+
 # Real folders whose name people use for a bigger one: "now-platform" holds 5 landing pages.
 _REDIRECTED = frozenset({"now-platform"})
 
@@ -91,6 +118,13 @@ def resolve(value: str, known: list[str]) -> tuple[str, str]:
         folder = ALIASES[wanted]
         return folder, "alias" if folder in known else "alias-absent"
     return "", "unknown"
+
+
+def names_whole_area(value: str, known: list[str]) -> bool:
+    """Whether a `product` value means a whole product area: the folder's own name, or an
+    abbreviation of the area ("itsm"), not of something inside it ("cmdb")."""
+    wanted = normalize(value)
+    return (wanted in known and wanted not in _REDIRECTED) or wanted in WHOLE_AREA
 
 
 def suggestions(value: str, known: list[str], paths, n: int = 3) -> list[str]:

@@ -139,6 +139,13 @@ BR_CHUNKS = [
         "Risk docs.",
         "About it.",
     ),
+    # and build-workflows, the folder "flow designer" is an abbreviation into
+    (
+        "markdown/build-workflows/flows/flows.md",
+        "Flows, subflows, and actions",
+        "Flow docs.",
+        "About it.",
+    ),
 ]
 
 
@@ -534,3 +541,22 @@ def test_a_folder_that_only_the_other_release_has_says_which_release(both):
     assert call("snow_docs_browse", product="delta-australia-brazil", release="brazil")["ok"]
     s = call("snow_docs_search", query="x", product="delta-australia-brazil")
     assert not s["ok"] and "release 'brazil'" in s["message"]
+
+
+def test_an_abbreviation_for_a_feature_does_not_bring_in_the_whole_product_area(both):
+    """ "Flow Designer" is a feature inside build-workflows, not the area itself: its family's
+    other applications (Playbooks, Workflow Studio Insights) are not what was asked for.
+    "CMDB" brought in Notify and Password Reset this way."""
+    both.rerank_scores = {"": -5.0}
+    r = call("snow_docs_compare", query="Flow Designer")
+    assert [m["application"] for m in r["more_release_notes"]] == ["Flows, subflows, and actions"]
+
+
+def test_every_whole_area_abbreviation_is_an_abbreviation():
+    from snow_docs_mcp import products
+
+    assert set(products.ALIASES) >= products.WHOLE_AREA
+    assert products.names_whole_area("ITSM", ["it-service-management"])
+    assert products.names_whole_area("IT Service Management", ["it-service-management"])
+    assert not products.names_whole_area("cmdb", ["servicenow-platform"])
+    assert not products.names_whole_area("sam", ["it-asset-management"])

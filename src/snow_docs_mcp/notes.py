@@ -142,10 +142,13 @@ def by_name(db, q: str, already: set[str]) -> list[NotesPage]:
     phrase = _phrase(q)
     if not phrase:
         return []
-    folder, how = products.resolve(q, store.products(db))
+    known = store.products(db)
+    folder, how = products.resolve(q, known)
     family_names = {phrase}
     if how in ("exact", "alias") and folder:
-        family_names |= {_phrase(folder)} | _families_documented_in(folder, families, areas)
+        family_names.add(_phrase(folder))
+        if products.names_whole_area(q, known):  # "itsm", not "cmdb": see products.WHOLE_AREA
+            family_names |= _families_documented_in(folder, families, areas)
     members = {a for f in family_names for a in families.get(f, ())}
 
     def abbreviations(name: str) -> set[str]:
