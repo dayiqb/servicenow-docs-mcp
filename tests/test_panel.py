@@ -6,7 +6,12 @@ snow_docs_search and snow_docs_compare; every other client keeps getting the pla
 
 from __future__ import annotations
 
+import json
 import re
+import shutil
+import subprocess
+import xml.etree.ElementTree as ET
+from pathlib import Path
 
 import anyio
 import pytest
@@ -112,5 +117,574 @@ def test_readme_describes_the_panel_and_the_stand_in_host_exists():
 
 def test_the_page_draws_diagrams_as_svg_built_from_elements():
     html = panel_html()
-    assert "createElementNS" in html and 'role: "img"' in html
+    assert "createElementNS" in html and '{ role: "img", "aria-label": label }' in html
     assert "snow_docs_diagram" in html and "<svg" not in html  # no inline markup: built in script
+
+
+# ---- what the page puts on the screen ---------------------------------------------------------
+#
+# The page's own script is run by node against a small stand-in for the DOM (panel_harness.mjs),
+# on real docs sections (tests/fixtures/panel, as snow_docs_read returns them) and on diagrams.
+
+
+ROOT = Path(__file__).resolve().parents[1]
+PANEL = ROOT / "src" / "snow_docs_mcp" / "ui" / "panel.html"
+FIXTURES = ROOT / "tests" / "fixtures" / "panel"
+NODE = shutil.which("node")
+needs_node = pytest.mark.skipif(NODE is None, reason="node is not installed")
+
+
+def _render(*cases):
+    done = subprocess.run(
+        [NODE, str(ROOT / "tests" / "panel_harness.mjs"), str(PANEL)],
+        input=json.dumps(cases),
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+    assert done.returncode == 0, done.stderr[-2000:]
+    results = json.loads(done.stdout)
+    for result in results:
+        assert not (isinstance(result, dict) and "error" in result), result["error"]
+    return results
+
+
+def _page(name: str) -> str:
+    return json.loads((FIXTURES / f"{name}.json").read_text(encoding="utf-8"))["content"]
+
+
+def _dom(markup: str) -> ET.Element:
+    return ET.fromstring(f"<root>{markup}</root>")
+
+
+def _markdown(text: str) -> ET.Element:
+    (markup,) = _render({"op": "markdown", "text": text})
+    return _dom(markup)
+
+
+def _text(node: ET.Element) -> str:
+    return " ".join("".join(node.itertext()).split())
+
+
+@needs_node
+def test_sub_steps_stay_inside_their_step():
+    # "You can trigger this workflow in two ways": step 1 has three sub-steps.
+    root = _markdown(_page("steps-nested"))
+    (steps,) = root.findall("./ol")
+    assert steps.get("start") is None and len(steps.findall("./li")) == 2
+    first, second = steps.findall("./li")
+    assert _text(first.find("./p")) == "Recommend solutions button"
+    assert len(first.findall("./ol/li")) == 3
+    assert _text(second).startswith("Navigate to the ServiceNow Otto panel")
+    # two steps are not worth a flow
+    assert root.findall(".//div[@class='flow-of']") == []
+
+
+@needs_node
+def test_a_procedure_keeps_its_numbers_and_the_flow_shows_the_real_steps():
+    source = _page("steps-substeps")
+    top_level = [line for line in source.split("\n") if re.match(r"\d+\.\s", line)]
+    assert len(top_level) == 3
+    root = _markdown(source)
+    (steps,) = root.findall("./ol")
+    items = steps.findall("./li")
+    assert steps.get("start") is None and len(items) == len(top_level)
+    # step 1: its bullets and the paragraph after them belong to it
+    assert len(items[0].findall("./ul/li")) == 2
+    assert _text(items[0].findall("./p")[-1]).startswith("For details on installing")
+    # step 3: numbered sub-steps, with their code block inside the sub-step
+    assert len(items[2].findall("./ol/li")) >= 3
+    assert items[2].find("./ol/li/pre") is not None
+    (flow,) = _render({"op": "flow", "text": source})
+    assert flow["toggles"] == 1 and len(flow["steps"]) == len(top_level)
+    assert flow["steps"][0].startswith("1. Download the Mobile SDK")
+    assert flow["steps"][2].startswith("3. Use Android Studio IDE")
+
+
+@needs_node
+def test_a_list_that_restarts_after_a_paragraph_keeps_its_number():
+    root = _markdown("1. One\n2. Two\n\nA word in between.\n\n3. Three\n4. Four\n")
+    first, second = root.findall("./ol")
+    assert first.get("start") is None and second.get("start") == "3"
+
+
+@needs_node
+def test_a_table_at_the_margin_after_a_step_belongs_to_that_step():
+    # "3. Fill in the fields, as appropriate." <table> ... </table>4.  Click **Submit**.
+    root = _markdown(_page("table-colspan"))
+    (steps,) = root.findall("./ol")
+    items = steps.findall("./li")
+    assert len(items) == 4 and items[2].find("./div/table") is not None
+    assert _text(items[3]) == "Click Submit."
+    (flow,) = _render({"op": "flow", "text": _page("table-colspan")})
+    assert [step[:2] for step in flow["steps"]] == ["1.", "2.", "3.", "4."]
+
+
+@needs_node
+def test_a_list_glued_to_the_end_of_a_line_is_a_list():
+    root = _markdown(
+        "This can be:-   Draft\n-   Published\n-   Closed\n\nOptions:1.  Low\n2.  High\n"
+    )
+    assert [_text(p) for p in root.findall("./p")] == ["This can be:", "Options:"]
+    assert [_text(li) for li in root.findall("./ul/li")] == ["Draft", "Published", "Closed"]
+    assert [_text(li) for li in root.findall("./ol/li")] == ["Low", "High"]
+    plain = _markdown("A well-known - if rare - case, and version 1.  Two spaces.")
+    assert (
+        len(plain.findall("./p")) == 1 and plain.find("./ul") is None and plain.find("./ol") is None
+    )
+
+
+@needs_node
+def test_bold_links_bold_code_and_italics_are_not_shown_as_markup():
+    links = _markdown(_page("links-bold"))
+    bold = [a for a in links.iter("a") if a.text == "Create a customer success definition record"]
+    assert bold and bold[0].get("href", "").startswith("https://www.servicenow.com/docs/")
+    assert any(strong.find("a") is not None for strong in links.iter("strong"))
+    assert "](" not in _text(links) and "**" not in _text(links)
+
+    code = _markdown(_page("code-bold"))
+    names = [_text(c) for strong in code.iter("strong") for c in strong.findall("code")]
+    assert "ReferenceError: X is not defined" in names
+    assert "`" not in "".join(_text(s) for s in code.iter("strong"))
+
+    italic = _markdown(_page("italic"))
+    assert "additionally" in [_text(em) for em in italic.iter("em")]
+
+
+@needs_node
+def test_inline_text():
+    cases = {
+        "a __bold__ word": "<p>a <strong>bold</strong> word</p>",
+        "***both***": "<p><strong><em>both</em></strong></p>",
+        "the sys_user_has_role table and my_var_name": (
+            "<p>the sys_user_has_role table and my_var_name</p>"
+        ),
+        r"a \*literal\* star and 5 * 3 * 2": "<p>a *literal* star and 5 * 3 * 2</p>",
+        "See [Flow](https://en.wikipedia.org/wiki/Flow_(psychology)) now": (
+            '<p>See <a href="https://en.wikipedia.org/wiki/Flow_(psychology)">Flow</a> now</p>'
+        ),
+        "``a `tick` b`` here": "<p><code>a `tick` b</code> here</p>",
+        "**All** &gt; **System Definition** &amp; more": (
+            "<p><strong>All</strong> &gt; <strong>System Definition</strong> &amp; more</p>"
+        ),
+        "[local](../other.md) and [bad](javascript:alert(1))": "<p>local and bad</p>",
+        r"Plugin \[com.sn\_x\]. See [Plugins](https://example.com/p)": (
+            '<p>Plugin [com.sn_x]. See <a href="https://example.com/p">Plugins</a></p>'
+        ),
+        "use `sys_select.<table name>.<field name>` here": (
+            "<p>use <code>sys_select.&lt;table name&gt;.&lt;field name&gt;</code> here</p>"
+        ),
+    }
+    results = _render(*({"op": "inline", "text": text} for text in cases))
+    assert dict(zip(cases, results, strict=True)) == cases
+    (plain,) = _render(
+        {"op": "plain", "text": r"**Cost** types and [sub-vendor](https://x.example) \(new\)"}
+    )
+    assert plain == "Cost types and sub-vendor (new)"
+    # the docs sometimes have bold around nothing, where a name was left out
+    (empty,) = _render({"op": "plain", "text": "…Enterprise Architecture&gt;. - **** Set a rate"})
+    assert empty == "…Enterprise Architecture>. - Set a rate"
+
+
+@needs_node
+def test_a_table_keeps_placeholders_lists_spans_and_code():
+    placeholder = _markdown(_page("table-placeholder"))
+    cells = [_text(td) for td in placeholder.iter("td")]
+    assert 'Field to highlight in the following format: "<table-name>.<field-name>".' in cells
+    values = [td for td in placeholder.iter("td") if _text(td).startswith("How long the label")]
+    assert [_text(li) for li in values[0].findall("./ul/li")][:2] == [
+        "2: Flashes for 1 second",
+        "0: Flashes for 2 seconds",
+    ]
+
+    icons = _markdown(_page("table-list"))
+    longest = max(len(td.findall("./ul/li")) for td in icons.iter("td"))
+    assert longest >= 40
+
+    assert any(td.get("colspan") == "2" for td in _markdown(_page("table-colspan")).iter("td"))
+    assert any(td.get("rowspan") == "3" for td in _markdown(_page("table-rowspan")).iter("td"))
+    assert any(td.find("./pre") is not None for td in _markdown(_page("table-code")).iter("td"))
+
+
+@needs_node
+def test_a_table_inside_a_table_is_a_table_and_what_follows_it_is_kept():
+    root = _markdown(_page("table-nested"))
+    outer = [t for t in root.iter("table") if t.find(".//table") is not None]
+    assert len(outer) == 1
+    inner = outer[0].find(".//td/div/table")
+    assert inner is not None and len(inner.findall("./tr")) == 6
+    assert [len(tr) for tr in outer[0].findall("./tr")] == [2, 2]
+    assert not re.search(r"</?(?:td|tr|tbody|table)\b", _text(root))
+    # the example that follows the table on the same line
+    assert "nn.getStatus()" in _text(root.findall("./pre")[-1])
+
+
+@needs_node
+def test_text_that_looks_like_a_table_tag_is_text():
+    root = _markdown("Before.\n\n<table-name> is a placeholder.\n\nUse `<table>` here.\n\nEnd.")
+    assert [_text(p) for p in root.findall("./p")] == [
+        "Before.",
+        "<table-name> is a placeholder.",
+        "Use <table> here.",
+        "End.",
+    ]
+
+
+@needs_node
+def test_the_servers_own_note_about_a_cut_section_is_not_shown():
+    root = _markdown("Some text.\n\n[… truncated — raise max_chars to see more]")
+    assert _text(root) == "Some text."
+
+
+def _figure(spec: dict, pick: bool = True) -> dict:
+    (tree,) = _render({"op": "diagram", "spec": spec, "pick": pick})
+    return tree
+
+
+def _walk(node: dict):
+    yield node
+    for kid in node.get("kids", []):
+        if "tag" in kid:
+            yield from _walk(kid)
+
+
+CHAR = 14 * 0.56  # the width the page assumes for one character when it cannot measure
+
+
+def _parts(tree: dict) -> dict:
+    """The figure's boxes, lines and names, in the figure's own coordinates."""
+    nodes, links, names, lanes = [], [], [], []
+    svg = next(n for n in _walk(tree) if n["tag"] == "svg")
+    for n in _walk(svg):
+        cls = n["attrs"].get("class", "")
+        if n["tag"] == "g" and cls.startswith("node"):
+            shape = next(k for k in n["kids"] if k.get("tag") in ("rect", "polygon"))
+            a = shape["attrs"]
+            if shape["tag"] == "rect":
+                x0, y0 = float(a["x"]), float(a["y"])
+                box = (x0, y0, x0 + float(a["width"]), y0 + float(a["height"]))
+            else:
+                pts = [tuple(map(float, p.split(","))) for p in a["points"].split()]
+                box = (min(p[0] for p in pts), min(p[1] for p in pts),
+                       max(p[0] for p in pts), max(p[1] for p in pts))  # fmt: skip
+            text = next(k for k in n["kids"] if k.get("tag") == "text")
+            lines = [k["text"] for k in text["kids"] if k.get("tag") == "tspan"]
+            nodes.append({"box": box, "lines": lines, "kind": cls.split()[-1], "attrs": n["attrs"],
+                          "y": float(text["attrs"]["y"])})  # fmt: skip
+        elif n["tag"] == "path" and "link" in cls.split():
+            nums = re.findall(r"([MHV])\s*([-\d.]+)(?:[ ,]+([-\d.]+))?", n["attrs"]["d"])
+            points, x, y = [], 0.0, 0.0
+            for op, first, second in nums:
+                if op == "M":
+                    x, y = float(first), float(second)
+                elif op == "H":
+                    x = float(first)
+                else:
+                    y = float(first)
+                points.append((x, y))
+            links.append({"points": points, "marker": n["attrs"].get("marker-end", "")})
+        elif n["tag"] == "text" and "link-name" in cls.split():
+            width = len(n["text"]) * 12 * 0.56
+            x, y = float(n["attrs"]["x"]), float(n["attrs"]["y"])
+            left = x - width if n["attrs"].get("text-anchor") == "end" else x
+            names.append({"text": n["text"], "box": (left, y - 10, left + width, y + 3)})
+        elif n["tag"] == "text" and "lane-name" in cls.split():
+            lanes.append([k["text"] for k in n["kids"] if k.get("tag") == "tspan"])
+    return {"svg": svg, "nodes": nodes, "links": links, "names": names, "lanes": lanes,
+            "markers": [n["attrs"]["id"] for n in _walk(svg) if n["tag"] == "marker"]}  # fmt: skip
+
+
+def _crosses(a, b, box, slack=1.0) -> bool:
+    """Does the straight line a-b pass through the inside of the box?"""
+    x0, y0, x1, y1 = box[0] + slack, box[1] + slack, box[2] - slack, box[3] - slack
+    lo_x, hi_x = sorted((a[0], b[0]))
+    lo_y, hi_y = sorted((a[1], b[1]))
+    return lo_x < x1 and hi_x > x0 and lo_y < y1 and hi_y > y0
+
+
+def _overlap(a, b) -> bool:
+    return a[0] < b[2] and a[2] > b[0] and a[1] < b[3] and a[3] > b[1]
+
+
+def _spec(name: str) -> dict:
+    return json.loads((FIXTURES / f"diagram-{name}.json").read_text(encoding="utf-8"))
+
+
+# Diagrams that are hard to draw (the stand-in host shows them too: ?view=diagram&case=lanes).
+# lanes: long names, a long word, a long question, three ways out of a decision, links back
+# up, a link from a step to itself. skip: a link that passes a row. loose: 31 steps, no links.
+BUSY = _spec("lanes")
+SKIP = _spec("skip")
+LOOSE = _spec("loose")
+
+
+@needs_node
+@pytest.mark.parametrize("spec", [BUSY, SKIP], ids=["lanes", "flow"])
+def test_no_link_runs_behind_a_step_and_no_name_sits_on_another(spec):
+    parts = _parts(_figure(spec))
+    boxes = [n["box"] for n in parts["nodes"]]
+    assert len(parts["links"]) == len(spec["links"])
+    for link, wanted in zip(parts["links"], spec["links"], strict=True):
+        ends = {wanted["source"], wanted["target"]}
+        for a, b in zip(link["points"], link["points"][1:], strict=False):
+            for step, box in zip(spec["steps"], boxes, strict=True):
+                if step["id"] not in ends:
+                    assert not _crosses(a, b, box), (wanted, step["id"])
+    names = parts["names"]
+    assert sorted(n["text"] for n in names) == sorted(
+        k["label"] for k in spec["links"] if k["label"]
+    )
+    for i, one in enumerate(names):
+        assert not any(_overlap(one["box"], other["box"]) for other in names[i + 1 :]), one
+        assert not any(_overlap(one["box"], box) for box in boxes), one
+
+
+@needs_node
+def test_two_links_between_different_steps_never_share_a_stretch():
+    parts = _parts(_figure(BUSY))
+    runs = []
+    for link, wanted in zip(parts["links"], BUSY["links"], strict=True):
+        for a, b in zip(link["points"], link["points"][1:], strict=False):
+            runs.append((wanted, a, b))
+    for i, (first, a, b) in enumerate(runs):
+        for second, c, d in runs[i + 1 :]:
+            if first["source"] == second["source"] or first["target"] == second["target"]:
+                continue  # a shared trunk out of a step, or lines that join into one step
+            if a[0] == b[0] == c[0] == d[0]:  # both vertical, on the same x
+                shared = min(max(a[1], b[1]), max(c[1], d[1])) - max(
+                    min(a[1], b[1]), min(c[1], d[1])
+                )
+            elif a[1] == b[1] == c[1] == d[1]:
+                shared = min(max(a[0], b[0]), max(c[0], d[0])) - max(
+                    min(a[0], b[0]), min(c[0], d[0])
+                )
+            else:
+                continue
+            assert shared <= 1, (first, second)
+
+
+@needs_node
+def test_step_text_stays_inside_its_shape_and_long_text_ends_with_an_ellipsis():
+    parts = _parts(_figure(BUSY))
+    by_id = dict(zip((s["id"] for s in BUSY["steps"]), parts["nodes"], strict=True))
+    for node in parts["nodes"]:
+        x0, y0, x1, y1 = node["box"]
+        assert 1 <= len(node["lines"]) <= 5
+        for n, line in enumerate(node["lines"]):
+            half = len(line) * CHAR / 2
+            if node["kind"] == "decision":
+                # the line's top and bottom edges, as a share of the way out from the middle
+                middle, reach = (y0 + y1) / 2, (y1 - y0) / 2
+                centre = node["y"] - 5 + n * 20
+                room = (x1 - x0) / 2 * (1 - (abs(centre - middle) + 10) / reach)
+            else:
+                room = (x1 - x0) / 2 - 8
+            assert half <= room + 0.5, (line, half, room)
+    long_word = " ".join(by_id["s2"]["lines"])
+    assert long_word.replace(" ", "") == BUSY["steps"][1]["label"].replace(" ", "")
+    decision = by_id["s3"]["lines"]
+    assert decision[-1].endswith("…") and "manager?" not in " ".join(decision)
+    assert all(len(line) * CHAR <= 208 for lane in parts["lanes"] for line in lane)
+    assert len(parts["lanes"][0]) > 1
+
+
+@needs_node
+def test_a_link_from_a_step_to_itself_is_a_loop_and_markers_are_per_figure():
+    parts = _parts(_figure(BUSY))
+    loop = parts["links"][-1]["points"]
+    xs, ys = [p[0] for p in loop], [p[1] for p in loop]
+    assert max(xs) - min(xs) >= 12 and max(ys) - min(ys) >= 12
+    # two figures in one page: each has its own arrowhead
+    first, second = _render({"op": "diagram", "spec": BUSY}, {"op": "diagram", "spec": SKIP})
+    parts, other = _parts(first), _parts(second)
+    (one,), (two,) = parts["markers"], other["markers"]
+    assert one != two
+    assert {k["marker"] for k in parts["links"]} == {f"url(#{one})"}
+    assert {k["marker"] for k in other["links"]} == {f"url(#{two})"}
+
+
+@needs_node
+def test_steps_without_links_wrap_into_rows():
+    parts = _parts(_figure(LOOSE))
+    assert float(parts["svg"]["attrs"]["width"]) <= 1100
+    assert len({n["box"][1] for n in parts["nodes"]}) >= 8
+    boxes = [n["box"] for n in parts["nodes"]]
+    assert not any(_overlap(a, b) for i, a in enumerate(boxes) for b in boxes[i + 1 :])
+
+
+@needs_node
+def test_a_figure_with_steps_to_pick_is_a_group_of_buttons_and_a_plain_one_is_an_image():
+    picked = _figure(SKIP, pick=True)
+    svg = _parts(picked)
+    assert picked["attrs"]["role"] == "group" and picked["attrs"]["aria-label"]
+    assert all(n["attrs"].get("role") == "button" and n["attrs"].get("tabindex") == "0"
+               for n in svg["nodes"])  # fmt: skip
+    plain = _parts(_figure(SKIP, pick=False))
+    assert plain["svg"]["attrs"]["role"] == "img"
+    assert not any("tabindex" in n["attrs"] or "role" in n["attrs"] for n in plain["nodes"])
+
+
+def _show(result: dict, args: dict | None = None) -> ET.Element:
+    (markup,) = _render({"op": "show", "result": result, "args": args or {}})
+    return _dom(markup)
+
+
+@needs_node
+def test_a_small_rewording_is_shown_with_its_words_marked():
+    section = {
+        "heading_path": "Retention > Closed cases", "change": "changed", "changed_words": 2,
+        "small": True, "australia_id": "australia:markdown/x.md::A", "brazil_id": "brazil:markdown/x.md::A",
+        "australia_excerpt": "…closed cases are kept for 30 days before they…",
+        "brazil_excerpt": "…closed cases are kept for 90 days before they…",
+    }  # fmt: skip
+    page = {"page": "markdown/x.md", "page_title": "Retention", "product": "customer-service-management",
+            "sections": [section, {**section, "small": False, "heading_path": "Retention > Overview"}],
+            "minor_changes": 1, "sections_left_out": 0}  # fmt: skip
+    root = _show({"ok": True, "message": "", "release_notes": [], "more_release_notes": [],
+                  "changed_pages": [page], "only_in_australia": [], "only_in_brazil": []},
+                 {"query": "retention"})  # fmt: skip
+    kinds = [_text(k) for k in root.iter("span") if (k.get("class") or "").startswith("kind")]
+    assert kinds == ["Small rewording", "Changed"]
+    assert [_text(d) for d in root.iter("del")] == ["30", "30"]
+    assert [_text(i) for i in root.iter("ins")] == ["90", "90"]
+    assert "not listed" not in _text(root)
+
+
+@needs_node
+def test_each_reader_in_a_comparison_names_its_release():
+    section = {"heading_path": "A > B", "change": "changed", "changed_words": 9, "small": False,
+               "australia_id": "australia:markdown/x.md::A", "brazil_id": "brazil:markdown/x.md::A",
+               "australia_excerpt": "one two", "brazil_excerpt": "one three"}  # fmt: skip
+    page = {"page": "markdown/x.md", "page_title": "A", "product": "x", "sections": [section]}
+    root = _show({"ok": True, "message": "", "release_notes": [], "more_release_notes": [],
+                  "changed_pages": [page], "only_in_australia": [], "only_in_brazil": []})  # fmt: skip
+    buttons = [_text(b) for b in root.iter("button")]
+    assert buttons == ["Read in Australia", "Read in Brazil"]
+
+
+# ---- the page as text: rules that hold for every line of it -------------------------------------
+
+
+def _style() -> str:
+    return re.search(r"<style>(.*?)</style>", panel_html(), re.DOTALL).group(1)
+
+
+@needs_node
+def test_every_string_exists_in_english_and_norwegian():
+    html = panel_html()
+    (words,) = _render({"op": "words"})
+    assert set(words["en"]) == set(words["nb"]) and len(words["en"]) > 40
+    used = set(re.findall(r"""\bt\(\s*["'](\w+)["']\s*[,)]""", html))
+    assert used <= set(words["en"]), used - set(words["en"])
+    assert "sectionOf" not in html and "Ingen avsnitt passet" not in html
+    assert "not listed" not in html and "ikke listet" not in html
+
+
+def test_type_sizes_and_spacing_stay_on_the_scale():
+    css = _style()
+    # sizes come from the four variables; nothing sets a size of its own
+    assert set(re.findall(r"--(?:meta|secondary|body|title): ([\d.]+rem)", css)) == {
+        "0.75rem", "0.875rem", "1rem", "1.25rem",
+    }  # fmt: skip
+    assert re.findall(r"font-size:\s*(?!\s|var\(--(?:meta|secondary|body|title)\))[^;]+;", css) == [
+        "font-size: 16px;"
+    ]
+    for shorthand in re.findall(r"font:\s*([^;]+);", css):
+        assert re.match(
+            r"(?:inherit|(?:400|500|600) var\(--(?:meta|secondary|body|title)\))", shorthand
+        ), shorthand
+    assert set(re.findall(r"font-weight:\s*(\d+)", css)) <= {"400", "500", "600"}
+    for name, value in re.findall(r"(?<![\w-])(padding|margin|gap)(?:-[a-z]+)?:\s*([^;]+);", css):
+        for size in re.findall(r"(?<![\w.-])(\d+(?:\.\d+)?)px", value):
+            assert float(size) % 4 == 0, (name, value)
+
+
+def test_marked_words_and_the_chosen_release_do_not_rely_on_colour():
+    css = _style()
+    assert re.search(r"\bdel\s*\{[^}]*text-decoration:\s*line-through", css)
+    assert re.search(r"\bins\s*\{[^}]*text-decoration:\s*underline", css)
+    forced = css[css.index("@media (forced-colors: active)") :]
+    assert ".switch input:checked + span" in forced and "Highlight" in forced
+    assert re.search(r"\.switch input:checked \+ span\s*\{[^}]*outline:", css)
+
+
+def test_focus_is_not_dropped_and_the_size_report_can_shrink():
+    html = panel_html()
+    # a focused control that is disabled loses the focus: the page marks it busy instead
+    assert ".disabled = true" not in html and "aria-busy" in html
+    assert "scrollHeight" not in html
+    assert "DOMParser" not in html
+
+
+def test_only_web_addresses_go_to_the_host():
+    html = panel_html()
+    assert "const WEB = /^https?:\\/\\//i;" in html
+    assert html.count('request("ui/open-link"') == 1
+    opener = html[html.index("function openLink") :][:200]
+    assert "if (!WEB.test(String(url))) return;" in opener
+
+
+# ---- accessibility audit of the rendered page (accesslint, 2026-11-13) ------------------------
+
+
+@needs_node
+def test_a_document_has_no_gap_in_its_heading_levels():
+    """The page title is the h1, so the page's own headings start at h2; in a reader under a
+    search hit (whose title is an h2) they start at h3."""
+    text = "## Before you begin\n\nRole required: admin\n\n### Procedure\n\nDo it.\n"
+    (document,) = _render({"op": "markdown", "text": text, "anchors": True})
+    assert [n.tag for n in _dom(document) if n.tag.startswith("h")] == ["h2", "h3"]
+    (reader,) = _render({"op": "markdown", "text": text})
+    assert [n.tag for n in _dom(reader) if n.tag.startswith("h")] == ["h3", "h4"]
+
+
+@needs_node
+def test_a_note_is_a_note_not_a_page_landmark():
+    """`aside` is a landmark that must be at the top of the page; a note sits in the text, in a
+    step or in a table cell."""
+    root = _markdown("Text.\n\n> **Note:** Activate the plugin first.\n")
+    assert root.find(".//aside") is None
+    (note,) = root.findall(".//div[@role='note']")
+    assert "Activate the plugin first" in _text(note)
+
+
+@needs_node
+def test_the_group_of_step_buttons_is_not_the_svg_itself():
+    """`group` is not a role an svg can have; the figure is the group, the svg holds the buttons."""
+    picked = _figure(SKIP, pick=True)
+    svg = _parts(picked)["svg"]
+    assert "role" not in svg["attrs"] and "aria-label" not in svg["attrs"]
+    assert picked["attrs"]["role"] == "group" and picked["attrs"]["aria-label"]
+    assert picked["tag"] == "div"  # nor can a figure be a group
+
+
+def test_the_status_for_screen_readers_is_inside_the_main_landmark():
+    html = panel_html()
+    main = html[html.index("<main>") : html.index("</main>")]
+    assert 'id="app"' in main and 'id="live"' in main and 'role="status"' in main
+
+
+@needs_node
+def test_a_bold_label_is_not_glued_to_what_follows():
+    """31,569 pages end with `**Parent Topic:**[Page](url)`, written without a space."""
+    (markup,) = _render(
+        {"op": "inline", "text": "**Parent Topic:**[Risk and issues page](https://x.test/y)"}
+    )
+    assert _text(_dom(markup)) == "Parent Topic: Risk and issues page"
+    (spaced,) = _render({"op": "inline", "text": "**Role:** admin, **Time:**5 min. **Bold**text"})
+    assert _text(_dom(spaced)) == "Role: admin, Time: 5 min. Boldtext"
+    (after,) = _render({"op": "inline", "text": "the rule runs on.**Note:** The list is short."})
+    assert _text(_dom(after)) == "the rule runs on. Note: The list is short."
+
+
+@needs_node
+def test_a_first_heading_that_repeats_the_title_is_not_shown_twice():
+    text = "# Define priority lookup rules\n\nIntro.\n\n## Procedure\n\nDo it.\n"
+    (shown,) = _render({"op": "document", "text": text, "title": "Define priority lookup rules"})
+    (body,) = _dom(shown["html"])
+    assert [n.tag for n in body] == ["p", "h2", "p"]
+    assert shown["anchors"] == ["Procedure"]
+    (other,) = _render({"op": "document", "text": text, "title": "Another title"})
+    (body,) = _dom(other["html"])
+    assert next(n.tag for n in body) == "h2" and len(other["anchors"]) == 2

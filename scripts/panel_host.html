@@ -23,6 +23,11 @@
                                                  search-br.json, compare.json, compare-page.json, read.json,
                                                  open.json, read-page.json, browse-root.json, browse.json,
                                                  browse-folder.json, diagram.json, diagram-flow.json
+       ...&view=open&page=<name>                 a real docs section as the document and in the readers:
+                                                 tests/fixtures/panel/<name>.json (steps-nested, table-list, ...)
+       ...&view=diagram&case=<name>              a diagram that is hard to draw:
+                                                 tests/fixtures/panel/diagram-<name>.json (lanes, skip, loose)
+       ...&fail=more|switch|read                 the host refuses that call, to see what the panel says
      Serve the repository root (python -m http.server) and open it in a browser. -->
 <form id="controls">
   <label>View <select name="view">
@@ -33,7 +38,10 @@
     <option value="error">Error</option><option value="loading">Loading</option></select></label>
   <label>Theme <select name="theme"><option>light</option><option>dark</option></select></label>
   <label>Language <select name="locale"><option value="en-US">English</option><option value="nb-NO">Norsk</option></select></label>
-  <label>Width <select name="width"><option value="720px">720</option><option value="420px">420</option><option value="1000px">1000</option></select></label>
+  <label>Width <select name="width"><option value="720px">720</option><option value="420px">420</option><option value="320px">320</option><option value="1000px">1000</option></select></label>
+  <label>Page <select name="page"><option value="">sample</option><option>steps-nested</option><option>steps-substeps</option><option>links-bold</option><option>code-bold</option><option>italic</option>
+    <option>table-placeholder</option><option>table-list</option><option>table-colspan</option><option>table-rowspan</option><option>table-nested</option><option>table-code</option></select></label>
+  <label>Diagram <select name="case"><option value="">sample</option><option>lanes</option><option>skip</option><option>loose</option></select></label>
 </form>
 <main><iframe id="view" title="Panel" sandbox="allow-scripts allow-same-origin"></iframe><pre id="log"></pre></main>
 <script>
@@ -56,12 +64,14 @@ const BUILT_IN = {
     more_release_notes: [{ id: "brazil:markdown/delta-australia-brazil/a.md::", application: "Service Operations Workspace for ITSM" }, { id: "brazil:markdown/delta-australia-brazil/b.md::", application: "Major Incident Management" }],
     changed_pages: [], only_in_australia: [], only_in_brazil: [] },
   "compare-page": { ok: true, message: "", australia_snapshot: "2026-11-06", brazil_snapshot: "2026-11-06", release_notes: [], more_release_notes: [],
-    changed_pages: [{ page: "markdown/it-service-management/priority.md", page_title: "Define priority lookup rules", product: "it-service-management", minor_changes: 2, sections_left_out: 0,
+    changed_pages: [{ page: "markdown/it-service-management/priority.md", page_title: "Define priority lookup rules", product: "it-service-management", minor_changes: 1, sections_left_out: 0,
       sections: [
-        { heading_path: "Define priority lookup rules > Procedure", change: "changed", changed_words: 14, australia_id: "australia:markdown/x.md::A", brazil_id: "brazil:markdown/x.md::A",
+        { heading_path: "Define priority lookup rules > Before you begin", change: "changed", changed_words: 2, small: true, australia_id: "australia:markdown/x.md::C", brazil_id: "brazil:markdown/x.md::C",
+          australia_excerpt: "…a rule that has not matched a record for 30 days is listed as unused…", brazil_excerpt: "…a rule that has not matched a record for 90 days is listed as unused…" },
+        { heading_path: "Define priority lookup rules > Procedure", change: "changed", changed_words: 14, small: false, australia_id: "australia:markdown/x.md::A", brazil_id: "brazil:markdown/x.md::A",
           australia_excerpt: "…open the row for a combination, and choose the priority it should give. The rule applies to every assignment group.",
           brazil_excerpt: "…open the row for a combination, and choose the priority it should give. A group with its own rules uses those instead of the shared ones." },
-        { heading_path: "Define priority lookup rules > Rules per assignment group", change: "added", changed_words: 31, australia_id: "", brazil_id: "brazil:markdown/x.md::B",
+        { heading_path: "Define priority lookup rules > Rules per assignment group", change: "added", changed_words: 31, small: false, australia_id: "", brazil_id: "brazil:markdown/x.md::B",
           australia_excerpt: "", brazil_excerpt: "An assignment group can have its own priority lookup rules. Add the group to a rule set, then define the combinations that differ from the shared rules." }] }],
     only_in_australia: [], only_in_brazil: ["markdown/it-service-management/new.md"] },
   "read": { ok: true, message: "", id: "x", title: "Define priority lookup rules", url: "", heading_path: "Procedure", truncated: false,
@@ -88,6 +98,7 @@ Object.assign(BUILT_IN, {
       { id: "f", label: "Confirm it works", kind: "end", lane: "caller", detail: "", source_id: "" }],
     links: [{ source: "a", target: "b", label: "" }, { source: "b", target: "c", label: "" }, { source: "c", target: "e", label: "Yes" }, { source: "c", target: "d", label: "No" }, { source: "d", target: "e", label: "" }, { source: "e", target: "f", label: "" }] },
 });
+BUILT_IN["read-page-br"] = { ...BUILT_IN["read-page"], content: BUILT_IN["read-page"].content.replace("from its impact and urgency.", "from its impact and urgency, per assignment group when the group has its own rules.") };
 BUILT_IN["browse-folder"] = { ...BUILT_IN.browse, path: "it-service-management/incident-management", folders: [], pages_left_out: 0 };
 BUILT_IN["diagram-flow"] = { ...BUILT_IN.diagram, kind: "flow", title: "Incident triage", lanes: [], steps: BUILT_IN.diagram.steps.map((st) => ({ ...st, lane: "" })),
   links: [...BUILT_IN.diagram.links, { source: "e", target: "b", label: "Reopened" }] };
@@ -95,6 +106,12 @@ async function sample(name) {
   if (!params.get("samples")) return BUILT_IN[name];
   try { return await (await fetch(`${params.get("samples")}/${name}.json`)).json(); } catch { return BUILT_IN[name]; }
 }
+const fixture = async (name) => (await fetch(`/tests/fixtures/panel/${name}.json`)).json();
+const refused = (what) => ({ ok: false, message: `The stand-in host refused this call (fail=${what}).` });
+// The pages after the first ones of a listing: as many as the listing says are left.
+const nextPages = (listing, offset) => ({ ...listing, folders: [], pages_left_out: 0,
+  pages: Array.from({ length: listing.pages_left_out || 0 }, (_, n) => { const pg = listing.pages[n % listing.pages.length];
+    return { title: `${pg.title} (${offset + n + 1})`, id: pg.id.replace(/::$/, `-${offset + n}::`) }; }) });
 const TOOL = { search: "snow_docs_search", empty: "snow_docs_search", error: "snow_docs_search", loading: "snow_docs_search", compare: "snow_docs_compare", "compare-page": "snow_docs_compare",
   open: "snow_docs_open", "browse-root": "snow_docs_browse", browse: "snow_docs_browse", diagram: "snow_docs_diagram", "diagram-flow": "snow_docs_diagram" };
 const ARGS = { search: { query: "how is incident priority calculated", limit: 5 }, empty: { query: "zebra migration patterns", limit: 5 }, error: { query: "incident", limit: 5 },
@@ -116,18 +133,23 @@ window.addEventListener("message", async (event) => {
     if (view === "loading") return;
     const result = view === "error" ? { ok: false, message: "The australia docs are still being set up. Downloading the docs index: 41%. Try again in a minute or two; snow_docs_status shows progress." }
       : view === "empty" ? { ok: true, release: "australia", snapshot: "2026-11-06", message: "", hits: [] }
+      : view === "open" && form.elements.page.value ? await fixture(form.elements.page.value).then((page) => ({ ok: true, message: "", id: page.id.replace(/::.*$/, "::"), focus: "", title: page.title,
+          url: page.url, release: page.id.split(":")[0], product: page.id.split("/")[1] || "", headings: [] }))
+      : view.startsWith("diagram") && form.elements.case.value ? { ok: true, message: "", title: "A diagram that is hard to draw", kind: "flow", mermaid: "", ...(await fixture("diagram-" + form.elements.case.value)) }
       : await sample(view === "search" ? "search-au" : view);
     setTimeout(() => send({ jsonrpc: "2.0", method: "ui/notifications/tool-result", params: wrap(result) }), 250);
   } else if (m.method === "ui/notifications/size-changed") {
     frame.style.height = Math.min(Math.max(m.params.height + 2, 80), 4000) + "px";
   } else if (m.method === "tools/call") {
     note(`tools/call ${m.params.name} ${JSON.stringify(m.params.arguments).slice(0, 120)}`);
-    const args = m.params.arguments || {};
+    const args = m.params.arguments || {}, fail = params.get("fail"), page = form.elements.page.value;
     const data = m.params.name === "snow_docs_read"
-      ? await sample(/::$/.test(args.id) ? (/^brazil:/.test(args.id) ? "read-page-br" : "read-page") : "read")
+      ? fail === "read" ? refused(fail) : page ? await fixture(page)
+        : await sample(/::$/.test(args.id) ? (/^brazil:/.test(args.id) ? "read-page-br" : "read-page") : "read")
       : m.params.name === "snow_docs_browse"
-        ? await sample(!args.folder && !args.product ? "browse-root" : /\//.test(args.folder || "") ? "browse-folder" : "browse")
-        : await sample(args.release === "brazil" ? "search-br" : "search-au");
+        ? args.offset ? (fail === "more" ? refused(fail) : nextPages(await sample(/\//.test(args.folder || "") ? "browse-folder" : "browse"), args.offset))
+          : await sample(!args.folder && !args.product ? "browse-root" : /\//.test(args.folder || "") ? "browse-folder" : "browse")
+        : fail === "switch" ? refused(fail) : await sample(args.release === "brazil" ? "search-br" : "search-au");
     setTimeout(() => send({ jsonrpc: "2.0", id: m.id, result: wrap(data) }), 300);
   } else if (m.method === "ui/open-link") {
     note(`ui/open-link ${m.params.url}`); send({ jsonrpc: "2.0", id: m.id, result: {} });

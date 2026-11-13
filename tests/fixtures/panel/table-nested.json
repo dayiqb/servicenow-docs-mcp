@@ -1,0 +1,10 @@
+{
+ "ok": true,
+ "message": "Returning the section 'NotifyNow \\(Legacy\\)- Global > NotifyNow - getStatus\\(\\)' of 'markdown/api-reference/server-api-reference/c_NotifyNow.md' (australia, 1308 chars).",
+ "id": "australia:markdown/api-reference/server-api-reference/c_NotifyNow.md::NotifyNow \\(Legacy\\)- Global > NotifyNow - getStatus\\(\\)",
+ "title": "NotifyNow (Legacy) - Global",
+ "url": "https://www.servicenow.com/docs/r/australia/api-reference/server-api-reference/c_NotifyNow.html",
+ "heading_path": "NotifyNow \\(Legacy\\)- Global > NotifyNow - getStatus\\(\\)",
+ "content": "Returns the current status of Notify configuration.\n\nThis method can only be accessed by administrators or users with the notifynow\\_admin role. Users with all other roles get the message Unauthorized when trying to run the function in a script.\n\n|Name|Type|Description|\n|----|----|-----------|\n|None| | |\n\n<table id=\"table_uxg_fc2_vt\" class=\"returns\"><thead><tr><th>\n\nType\n\n</th><th>\n\nDescription\n\n</th></tr></thead><tbody><tr><td>\n\nString\n\n</td><td>\n\nOne of the possible status messages.<table id=\"table_gdb_jc2_vt\"><tbody><tr><td>\n\nStatus\n\n</td><td>\n\nDescription\n\n</td></tr><tr><td>\n\nNO\\_NUMBER\\_MESSAGE\n\n</td><td>\n\nThe account does not have a telephone number set up. Ensure that you set up the telephone number for the account.\n\n</td></tr><tr><td>\n\nNO\\_ENDPOINTS\\_MESSAGE\n\n</td><td>\n\nThe account does not have its endpoints set up correctly. Ensure that you set up the endpoints for the account.\n\n</td></tr><tr><td>\n\nACCOUNT\\_OK\\_MESSAGE\n\n</td><td>\n\nThe account is active and ready for use.\n\n</td></tr><tr><td>\n\nACCOUNT\\_NO\\_AUTH\n\n</td><td>\n\nThe Twilio AuthToken is not valid.\n\n</td></tr><tr><td>\n\nACCOUNT\\_NOT\\_CONFIGURED\n\n</td><td>\n\nThe Twilio AccountSID or AuthToken is not valid.\n\n</td></tr></tbody>\n</table>\n\n</td></tr></tbody>\n</table>```\nvar nn = new SNC.NotifyNow();\ngs.log(nn.getStatus());\n```\n",
+ "truncated": false
+}

@@ -1,0 +1,10 @@
+{
+ "ok": true,
+ "message": "Returning the whole page of 'markdown/it-operations-management/cloud-services-catalog/gcp-big-query-oob-permissions.md' (australia, 878 chars).",
+ "id": "australia:markdown/it-operations-management/cloud-services-catalog/gcp-big-query-oob-permissions.md::",
+ "title": "Google Cloud Platform (GCP) Big Query Out Of Box permissions",
+ "url": "https://www.servicenow.com/docs/r/australia/it-operations-management/cloud-services-catalog/gcp-big-query-oob-permissions.html",
+ "heading_path": "",
+ "content": "# Google Cloud Platform \\(GCP\\) Big Query Out Of Box permissions\n\nGCP Big Query Out Of Box catalog items permissions\n\n<table id=\"table_ug3_wqz_dbc\"><thead><tr><th>\n\nCatalog item\n\n</th><th>\n\nServices\n\n</th><th>\n\nPermission\n\n</th></tr></thead><tbody><tr><td rowspan=\"3\">\n\nCSC GCP BigQuery\n\n</td><td>\n\nProvision\n\n</td><td>\n\n-   bigquery.datasets.create\n-   bigquery.tables.create\n-   storage.objects.get\n\n</td></tr><tr><td>\n\nPointed discovery\n\n</td><td>\n\n-   bigquery.tables.list\n-   bigquery.datasets.get\n\n</td></tr><tr><td>\n\nDeprovision\n\n</td><td>\n\n-   bigquery.tables.delete\n-   bigquery.datasets.delete\n-   bigquery.routines.delete\n-   bigquery.models.delete\n\n</td></tr></tbody>\n</table>**Parent Topic:**[Google Cloud Platform \\(GCP\\) Big Query](https://www.servicenow.com/docs/r/australia/it-operations-management/cloud-services-catalog/google-cloud-platform-big-query.html)\n\n",
+ "truncated": false
+}

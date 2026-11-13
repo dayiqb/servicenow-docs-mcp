@@ -1,0 +1,64 @@
+{
+ "lanes": [],
+ "steps": [
+  {
+   "id": "a",
+   "label": "Open the record",
+   "kind": "start",
+   "lane": "",
+   "detail": "",
+   "source_id": ""
+  },
+  {
+   "id": "b",
+   "label": "Check the assignment group",
+   "kind": "step",
+   "lane": "",
+   "detail": "",
+   "source_id": ""
+  },
+  {
+   "id": "c",
+   "label": "Check the priority",
+   "kind": "step",
+   "lane": "",
+   "detail": "",
+   "source_id": ""
+  },
+  {
+   "id": "d",
+   "label": "Save the record",
+   "kind": "end",
+   "lane": "",
+   "detail": "",
+   "source_id": ""
+  }
+ ],
+ "links": [
+  {
+   "source": "a",
+   "target": "b",
+   "label": ""
+  },
+  {
+   "source": "a",
+   "target": "c",
+   "label": ""
+  },
+  {
+   "source": "b",
+   "target": "d",
+   "label": ""
+  },
+  {
+   "source": "c",
+   "target": "d",
+   "label": ""
+  },
+  {
+   "source": "a",
+   "target": "d",
+   "label": "Skip checks"
+  }
+ ]
+}

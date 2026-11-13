@@ -12,6 +12,9 @@ from ServiceNow product documentation:
 Each index records its source branch (release) and commit in its `meta` table and in
 index/latest.json.
 
+A few sections of the same documentation, unchanged, are kept in tests/fixtures/panel as test
+input for the panel (Australia release, snapshot 2026-11-06).
+
 Modifications: the documentation is split into sections, and each section is stored with a
 short machine-generated context sentence (written by an open-weight Qwen model; the model is
 recorded per index), search embeddings (BAAI/bge-small-en-v1.5) and a keyword index. The page

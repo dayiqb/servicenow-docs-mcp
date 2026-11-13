@@ -1,0 +1,10 @@
+{
+ "ok": true,
+ "message": "Returning the section 'GlideForm \\(Next Experience\\) - Client > GlideForm \\(Next Experience\\) - flash\\(String fieldName, String color, Number count\\)' of 'markdown/api-reference/GlideFormAPINX.md' (australia, 1088 chars).",
+ "id": "australia:markdown/api-reference/GlideFormAPINX.md::GlideForm \\(Next Experience\\) - Client > GlideForm \\(Next Experience\\) - flash\\(String fieldName, String color, Number count\\)",
+ "title": "GlideForm (Next Experience) - Client",
+ "url": "https://www.servicenow.com/docs/r/australia/api-reference/GlideFormAPINX.html",
+ "heading_path": "GlideForm \\(Next Experience\\) - Client > GlideForm \\(Next Experience\\) - flash\\(String fieldName, String color, Number count\\)",
+ "content": "Use to draw attention to a field. Flashes the specified color for a specified duration of time in the specified field.\n\nThis method is not supported by Service Catalog.\n\nThis method is not available on the mobile platform. If this method is run on a mobile platform, no action occurs.\n\n<table id=\"table_htn_w2w_ts\" class=\"parameters\"><thead><tr><th>\n\nName\n\n</th><th>\n\nType\n\n</th><th>\n\nDescription\n\n</th></tr></thead><tbody><tr><td>\n\nfieldName\n\n</td><td>\n\nString\n\n</td><td id=\"g_form-flash-fieldName-entry\">\n\nField to highlight in the following format: `\"<table-name>.<field-name>\"`.\n\n</td></tr><tr><td>\n\ncolor\n\n</td><td>\n\nString\n\n</td><td id=\"g_form-flash-color-entry\">\n\nRGB color or acceptable CSS color.\n\n</td></tr><tr><td>\n\ncount\n\n</td><td>\n\nNumber\n\n</td><td id=\"g_form-flash-count-entry\">\n\nHow long the label will flash. Valid values:\n\n-   2: Flashes for 1 second\n-   0: Flashes for 2 seconds\n-   -2: Flashes for 3 seconds\n-   -4: Flashes for 4 seconds\n\n</td></tr></tbody>\n</table>|Type|Description|\n|----|-----------|\n|None| |\n\n```\ng_form.flash(\"incident.number\", \"#FFFACD\", 0);\n```\n",
+ "truncated": false
+}

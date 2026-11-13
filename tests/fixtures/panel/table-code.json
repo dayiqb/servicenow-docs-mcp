@@ -1,0 +1,10 @@
+{
+ "ok": true,
+ "message": "Returning the whole page of 'markdown/it-operations-management/agent-client-collector/msexchange-checks-policies.md' (australia, 933 chars).",
+ "id": "australia:markdown/it-operations-management/agent-client-collector/msexchange-checks-policies.md::",
+ "title": "MS Exchange default checks and policies",
+ "url": "https://www.servicenow.com/docs/r/australia/it-operations-management/agent-client-collector/msexchange-checks-policies.html",
+ "heading_path": "",
+ "content": "# MS Exchange default checks and policies\n\nAgent Client Collector provides the following default checks and policies for MS Exchange monitoring.\n\n<table id=\"table_gcb_fw2_v5b\"><thead><tr><th>\n\nType\n\n</th><th>\n\nCheck\n\n</th><th>\n\nDescription\n\n</th><th>\n\nUsage and usage example\n\n</th><th>\n\nOutput\n\n</th></tr></thead><tbody><tr><td>\n\nMetric\n\n</td><td>\n\napp.msexchange.metrics-msexchange\n\n</td><td>\n\nReturns Microsoft Exchange metrics.\n\n</td><td>\n\n```\nwinchecks metric-msexchange (options)\n-s scheme Replaces the host name with this parameter\n```\n\n Usage example: `winchecks metric-msexchange {{if .labels.params_scheme}} -s {{if .labels.params_scheme}} {{end}}`\n\n</td><td>\n\nMetrics from MS Exchange server\n\n</td></tr></tbody>\n</table>**Parent Topic:**[Agent Client Collector Monitoring default checks and policies](https://www.servicenow.com/docs/r/australia/it-operations-management/agent-client-collector/agent-policies-checks.html)\n\n",
+ "truncated": false
+}
