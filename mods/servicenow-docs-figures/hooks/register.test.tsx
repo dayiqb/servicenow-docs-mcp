@@ -1,0 +1,172 @@
+import { expect, test } from 'claude-code/testing'
+
+const PANE = {
+  plugin: 'servicenow-docs-figures',
+  component: 'Pane',
+  requestId: 'docs-figures',
+  props: {
+    title: 'ServiceNow Docs',
+    isFocused: false,
+    bodyColumns: 80,
+    placement: 'dock',
+    scroll: { offset: 0, bodyRows: 40 },
+    view: {},
+  },
+} as const
+
+const TOOL = 'mcp__servicenow-docs-figures__show_figure'
+const SVG =
+  '<svg width="100%" viewBox="0 0 680 120"><g class="node c-teal"><rect x="260" y="30" width="160" height="56" rx="8"/>' +
+  '<text class="th" x="340" y="58" text-anchor="middle">Running</text></g>' +
+  '<line class="arr" x1="100" y1="58" x2="250" y2="58"/></svg>'
+const SLA = {
+  title: 'How an SLA runs',
+  svg: SVG,
+  alt: 'An SLA is attached, runs, can pause, and completes.',
+  caption: 'Marked Breached when the duration runs out.',
+  sources: [
+    {
+      title: 'Create an SLA definition',
+      url: 'https://www.servicenow.com/docs/r/australia/it-service-management/service-level-management/t_CreateAnSLADefinition.html',
+    },
+  ],
+}
+
+/** `$` is loosely typed: the generated tool-name types do not know this mod's own tool. */
+const show = ($: any, figure: object): Promise<any> => $.tool.call({ tool: TOOL, ...figure })
+
+function engine(on: any, isPlaced = true) {
+  // Nothing sits beneath the plugin: each hook here stands for the engine.
+  on('command.register', () => ({ value: { command: 'docs-figures' } }))
+  on('tool.register', () => ({ value: { tool: TOOL } }))
+  on('ui.open', () => ({ value: { isPlaced } }))
+  on('session.start', (_: unknown, e: any) => ({ cwd: e.cwd }))
+}
+
+test('a figure Claude shows is drawn in the pane, with what it says and where it is from', async ($, on) => {
+  engine(on)
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+
+  const answer = await show($, SLA)
+  expect(answer.isError).toBe(undefined)
+  expect(String(answer.result)).toMatch(/shown/i)
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect((await ui.find({ type: 'Text', text: /How an SLA/ }))?.text).toBe('How an SLA runs')
+  const drawing = await ui.find({ type: 'Svg' })
+  expect(drawing?.props.alt).toBe(SLA.alt)
+  expect((await ui.find({ type: 'Text', text: /Breached/ }))?.text).toBe(SLA.caption)
+  const link = await ui.find({ type: 'Link' })
+  expect(link?.props.href).toBe(SLA.sources[0]!.url)
+  expect(link?.props.label).toBe('Create an SLA definition')
+  // one figure: nothing to page through
+  expect(await ui.find({ type: 'Button' })).toBe(undefined)
+  await ui.unmount()
+})
+
+test('the pane dresses the figure: its own size, the styling for light and dark, the arrowhead', async ($, on) => {
+  engine(on)
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await show($, SLA)
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const source = String((await ui.find({ type: 'Svg' }))?.props.source)
+  expect(source).toMatch(/^<svg [^>]*width="680" height="120"/)
+  expect(source).not.toMatch(/width="100%"/)
+  expect(source).toMatch(/<marker id="arrow"/)
+  expect(source).toMatch(/<style>[^<]*\.c-teal[^<]*prefers-color-scheme: dark/)
+  expect(source).toMatch(/class="node c-teal"/) // what Claude drew is kept as it was
+  await ui.unmount()
+})
+
+test('the figure is a whole document, because the pane draws it as an image', async ($, on) => {
+  // An image needs the svg namespace on its root; without it nothing is drawn at all.
+  engine(on)
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const named = SVG.replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ')
+
+  for (const svg of [SVG, named]) {
+    await show($, { ...SLA, svg })
+    const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+    const source = String((await ui.find({ type: 'Svg' }))?.props.source)
+    expect(source.match(/xmlns="http:\/\/www\.w3\.org\/2000\/svg"/g)?.length).toBe(1)
+    await ui.unmount()
+  }
+})
+
+test('what is not a drawing is refused, and the pane stays as it was', async ($, on) => {
+  engine(on)
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+
+  for (const svg of ['flowchart TD; a-->b', '<svg><rect/></svg>', '<svg viewBox="0 0 680 80"><script>x</script></svg>']) {
+    const answer = await show($, { ...SLA, svg })
+    expect(answer.isError).toBe(true)
+  }
+  expect((await show($, { ...SLA, alt: ' ' })).isError).toBe(true)
+  expect((await show($, { ...SLA, sources: [{ title: 'x', url: 'http://example.com/a' }] })).isError).toBe(true)
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect(await ui.find({ type: 'Svg' })).toBe(undefined)
+  expect((await ui.find({ type: 'Text' }))?.text).toMatch(/No figure yet/)
+  await ui.unmount()
+})
+
+test('the newest figure is shown, and the earlier ones can be paged back to', async ($, on) => {
+  engine(on)
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await show($, SLA)
+  await show($, { ...SLA, title: 'Incident states', sources: [] })
+
+  let ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect((await ui.find({ type: 'Text', text: /Incident/ }))?.text).toBe('Incident states')
+  expect((await ui.find({ type: 'Text', text: / of / }))?.text).toBe('2 of 2')
+  expect(await ui.find({ type: 'Link' })).toBe(undefined)
+  expect(await ui.find({ type: 'Button', key: 'next' })).toBe(undefined)
+  await ui.press({ key: 'previous' })
+  await ui.unmount()
+
+  ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect((await ui.find({ type: 'Text', text: /How an SLA/ }))?.text).toBe('How an SLA runs')
+  expect((await ui.find({ type: 'Text', text: / of / }))?.text).toBe('1 of 2')
+  expect(await ui.find({ type: 'Button', key: 'previous' })).toBe(undefined)
+  await ui.unmount()
+})
+
+test('a surface that draws no vector figure says what the figure says', async ($, on) => {
+  engine(on)
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await show($, SLA)
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect(await ui.find({ type: 'Svg' })).toBe(undefined)
+  expect((await ui.find({ type: 'Text', text: /attached/ }))?.text).toBe(SLA.alt)
+  await ui.unmount()
+})
+
+test('where no pane can be drawn, Claude is told to say it in words', async ($, on) => {
+  engine(on, false)
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+
+  const answer = await show($, SLA)
+  expect(answer.isError).toBe(undefined)
+  expect(String(answer.result)).toMatch(/not .*shown|no pane/i)
+})
+
+test('searching the docs draws nothing', async ($, on) => {
+  engine(on)
+  on('tool.call', () => ({ result: { structuredContent: { ok: true, hits: [{ id: 'a::b', page_title: 'A' }] } } }))
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await ($ as any).tool.call({ tool: 'mcp__servicenow-docs__snow_docs_search', query: 'sla' })
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect((await ui.find({ type: 'Text' }))?.text).toMatch(/No figure yet/)
+  await ui.unmount()
+})
+
+test('a value an earlier version stored is declined', async ($, on) => {
+  on('state.get', () => ({ value: { value: [{ title: 'old' }], version: 1 } }))
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect((await ui.find({ type: 'Text' }))?.text).toMatch(/No figure yet/)
+  await ui.unmount()
+})

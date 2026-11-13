@@ -181,11 +181,12 @@ The plugin adds a few things that only Claude Code has:
   questions; you can also ask for it by name.
 - **Two hooks**, described above: docs first for ServiceNow questions, and the script check
   after Claude writes ServiceNow code.
-- **A sources pane** (`mods/servicenow-docs-sources`, in preview). A pane beside the chat
-  lists the passages Claude found and read in the session, newest first, each with a link to
-  the page. It opens by itself the first time Claude searches the docs; `/docs-sources` opens
-  it again. It is not offered for install yet; to try it from a checkout, start Claude Code
-  with `claude --plugin-dir mods/servicenow-docs-sources`.
+- **A figures pane** (`mods/servicenow-docs-figures`, in preview). When a picture explains a
+  concept better than text (a lifecycle, how records relate, what happens over time), Claude
+  draws it in a pane beside the chat, from the docs it has read, with links to the pages. The
+  answer itself stays short. `/docs-figures` opens the pane again. It is not offered for
+  install yet; to try it from a checkout, start Claude Code with
+  `claude --plugin-dir mods/servicenow-docs-figures`.
 
 ## Compare releases
 
