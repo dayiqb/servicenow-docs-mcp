@@ -200,6 +200,35 @@ without arguments it lists the 54 product areas with their page counts; with a p
 lists that area's folders and pages by title; with a folder it goes further down. Every page
 can be opened in full.
 
+## Command line and library
+
+The same tools work without Claude, from a terminal, a script or another agent. Each command
+prints one JSON result and exits 0 when it is ok:
+
+```bash
+snow-docs-mcp search "how is incident priority calculated" --limit 3
+snow-docs-mcp read "australia:markdown/it-service-management/incident-management/def-prio-lookup-rules.md::"
+snow-docs-mcp api GlideRecord.addEncodedQuery
+snow-docs-mcp api "POST /api/now/table/incident"
+snow-docs-mcp check-script my_business_rule.js
+snow-docs-mcp browse itsm --folder incident-management
+snow-docs-mcp compare "document intelligence"
+snow-docs-mcp status
+```
+
+From a checkout, put `uv run` in front. A search loads the search models each time, so it
+takes about 5 seconds; the lookups take 1 to 2 seconds. Run `snow-docs-mcp setup all` once
+first if the docs are not installed.
+
+In Python, `snow_docs_mcp.api` has the same calls and returns the same results:
+
+```python
+from snow_docs_mcp import api
+
+found = api.search("how is incident priority calculated", limit=3)
+method = api.lookup("GlideRecord.addEncodedQuery")
+```
+
 ## Troubleshooting
 
 | Problem | Fix |

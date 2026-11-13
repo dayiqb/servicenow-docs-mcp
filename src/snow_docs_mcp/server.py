@@ -21,6 +21,10 @@ rules it should follow are sent as server instructions (ANSWER_RULES).
 Console script `snow-docs-mcp`:
     snow-docs-mcp                       serve MCP over stdio (what Claude apps launch)
     snow-docs-mcp setup [RELEASE|all]   download docs index(es) and models now, with progress
+    snow-docs-mcp search "QUERY" | read ID | compare [QUERY] | api NAME | check-script FILE |
+                  browse [PRODUCT] | status
+                                        the tools from a terminal: one JSON result on stdout
+                                        (see snow_docs_mcp.cli; as a library: snow_docs_mcp.api)
     snow-docs-mcp check-index --australia PATH --brazil PATH
                                         count what the tools find in an index (maintainers)
 
@@ -1773,6 +1777,10 @@ def main(argv: list[str] | None = None) -> None:
 
     if args[:1] == ["setup"]:
         sys.exit(_run_setup_cli(args[1:]))
+    if args and args[0] in ("search", "read", "compare", "api", "check-script", "browse", "status"):
+        from snow_docs_mcp import cli
+
+        sys.exit(cli.run(args))
     if args[:1] == ["check-index"]:
         from snow_docs_mcp import health
 
