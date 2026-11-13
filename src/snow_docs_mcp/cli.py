@@ -95,6 +95,8 @@ def _emit(text: str) -> None:
 def _docs_missing(args: argparse.Namespace) -> bool:
     from snow_docs_mcp import config, setup
 
+    if args.command == "compare":  # needs both releases
+        return not all(setup.index_ready(release) for release in config.RELEASES)
     release = getattr(args, "release", None) or config.default_release()
     return release in config.RELEASES and not setup.index_ready(release)
 

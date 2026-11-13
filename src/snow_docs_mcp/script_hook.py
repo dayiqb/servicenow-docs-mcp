@@ -107,13 +107,18 @@ def _servicenow_script(text: str) -> bool:
 
 
 def note(
-    payload: dict, table: ApiTable, release: str, tables: frozenset[str] | None = None
+    payload: dict,
+    table: ApiTable,
+    release: str,
+    tables: frozenset[str] | None = None,
+    checked: tuple[str, list[range] | None] | None = None,
 ) -> str | None:
-    """What to tell Claude about the code it just wrote, if anything."""
+    """What to tell Claude about the code it just wrote, if anything. `checked` is what
+    `checked_text` gave for this payload, when the caller already has it."""
     path = _path_of(payload)
     if PurePath(path).suffix.lower() not in _CODE_SUFFIXES:
         return None
-    code, written = checked_text(payload)
+    code, written = checked if checked is not None else checked_text(payload)
     if not code:
         return None
     name = PurePath(path).name or "the file"
@@ -147,12 +152,12 @@ def note(
     return "\n\n".join(parts) or None
 
 
-def _worth_a_look(payload: dict) -> bool:
+def _worth_a_look(payload: dict, checked: tuple[str, list[range] | None] | None = None) -> bool:
     """Cheap first look, before the slower imports: ServiceNow script, or a Fluent file."""
     path = _path_of(payload)
     if PurePath(path).suffix.lower() not in _CODE_SUFFIXES:
         return False
-    code, _ = checked_text(payload)
+    code, _ = checked if checked is not None else checked_text(payload)
     return bool(code) and (path.lower().endswith(_FLUENT_SUFFIX) or _servicenow_script(code))
 
 
@@ -163,7 +168,10 @@ def main() -> int:
         payload = json.loads(sys.stdin.read() or "null")
     except (ValueError, UnicodeDecodeError):
         return 0
-    if not isinstance(payload, dict) or not _worth_a_look(payload):
+    if not isinstance(payload, dict):
+        return 0
+    checked = checked_text(payload)  # reads an edited file once, for the look and the check
+    if not _worth_a_look(payload, checked):
         return 0
     from snow_docs_mcp import api_table, config, setup, tables  # after the cheap checks
 
@@ -171,7 +179,7 @@ def main() -> int:
     db = setup.active_index(release)
     if db is None:  # not installed (yet): say nothing, and leave the download to the server
         return 0
-    text = note(payload, api_table.load(db), release, tables.names(db))
+    text = note(payload, api_table.load(db), release, tables.names(db), checked)
     if text:
         out = {"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": text}}
         sys.stdout.write(json.dumps(out))

@@ -164,3 +164,10 @@ def test_readme_shows_the_commands_and_the_library():
     readme = (Path(__file__).resolve().parents[1] / "README.md").read_text(encoding="utf-8")
     assert "## Command line and library" in readme and "snow-docs-mcp check-script" in readme
     assert "from snow_docs_mcp import api" in readme
+
+
+def test_the_setup_hint_is_printed_when_a_comparison_lacks_one_release(installed, capsys):
+    """Comparing needs both releases; the fixture has australia only."""
+    with pytest.raises(SystemExit) as done:
+        main(["compare", "incident"])
+    assert done.value.code == 1 and "setup all" in capsys.readouterr().err
