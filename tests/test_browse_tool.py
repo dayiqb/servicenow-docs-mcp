@@ -15,6 +15,7 @@ EXTRA = {
     "markdown/itsm/incident-management/close.md": "---\ntitle: Close an incident\n---\n\n# Close\n",
     "markdown/itsm/incident-management/setup/roles.md": "---\ntitle: Incident roles\n---\n\n# Roles\n",
     "markdown/itsm/change-management/overview.md": "# Change overview\n\nNo front matter here.\n",
+    "markdown/customer-service-management/case/open.md": "---\ntitle: Open a case\n---\n\n# Open\n",
 }
 
 
@@ -42,8 +43,12 @@ def call(tool: str, **args):
 def test_without_arguments_it_lists_the_product_areas_with_page_counts(docs):
     r = call("snow_docs_browse")
     assert r["ok"] and r["path"] == "" and r["pages"] == []
-    assert [(f["name"], f["pages"]) for f in r["folders"]] == [("hr", 1), ("itsm", 7)]
-    assert "2 product areas" in r["message"]
+    assert [(f["name"], f["pages"]) for f in r["folders"]] == [
+        ("customer-service-management", 1),
+        ("hr", 1),
+        ("itsm", 7),
+    ]
+    assert "3 product areas" in r["message"]
 
 
 def test_a_product_lists_its_folders_and_its_own_pages(docs):
@@ -84,3 +89,22 @@ def test_a_long_folder_is_cut_and_says_so(docs, monkeypatch):
     more = call("snow_docs_browse", product="itsm", offset=2)
     assert [p["title"] for p in more["pages"]] == ["problem.md"] and more["pages_left_out"] == 0
     assert "offset=2" in r["message"]
+
+
+def test_the_first_part_of_a_folder_path_can_be_an_abbreviation(docs):
+    r = call("snow_docs_browse", folder="csm/case")
+    assert r["ok"], r["message"]
+    assert r["path"] == "customer-service-management/case"
+    assert [p["title"] for p in r["pages"]] == ["Open a case"]
+
+
+def test_an_offset_past_the_end_says_so(docs):
+    r = call("snow_docs_browse", product="itsm", offset=500)
+    assert r["ok"] and r["pages"] == []
+    assert "offset 500 is past the last" in r["message"]
+
+
+def test_a_missing_top_folder_points_at_the_product_areas(docs):
+    r = call("snow_docs_browse", folder="incident-managment")
+    assert not r["ok"] and "'without arguments'" not in r["message"]
+    assert "Browse without arguments to see the product areas" in r["message"]

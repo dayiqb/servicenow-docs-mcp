@@ -657,6 +657,14 @@ def _product_problem(product: str, folder: str, rel: str, db, known: list[str]) 
             f"'{product}' means the {folder} docs, which the {rel} docs don't include. Omit "
             "`product` to search everything, or pick one of: " + ", ".join(known) + "."
         )
+    wanted = products.normalize(product)
+    for other_rel in config.RELEASES:
+        other_db = setup.active_index(other_rel) if other_rel != rel else None
+        if other_db is not None and wanted in store.products(other_db):
+            return (
+                f"The {rel} docs have no '{wanted}' folder; the {other_rel} docs do. Call again "
+                f"with release '{other_rel}'."
+            )
     close = products.suggestions(product, known, store.page_paths(db)[0])
     hint = f"Did you mean: {', '.join(close)}? " if close else ""
     return (
@@ -1838,13 +1846,15 @@ def snow_docs_browse(
     title. Without arguments it lists the product areas. With `product` it lists that area's
     folders (with page counts) and its own pages; with `folder` it goes further down. Open a
     page with snow_docs_read(id). Good for "what is documented about X", for finding a page
-    whose words you do not know, and for the release notes (product "release-notes" or
-    "delta-australia-brazil").
+    whose words you do not know, and for the release notes (product "release-notes"; the
+    combined notes for upgrades from Australia are "delta-australia-brazil", with release
+    "brazil").
 
     Args:
         product: A product area, as in snow_docs_search ("it-service-management", "itsm", ...).
         folder: A folder inside the product ("incident-management"), or a whole path as a
-            listing returned it ("it-service-management/incident-management").
+            listing returned it ("it-service-management/incident-management"); its first part
+            may be an abbreviation ("itsm/incident-management").
         release: "australia" or "brazil". Defaults to the configured release.
         offset: Skip this many pages of a long folder (the message says when there are more).
     """
@@ -1871,9 +1881,15 @@ def snow_docs_browse(
             parts = parts[1:]
         if len(parts) > 1 and parts[0] == parts[1] and product:  # folder given as a whole path
             parts = parts[1:]
+        titles = _page_titles(db)
+        if parts and not (product and product.strip()):
+            # a path given whole may start with an abbreviation: itsm/incident-management
+            tops = sorted({p.split("/", 2)[1] for p in titles if p.count("/") >= 2})
+            top, how = products.resolve(parts[0], tops)
+            if how == "alias":
+                parts[0] = top
         path = "/".join(parts)
         prefix = f"markdown/{path}/" if path else "markdown/"
-        titles = _page_titles(db)
         under = sorted(p for p in titles if p.startswith(prefix))
         if not under:
             parent = "/".join(parts[:-1])
@@ -1890,8 +1906,12 @@ def snow_docs_browse(
             return BrowseResult(
                 ok=False,
                 release=rel,
-                message=f"No folder '{path}' in the {rel} docs.{hint} Browse "
-                f"'{parent or 'without arguments'}' to see what is there.",
+                message=f"No folder '{path}' in the {rel} docs.{hint} "
+                + (
+                    f"Browse '{parent}' to see what is there."
+                    if parent
+                    else "Browse without arguments to see the product areas."
+                ),
             )
         counts: dict[str, int] = {}
         own: list[str] = []
@@ -1932,6 +1952,11 @@ def snow_docs_browse(
                 result.message += (
                     f" {_count(result.pages_left_out, 'more page')} after these: call again "
                     f"with offset={start + BROWSE_PAGES_SHOWN}."
+                )
+            elif start and not result.pages:
+                result.message += (
+                    f" No pages shown: offset {start} is past the last of them; the last "
+                    f"listing starts at offset={max(0, (len(listed) - 1) // BROWSE_PAGES_SHOWN) * BROWSE_PAGES_SHOWN}."
                 )
             result.message += (
                 " Pass a folder's `path` as `folder` to go deeper; read a page with "
@@ -2093,10 +2118,7 @@ def snow_docs_diagram(
             if lanes and not step.lane:
                 problems.append(f"step '{step.id}' has no lane")
         if links is None:
-            links = [
-                DiagramLink(source=a.id, target=b.id)
-                for a, b in itertools.pairwise(steps)
-            ]
+            links = [DiagramLink(source=a.id, target=b.id) for a, b in itertools.pairwise(steps)]
         for link in links:
             for end in (link.source, link.target):
                 if end not in seen:

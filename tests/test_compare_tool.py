@@ -524,3 +524,13 @@ def test_two_pages_with_one_application_name_are_both_listed(both):
         "Risk Management (RM)",
     ]
     assert len({m["id"] for m in r["more_release_notes"]}) == 2
+
+
+def test_a_folder_that_only_the_other_release_has_says_which_release(both):
+    """The combined upgrade notes (delta-australia-brazil) are in the brazil docs only."""
+    r = call("snow_docs_browse", product="delta-australia-brazil")
+    assert not r["ok"] and "release 'brazil'" in r["message"]
+    assert "Valid products" not in r["message"]
+    assert call("snow_docs_browse", product="delta-australia-brazil", release="brazil")["ok"]
+    s = call("snow_docs_search", query="x", product="delta-australia-brazil")
+    assert not s["ok"] and "release 'brazil'" in s["message"]
