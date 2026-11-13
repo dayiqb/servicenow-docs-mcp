@@ -600,13 +600,13 @@ def test_type_sizes_and_spacing_stay_on_the_scale():
             assert float(size) % 4 == 0, (name, value)
 
 
-def test_marked_words_and_the_chosen_release_do_not_rely_on_colour():
+def test_marked_words_and_the_way_to_the_other_release_do_not_rely_on_colour():
     css = _style()
     assert re.search(r"\bdel\s*\{[^}]*text-decoration:\s*line-through", css)
     assert re.search(r"\bins\s*\{[^}]*text-decoration:\s*underline", css)
-    forced = css[css.index("@media (forced-colors: active)") :]
-    assert ".switch input:checked + span" in forced and "Highlight" in forced
-    assert re.search(r"\.switch input:checked \+ span\s*\{[^}]*outline:", css)
+    # the release shown is said in words; the button to the other one is underlined text
+    assert re.search(r"\.switch\s*\{[^}]*text-decoration:\s*underline", css)
+    assert "radiogroup" not in panel_html() and 'type: "radio"' not in panel_html()
 
 
 def test_focus_is_not_dropped_and_the_size_report_can_shrink():
@@ -866,3 +866,30 @@ def test_a_document_that_scrolls_can_be_reached_with_the_keyboard():
         "region",
         "A page",
     )
+
+
+# ---- the other release: one quiet button where the release is named (2026-11-13) ---------------
+
+
+def _switch(root: ET.Element) -> ET.Element:
+    (count,) = [p for p in root.iter("p") if _has(p, "count")]
+    (button,) = [b for b in count.iter("button") if _has(b, "switch")]
+    return button
+
+
+@needs_node
+def test_the_other_release_is_one_button_on_the_line_that_names_the_release():
+    result = _search(_hit(1, "it-service-management", "Create an SLA definition"))
+    root = _show(result, {"query": "sla"})
+    assert _text(_switch(root)) == "Switch to Brazil" and not list(root.iter("input"))
+    (count,) = [s for s in root.iter("span") if _has(s, "count-text")]
+    assert _text(count) == "1 passage, from the Australia docs, snapshot 6 Nov 2026"
+    brazil = _show({**result, "release": "brazil"}, {"query": "sla"})
+    assert _text(_switch(brazil)) == "Switch to Australia"
+
+
+@needs_node
+def test_a_document_has_the_same_button_to_the_other_release():
+    page = {"ok": True, "message": "", "id": "australia:markdown/x.md::", "focus": "", "title": "A page",
+            "url": "", "release": "australia", "product": "it-service-management", "headings": []}  # fmt: skip
+    assert _text(_switch(_show(page))) == "Switch to Brazil"

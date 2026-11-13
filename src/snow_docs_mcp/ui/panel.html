@@ -56,15 +56,14 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .head-text { flex: 1 1 16rem; min-width: 0; }
 .head h1 { font: 600 var(--title)/1.2 var(--sans); text-wrap: balance; }
 .head .count { margin-top: var(--s1); color: var(--ink-2); font-size: var(--secondary); line-height: 1.4; }
-/* The release that is chosen has a line around it and its name in full ink: a mark that is
-   there without color, and that forced colors keep. */
-.switch { display: inline-flex; gap: var(--s1); padding: var(--s1); border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg-quiet); }
-.switch label { position: relative; }
-.switch input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
-.switch span { display: block; padding: var(--s1) var(--s3); border-radius: var(--radius-sm); font: 500 var(--secondary)/1.4 var(--sans); color: var(--ink-2); }
-.switch input:checked + span { background: var(--bg); color: var(--ink); outline: 1px solid var(--ink); outline-offset: -1px; }
-.switch input:focus-visible + span { outline: 2px solid var(--ring); outline-offset: 2px; }
-.switch[aria-busy="true"] span { cursor: progress; }
+/* The way to the other release is one quiet button on the line that names the release shown.
+   It is underlined text, so it reads as something to press without color or a box. */
+.count { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: var(--s3); }
+/* Padding makes it easier to hit; the same margin taken back keeps the line as high as its text. */
+.switch { padding: var(--s1) 0; margin: calc(var(--s1) * -1) 0; color: var(--ink-2); font: 400 var(--secondary)/1.4 var(--sans);
+  text-decoration: underline; text-decoration-color: var(--ink-2); text-underline-offset: 2px; }
+.switch:hover { color: var(--ink); text-decoration-color: var(--ink); }
+.switch[aria-busy="true"] { opacity: 0.55; cursor: progress; }
 .legend { display: flex; gap: var(--s4); color: var(--ink-2); font-size: var(--secondary); line-height: 1.4; }
 .key { display: inline-block; width: 8px; height: 8px; margin-right: var(--s2); border-radius: 2px; }
 .key.australia { background: var(--au); } .key.brazil { background: var(--br); }
@@ -203,7 +202,6 @@ ins { background: var(--br-wash); color: var(--br); text-decoration: underline; 
 @media (prefers-reduced-motion: reduce) { .pulse { animation: none; } * { scroll-behavior: auto !important; } }
 @media (forced-colors: active) {
   .key { forced-color-adjust: none; } .act, .side, .reader { border-color: CanvasText; }
-  .switch input:checked + span { forced-color-adjust: none; background: Highlight; color: HighlightText; outline-color: Highlight; }
   .chart .node rect, .chart .node polygon { fill: Canvas; stroke: CanvasText; } .chart .link { stroke: CanvasText; }
   .chart .tip, .chart text { fill: CanvasText; } .chart .link-name { stroke: Canvas; }
 }
@@ -223,7 +221,7 @@ const WORDS = {
   en: {
     searching: "Searching the docs…", comparing: "Comparing Australia and Brazil…", reading: "Reading…", opening: "Opening…",
     passages: (n) => (n === 1 ? "1 passage" : n + " passages"), fromDocs: (r) => "from the " + r + " docs",
-    snapshot: (d) => "snapshot " + d, release: "Release", read: "Read section", hide: "Hide section",
+    snapshot: (d) => "snapshot " + d, switchTo: (r) => "Switch to " + r, read: "Read section", hide: "Hide section",
     open: "Open docs", readPage: "Read page", noHits: "No passages matched", tryOther: "Try other words, or search without a product area.",
     failed: "Something went wrong", cut: "This section is cut short. Open the docs page for the rest.",
     stoppedSearch: "The search was stopped", stoppedCompare: "The comparison was stopped", stoppedOpen: "Opening was stopped", stoppedDiagram: "The diagram was stopped",
@@ -245,7 +243,7 @@ const WORDS = {
   nb: {
     searching: "Søker i dokumentasjonen…", comparing: "Sammenligner Australia og Brazil…", reading: "Leser…", opening: "Åpner…",
     passages: (n) => (n === 1 ? "1 avsnitt" : n + " avsnitt"), fromDocs: (r) => "fra dokumentasjonen for " + r,
-    snapshot: (d) => "øyeblikksbilde " + d, release: "Release", read: "Les seksjonen", hide: "Skjul seksjonen",
+    snapshot: (d) => "øyeblikksbilde " + d, switchTo: (r) => "Bytt til " + r, read: "Les seksjonen", hide: "Skjul seksjonen",
     open: "Åpne dokumentasjonen", readPage: "Les siden", noHits: "Ingen treff", tryOther: "Prøv andre ord, eller søk uten produktområde.",
     failed: "Noe gikk galt", cut: "Seksjonen er kuttet. Åpne siden i dokumentasjonen for resten.",
     stoppedSearch: "Søket ble stoppet", stoppedCompare: "Sammenligningen ble stoppet", stoppedOpen: "Åpningen ble stoppet", stoppedDiagram: "Diagrammet ble stoppet",
@@ -379,7 +377,7 @@ function message(title, detail) {
 }
 // Where the keyboard is after the page was redrawn: on the control that did it, or on the title.
 const focusOn = (node) => { if (node) node.focus(); };
-const focusSwitch = () => focusOn(app.querySelector(".switch input:checked"));
+const focusSwitch = () => focusOn(app.querySelector(".switch"));
 const title = (text) => el("h1", { tabindex: "-1", text });
 
 // ---- docs text as elements ---------------------------------------------------------------
@@ -695,21 +693,16 @@ function readerButton(id, label, holder, options) {
   return button;
 }
 const releaseKey = (release) => [el("i", { class: "key " + release, "aria-hidden": "true" }), NAME[release]];
-function releaseSwitch(current, name, pick) {
-  // Two radio buttons. While the other release is being fetched the group is busy and keeps
-  // the choice that was made; it is never disabled, so the keyboard stays on it.
-  const group = el("div", { class: "switch", role: "radiogroup", "aria-label": t("release") });
-  let wanted = current;
-  for (const r of RELEASES) {
-    const input = el("input", { type: "radio", name, value: r, checked: r === current });
-    input.addEventListener("change", () => {
-      if (group.hasAttribute("aria-busy")) { for (const one of group.querySelectorAll("input")) one.checked = one.value === wanted; return; }
-      wanted = r; group.setAttribute("aria-busy", "true"); pick(r);
-    });
-    group.append(el("label", {}, input, el("span", { text: NAME[r] })));
-  }
-  return group;
+function releaseSwitch(current, pick) {
+  // One button to the other release. While that release is being fetched the button is busy,
+  // never disabled, so the keyboard stays on it.
+  const other = RELEASES.find((r) => r !== current) || RELEASES[0];
+  const button = el("button", { class: "switch", type: "button", text: t("switchTo", NAME[other]) });
+  button.addEventListener("click", () => { if (button.hasAttribute("aria-busy")) return; button.setAttribute("aria-busy", "true"); pick(other); });
+  return button;
 }
+// The line under the title: what is shown and from which release, then the way to the other one.
+const countLine = (text, release, pick) => el("p", { class: "count" }, el("span", { class: "count-text", text }), " ", releaseSwitch(release, pick));
 
 // ---- rows that open in place -----------------------------------------------------------------
 let folds = 0;
@@ -751,7 +744,7 @@ function quote(hit) {
 async function switchRelease(release) {
   let result = state.results[release];
   if (!result) {
-    const count = app.querySelector(".count");
+    const count = app.querySelector(".count-text");
     if (count) count.textContent = t("searching");
     say(t("searching"));
     result = await callTool("snow_docs_search", { ...state.args, release });
@@ -768,8 +761,7 @@ function showSearch(result) {
   const hits = result.hits || [];
   const count = [t("passages", hits.length), t("fromDocs", NAME[result.release] || result.release), result.snapshot ? t("snapshot", day(result.snapshot)) : ""].filter(Boolean).join(", ");
   const head = el("header", { class: "head" },
-    el("div", { class: "head-text" }, title(sentence(state.args.query) || "ServiceNow Docs"), el("p", { class: "count", text: count })),
-    releaseSwitch(result.release, "release", switchRelease));
+    el("div", { class: "head-text" }, title(sentence(state.args.query) || "ServiceNow Docs"), countLine(count, result.release, switchRelease)));
   // The hits stand under their product area, and an area stands where its best hit is.
   const areas = new Map();
   hits.forEach((h, i) => {
@@ -1152,8 +1144,7 @@ async function showDocument(open, back, focus) {
   const pick = (r) => showDocument({ ...open, release: r, id: String(open.id).replace(/^[a-z]+:/, r + ":"), url: "" }, back, "switch");
   const head = el("header", { class: "head" },
     el("div", { class: "head-text" }, title(open.title || t("docs")),
-      el("p", { class: "count", text: [areaName(open.product), t("fromDocs", NAME[open.release] || open.release || "")].filter(Boolean).join(", ") })),
-    releaseSwitch(open.release, "doc-release", pick));
+      countLine([areaName(open.product), t("fromDocs", NAME[open.release] || open.release || "")].filter(Boolean).join(", "), open.release, pick)));
   const acts = el("div", { class: "acts doc-acts" }, back ? el("button", { class: "act", type: "button", text: t("back"), onclick: back }) : null, openButton(open.url));
   acts.hidden = !acts.children.length;
   const article = el("article", { class: "doc", "aria-busy": "true" }, el("p", { class: "state" }, el("span", { class: "pulse", "aria-hidden": "true" }), t("loadingPage")));

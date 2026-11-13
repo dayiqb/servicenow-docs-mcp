@@ -156,12 +156,12 @@ long text scrolls inside the panel.
 
 - **Search results.** The hits stand under their product area, one row each with its rank, page
   and section. A row opens to the passage. *Read section* opens the full section in place;
-  *Open docs* opens the page on servicenow.com; the switch at the top runs the same search in
-  the other release.
+  *Open docs* opens the page on servicenow.com. *Switch to Brazil*, on the line under the
+  title, runs the same search in the other release.
 - **A page as a document.** Ask *"show me that page"*: the page is laid out for reading, with
   its sections listed beside it, notes set apart, and tables and code as they should be. A
-  numbered procedure can also be shown as a flow, one box per step. The switch shows the same
-  page in the other release.
+  numbered procedure can also be shown as a flow, one box per step. *Switch to Brazil* shows the
+  same page in the other release.
 - **Browse.** Product areas, folders and pages as lists you click through; a page opens as a
   document.
 - **Diagrams.** Ask *"draw the major incident process as swimlanes"*: Claude takes the steps
