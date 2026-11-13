@@ -68,20 +68,70 @@ function fromHit(hit: Json, isRead: boolean): Passage | undefined {
     id,
     title,
     section: section(text(hit.heading_path), title),
-    release: text(hit.release) || id.split(':')[0] || '',
+    release: text(hit.release) || releaseOf(id),
     url: text(hit.url),
     isRead,
   }
 }
 
+const list = (value: unknown): Json[] =>
+  Array.isArray(value)
+    ? (value.filter(one => one && typeof one === 'object') as Json[])
+    : []
+
+const releaseOf = (id: string): string => id.split(':')[0] ?? ''
+
+/** The sections a comparison lists as changed: one row each, in the release that has it. */
+function changedSections(page: Json): Passage[] {
+  const title = text(page.page_title) || text(page.page)
+
+  return list(page.sections).flatMap(changed => {
+    const id = text(changed.brazil_id) || text(changed.australia_id)
+    if (!id) return []
+    const release = releaseOf(id)
+
+    return [
+      {
+        id,
+        title,
+        section: section(text(changed.heading_path), title),
+        release,
+        url: text(release === 'australia' ? page.australia_url : page.brazil_url),
+        isRead: false,
+      },
+    ]
+  })
+}
+
+/** A release-notes page a comparison found by its application's name. */
+function notesPage(page: Json): Passage[] {
+  const id = text(page.id)
+  if (!id) return []
+
+  return [
+    {
+      id,
+      title: `${text(page.application) || 'Application'} release notes`,
+      section: '',
+      release: releaseOf(id),
+      url: '',
+      isRead: false,
+    },
+  ]
+}
+
 function found(tool: string, data: Json): Passage[] {
   if (data.ok !== true) return []
   if (tool.endsWith('read')) return [fromHit(data, true)].filter(Boolean) as Passage[]
-  const hits = [data.hits, data.release_notes].flatMap(list =>
-    Array.isArray(list) ? (list as Json[]) : [],
-  )
+  const hits = [...list(data.hits), ...list(data.release_notes)]
+    .map(hit => fromHit(hit, false))
+    .filter(Boolean) as Passage[]
 
-  return hits.map(hit => fromHit(hit, false)).filter(Boolean) as Passage[]
+  return [
+    ...hits,
+    ...list(data.more_release_notes).flatMap(notesPage),
+    ...list(data.changed_pages).flatMap(changedSections),
+  ]
 }
 
 /** Newest first, one row per passage; a read passage stays marked as read. */
@@ -116,8 +166,10 @@ export const register: Register = on => {
 
   on('tool.call', async ($, e, next) => {
     const ran = await next(e)
-    if (!DOCS_TOOL.test(e.tool) || ran.deny !== undefined) return ran
-    const data = payload(ran.result)
+    if (!DOCS_TOOL.test(e.tool) || ran.deny !== undefined || ran.isError) return ran
+    // The recorded result is the server's JSON, as an object or as text; when it is
+    // neither, the text the model read is the same JSON.
+    const data = payload(ran.result) ?? payload(ran.text)
     const added = data ? found(e.tool, data) : []
     if (added.length > 0) {
       const before = await read($, passages)
