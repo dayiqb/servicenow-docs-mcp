@@ -18,84 +18,139 @@ HEADING_RE = re.compile(r"^(#{1,6})\s+(.*?)\s*$")
 _FRONT_MATTER_RE = re.compile(r"\A---\r?\n.*?\r?\n---\r?\n", re.DOTALL)
 
 
+# Some pages write a heading on the same line as the end of a table: "</table>## New features".
+_GLUED_RE = re.compile(r"^(</table>[ \t]*)(#{1,6}\s.*)$", re.DOTALL)
+
+
 @dataclass
 class Section:
     heading_path: list[str]
     body: str
     byte_offset: int
+    # Its heading was written on the same line as a table's end. The index did not see such
+    # headings: it filed the text under the section before, and nested later sections as if
+    # the heading were not there. `index_path` is the breadcrumb the index gives the section
+    # this text is in, which is what a passage's id carries; `heading_line` is the glued
+    # heading as written, for when its text is read as part of that section.
+    glued: bool = False
+    heading_line: str = ""
+    index_path: list[str] | None = None
+
+    def __post_init__(self) -> None:
+        if self.index_path is None:
+            self.index_path = list(self.heading_path)
 
 
 def split_into_sections(text: str) -> list[Section]:
-    """Walk the markdown line by line, opening a new section at each H2/H3."""
+    """Walk the markdown line by line, opening a new section at each H1, H2 and H3, also one
+    written on the same line as a table's end."""
     lines = text.splitlines(keepends=True)
     heading_stack: list[str | None] = [None] * 6  # one slot per H1..H6 level
+    index_stack: list[str | None] = [None] * 6  # the same, as the index walked it
     sections: list[Section] = []
     current_lines: list[str] = []
     current_offset = 0
     section_start_offset = 0
+    glued = False  # the section being collected was opened by a glued heading
+    opened_by = ""  # that heading, as written
 
-    def _current_path() -> list[str]:
-        return [h for h in heading_stack if h]
+    def _close() -> None:
+        nonlocal current_lines
+        if current_lines:
+            sections.append(
+                Section(
+                    [h for h in heading_stack if h],
+                    "".join(current_lines),
+                    section_start_offset,
+                    glued,
+                    opened_by,
+                    [h for h in index_stack if h],
+                )
+            )
+            current_lines = []
 
     for line in lines:
         m = HEADING_RE.match(line)
-        if m and 2 <= len(m.group(1)) <= 3:
-            if current_lines:
-                sections.append(
-                    Section(_current_path(), "".join(current_lines), section_start_offset)
-                )
-                current_lines = []
-            level = len(m.group(1))
-            heading_stack[level - 1] = m.group(2).strip()
-            for deeper in range(level, 6):
-                heading_stack[deeper] = None
+        after_table = None
+        if m is None and (found := _GLUED_RE.match(line)):
+            heading = HEADING_RE.match(found.group(2))
+            if heading and len(heading.group(1)) <= 3:
+                m, after_table = heading, found
+                # the table's end belongs to the section it closes; the heading opens the next
+                current_lines.append(found.group(1).rstrip() + "\n")
+        level = len(m.group(1)) if m else 0
+        if m and 1 <= level <= 3:
+            _close()
+            for stack in (heading_stack,) if after_table else (heading_stack, index_stack):
+                stack[level - 1] = m.group(2).strip()
+                for deeper in range(level, 6):
+                    stack[deeper] = None
             section_start_offset = current_offset + len(line)
-        elif m and len(m.group(1)) == 1:
-            if current_lines:
-                sections.append(
-                    Section(_current_path(), "".join(current_lines), section_start_offset)
-                )
-                current_lines = []
-            heading_stack[0] = m.group(2).strip()
-            for deeper in range(1, 6):
-                heading_stack[deeper] = None
-            section_start_offset = current_offset + len(line)
+            glued = after_table is not None
+            opened_by = after_table.group(2) if after_table else ""
         else:
             current_lines.append(line)
         current_offset += len(line)
 
-    if current_lines:
-        sections.append(Section(_current_path(), "".join(current_lines), section_start_offset))
+    _close()
     return sections
+
+
+def _crumb(path: list[str] | None) -> str:
+    return " > ".join(path or [])
 
 
 def extract_section(text: str, heading_breadcrumb: str, occurrence: int = 1) -> str | None:
     """Text of the `occurrence`-th section whose breadcrumb is `heading_breadcrumb`,
     including its subsections. None when there is no such section.
 
-    Exact breadcrumb matches win; only when there are none does it fall back to the old
-    "breadcrumb ends with" match (so a short id like "Remedy" still finds "X > Remedy").
+    A breadcrumb from the index (a passage's id) returns everything the index filed under
+    it, as it always has: the text after a heading glued to a table included. Such a glued
+    section can also be read by its own breadcrumb, and then ends where the next heading at
+    its level begins. Exact breadcrumb matches win; only when there are none does it fall
+    back to the old "breadcrumb ends with" match (so a short id like "Remedy" still finds
+    "X > Remedy").
     """
     sections = split_into_sections(text)
     target = heading_breadcrumb.strip()
     if not [p for p in target.split(">") if p.strip()]:
         return None
 
-    paths = [" > ".join(s.heading_path) for s in sections]
-    matches = [i for i, p in enumerate(paths) if p == target]
+    # Sections the index saw come first, numbered as the index numbers them; a glued section
+    # answers to its own breadcrumb only when no section the index saw has it.
+    matches = [
+        i
+        for i, s in enumerate(sections)
+        if not s.glued and target in (_crumb(s.index_path), _crumb(s.heading_path))
+    ]
     if not matches:
-        matches = [i for i, p in enumerate(paths) if p.endswith(target)]
+        matches = [
+            i for i, s in enumerate(sections) if s.glued and _crumb(s.heading_path) == target
+        ]
+    if not matches:
+        matches = [i for i, s in enumerate(sections) if _crumb(s.heading_path).endswith(target)]
     if not 1 <= occurrence <= len(matches):
         return None
     i = matches[occurrence - 1]
     section = sections[i]
     collected = [section.body]
-    depth = len(section.heading_path)
     for later in sections[i + 1 :]:
-        if len(later.heading_path) > depth and later.heading_path[:depth] == section.heading_path:
+        if section.glued:
+            depth = len(section.heading_path)
+            inside = (
+                len(later.heading_path) > depth
+                and later.heading_path[:depth] == section.heading_path
+            )
+            if not inside:
+                break
             collected.append(later.body)
-        else:
+            continue
+        # as the index walked it: a glued heading is text of the section it is in
+        path = later.index_path or []
+        depth = len(section.index_path or [])
+        if path[:depth] != section.index_path or not (len(path) > depth or later.glued):
             break
+        collected.append((later.heading_line if later.glued else "") + later.body)
     return "".join(collected).strip() + "\n"
 
 
@@ -111,7 +166,9 @@ def occurrence_of(text: str, heading_breadcrumb: str, offset: int) -> int:
     for section in split_into_sections(text):
         if section.byte_offset > offset:
             break
-        if " > ".join(section.heading_path) == target:
+        if section.glued:
+            continue  # not a section to the index: the passage is still in the one before
+        if _crumb(section.index_path) == target:
             count += 1
             result = count
         else:
@@ -199,9 +256,9 @@ def site_url(page: str, release: str) -> str:
         return url
     page_release = front_matter_value(page, "release") or release
     if page_release == "brazil":
-        return f"{_SITE}brazil/{url[len(_SITE):]}"
+        return f"{_SITE}brazil/{url[len(_SITE) :]}"
     if page_release == "australia" and _AU_DELTA.fullmatch(first):
-        return f"{_SITE}australia/{url[len(_SITE):]}"
+        return f"{_SITE}australia/{url[len(_SITE) :]}"
     return url
 
 
@@ -275,4 +332,10 @@ def front_matter_title(text: str) -> str:
 def count_sections(text: str, heading_breadcrumb: str) -> int:
     """How many sections have exactly this breadcrumb."""
     target = heading_breadcrumb.strip()
-    return sum(1 for s in split_into_sections(text) if " > ".join(s.heading_path) == target)
+    walked = split_into_sections(text)
+    seen = sum(
+        1
+        for s in walked
+        if not s.glued and target in (_crumb(s.index_path), _crumb(s.heading_path))
+    )
+    return seen or sum(1 for s in walked if s.glued and _crumb(s.heading_path) == target)

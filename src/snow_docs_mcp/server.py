@@ -104,7 +104,9 @@ When answering a ServiceNow question with them:
 7. For a question about what changes between Australia and Brazil (an upgrade, what's new),
    call snow_docs_compare first. Lead with its release notes, then the changed sections; cite
    ids as usual, and say that small rewordings are not listed.
-8. Before writing or reviewing ServiceNow script code, check each class and method with
+8. Writing or reviewing ServiceNow script code is a docs question too: search for what the
+   script relies on (when it runs, what the platform does by default) and do not state such
+   behavior from memory, in the answer or in code comments. Check each class and method with
    snow_docs_api. If it answers not_found, do not use that method; say so, and offer the
    closest documented one. After writing or changing a script, pass the whole script to
    snow_docs_check_script and act on what it finds before showing the code.
@@ -136,7 +138,10 @@ Australia to Brazil. Use only the ServiceNow docs tools; do not fill gaps from m
    (abbreviation, old name). If there is still none, say that the release notes have no page for
    this product, and stop.
 2. For each page, call snow_docs_read with the passage's id cut off after "::" (this returns
-   the whole page). If the result is truncated, read it again with max_chars 100000.
+   the whole page). If the result is truncated, read it again with max_chars 100000. If you
+   still do not have every part of the page in front of you, read it part by part: the id
+   of a part is the page id followed by the page title, " > " and the part's heading (for
+   example "… > New features"). Do not write the checklist from a page you read only partly.
 3. Write the checklist in these parts, in this order, one line per item, each ending with its
    citation [id]:
    - Before and after the upgrade (the page's "Important information for upgrading")

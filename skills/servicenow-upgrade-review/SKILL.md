@@ -17,7 +17,10 @@ Australia to Brazil. Use only the ServiceNow docs tools; do not fill gaps from m
    (abbreviation, old name). If there is still none, say that the release notes have no page for
    this product, and stop.
 2. For each page, call snow_docs_read with the passage's id cut off after "::" (this returns
-   the whole page). If the result is truncated, read it again with max_chars 100000.
+   the whole page). If the result is truncated, read it again with max_chars 100000. If you
+   still do not have every part of the page in front of you, read it part by part: the id
+   of a part is the page id followed by the page title, " > " and the part's heading (for
+   example "… > New features"). Do not write the checklist from a page you read only partly.
 3. Write the checklist in these parts, in this order, one line per item, each ending with its
    citation [id]:
    - Before and after the upgrade (the page's "Important information for upgrading")

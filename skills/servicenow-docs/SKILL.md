@@ -24,7 +24,9 @@ Answer ServiceNow questions from the official product documentation, not from me
    new), call `snow_docs_compare` with the topic, or with `page` for one page. Lead with
    the release notes it returns, then the changed sections, and say that small
    rewordings are not listed.
-7. Before writing or reviewing ServiceNow script code, check each class and method with
+7. Writing or reviewing ServiceNow script code is a docs question too: search for what the
+   script relies on (when it runs, what the platform does by default) and do not state such
+   behavior from memory, in the answer or in code comments. Check each class and method with
    `snow_docs_api` (for example `GlideRecord.addEncodedQuery`, or `gs` for all of
    GlideSystem). If it answers `not_found`, do not use that method; say so, and offer
    the closest documented one. After writing or changing a script, pass the whole
