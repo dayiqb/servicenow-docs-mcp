@@ -36,20 +36,20 @@ def call(tool: str, **args):
     return result.structured_content
 
 
-def test_the_view_tools_and_browse_point_at_the_panel(docs):
+def test_the_view_tools_point_at_the_panel_and_the_finding_tools_do_not(docs):
     async def go():
         async with Client(mcp) as client:
             return await client.list_tools()
 
     ui = {t.name: (t.meta or {}).get("ui", {}).get("resourceUri") for t in anyio.run(go).tools}
     assert {n for n, uri in ui.items() if uri == PANEL_URI} == {
-        "snow_docs_search",
         "snow_docs_compare",
-        "snow_docs_browse",
         "snow_docs_open",
         "snow_docs_diagram",
     }
-    assert ui["snow_docs_read"] is None and ui["snow_docs_api"] is None  # Claude's own reading
+    # Claude's own finding and reading: many calls for one answer, and no panel for any of them
+    for name in ("snow_docs_search", "snow_docs_browse", "snow_docs_read", "snow_docs_api"):
+        assert ui[name] is None
 
 
 def test_open_names_the_page_and_its_sections_without_returning_the_text(docs):

@@ -36,18 +36,15 @@ def _run(coro_fn):
     return anyio.run(go)
 
 
-def test_the_tools_that_show_something_point_at_the_panel():
+def test_only_the_tools_that_show_something_point_at_the_panel():
+    """Searching and browsing are how Claude finds its way; it does them many times for one
+    answer. A panel for each of them fills the conversation with lists nobody asked to see, so
+    the panel is drawn only for what is meant to be looked at."""
     tools = _run(lambda c: c.list_tools()).tools
     with_ui = {
         t.name for t in tools if (t.meta or {}).get("ui", {}).get("resourceUri") == PANEL_URI
     }
-    assert with_ui == {
-        "snow_docs_search",
-        "snow_docs_compare",
-        "snow_docs_browse",
-        "snow_docs_open",
-        "snow_docs_diagram",
-    }
+    assert with_ui == {"snow_docs_compare", "snow_docs_open", "snow_docs_diagram"}
 
 
 def test_the_panel_address_follows_what_the_panel_holds():

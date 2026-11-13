@@ -148,22 +148,16 @@ the same check itself with the `snow_docs_check_script` tool.
 
 ## The panel in Claude Desktop
 
-In Claude Desktop, results can appear in a panel next to Claude's answer, so you can read the
-source yourself. It follows Claude's light or dark theme and your language (English or
-Norwegian), works with the keyboard, and needs no network: it is one page inside the extension.
-It stays small in the conversation: a result is a tree of closed rows that open in place, and
-long text scrolls inside the panel.
+In Claude Desktop, a panel appears in the conversation when you ask to see something: a page, a
+diagram, or what changed between two releases. Claude's own searching and browsing draw
+nothing; you get the answer. The panel follows Claude's light or dark theme and your language
+(English or Norwegian), works with the keyboard, and needs no network: it is one page inside
+the extension. Long text scrolls inside the panel.
 
-- **Search results.** The hits stand under their product area, one row each with its rank, page
-  and section. A row opens to the passage. *Read section* opens the full section in place;
-  *Open docs* opens the page on servicenow.com. *Switch to Brazil*, on the line under the
-  title, runs the same search in the other release.
 - **A page as a document.** Ask *"show me that page"*: the page is laid out for reading, with
   its sections listed beside it, notes set apart, and tables and code as they should be. A
   numbered procedure can also be shown as a flow, one box per step. *Switch to Brazil* shows the
   same page in the other release.
-- **Browse.** Product areas, folders and pages as lists you click through; a page opens as a
-  document.
 - **Diagrams.** Ask *"draw the major incident process as swimlanes"*: Claude takes the steps
   from the docs and the panel draws a flow, or swimlanes when several roles take part. Every
   step lists the passage it comes from, and you can open it.
@@ -171,8 +165,9 @@ long text scrolls inside the panel.
   how many of its sections changed; it opens to those sections, and a section opens to the two
   releases side by side, with the words that differ marked.
 
-Claude Code and other clients without panels get the same results as text; a diagram comes as
-Mermaid text there.
+Claude Desktop draws the panel in chat, in Cowork and in the Code tab. A client without panels,
+such as Claude Code in a terminal, gets the same results as text; a diagram comes as Mermaid
+text there.
 
 ## In Claude Code
 

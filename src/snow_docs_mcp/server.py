@@ -230,9 +230,12 @@ async def _lifespan(_server: MCPServer) -> AsyncIterator[dict]:
     yield {}
 
 
-# The results panel (MCP Apps): a host that supports it shows this page next to the result of
-# a search or a comparison; every other client just gets the result. One self-contained HTML
-# file, because the host's sandbox allows no external script, style, font or request.
+# The panel (MCP Apps): a host that supports it shows this page with the result of a tool that
+# is meant to be looked at: a page opened as a document, a diagram, a comparison. Searching and
+# browsing get none: Claude does them many times for one answer, and a panel for each fills the
+# conversation with lists nobody asked for. Every other client just gets the result. One
+# self-contained HTML file, because the host's sandbox allows no external script, style, font
+# or request.
 def panel_html() -> str:
     return (Path(__file__).parent / "ui" / "panel.html").read_text(encoding="utf-8")
 
@@ -539,7 +542,7 @@ def _unknown_release(value: str) -> str:
 # --- tools --------------------------------------------------------------------------------
 
 
-@mcp.tool(name="snow_docs_search", annotations=READ_ONLY, meta=_PANEL_META)
+@mcp.tool(name="snow_docs_search", annotations=READ_ONLY)
 def snow_docs_search(
     query: str, limit: int = 5, product: str | None = None, release: str | None = None
 ) -> SearchResult:
@@ -1414,7 +1417,7 @@ def _page_titles(db) -> dict[str, str]:
     return store.per_index(_titles, db, lambda path: store.titles_by_path(path))
 
 
-@mcp.tool(name="snow_docs_browse", annotations=READ_ONLY, meta=_PANEL_META)
+@mcp.tool(name="snow_docs_browse", annotations=READ_ONLY)
 def snow_docs_browse(
     product: str | None = None,
     folder: str | None = None,
