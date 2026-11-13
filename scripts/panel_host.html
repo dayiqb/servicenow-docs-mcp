@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Panel preview (stand-in host)</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { margin: 0; font: 14px/1.5 system-ui, sans-serif; background: light-dark(#f1f0ec, #151514); color: light-dark(#222, #eee); }
+  body.dark { color-scheme: dark; } body.light { color-scheme: light; }
+  form { display: flex; flex-wrap: wrap; gap: 12px 20px; padding: 12px 16px; border-bottom: 1px solid light-dark(#ddd, #333); }
+  label { display: inline-flex; gap: 6px; align-items: center; }
+  main { padding: 20px 16px; }
+  iframe { display: block; border: 1px solid light-dark(#d9d7d0, #3a3936); border-radius: 12px; background: light-dark(#fff, #1f1e1d); width: 100%; max-width: var(--w, 720px); height: 300px; }
+  pre { margin: 12px 0 0; font-size: 12px; white-space: pre-wrap; color: light-dark(#666, #999); max-width: 720px; }
+</style>
+</head>
+<body class="light">
+<!-- A stand-in for a host that supports MCP Apps, for looking at the panel during development.
+     It answers the panel's requests the way a host does and plays back a tool call:
+       /scripts/panel_host.html                  built-in sample data
+       /scripts/panel_host.html?samples=<dir>    real results saved as <dir>/search-au.json,
+                                                 search-br.json, compare.json, compare-page.json, read.json
+     Serve the repository root (python -m http.server) and open it in a browser. -->
+<form id="controls">
+  <label>View <select name="view">
+    <option value="search">Search</option><option value="empty">Search, no hits</option>
+    <option value="compare">Compare a topic</option><option value="compare-page">Compare a page</option>
+    <option value="error">Error</option><option value="loading">Loading</option></select></label>
+  <label>Theme <select name="theme"><option>light</option><option>dark</option></select></label>
+  <label>Language <select name="locale"><option value="en-US">English</option><option value="nb-NO">Norsk</option></select></label>
+  <label>Width <select name="width"><option value="720px">720</option><option value="420px">420</option><option value="1000px">1000</option></select></label>
+</form>
+<main><iframe id="view" title="Panel" sandbox="allow-scripts allow-same-origin"></iframe><pre id="log"></pre></main>
+<script>
+const params = new URLSearchParams(location.search);
+const form = document.getElementById("controls"), frame = document.getElementById("view"), log = document.getElementById("log");
+for (const [k, v] of params) if (form.elements[k]) form.elements[k].value = v;
+
+const hit = (n, product, title, section, snippet) => ({
+  id: `australia:markdown/${product}/page-${n}.md::${title} > ${section}`, release: "australia", page_title: title,
+  url: `https://www.servicenow.com/docs/r/${product}/page-${n}.html`, heading_path: `${title} > ${section}`, product, snippet, score: 3 - n / 3 });
+const BUILT_IN = {
+  "search-au": { ok: true, release: "australia", snapshot: "2026-11-06", message: "", hits: [
+    hit(1, "it-service-management", "Define priority lookup rules", "Procedure", "Priority lookup rules set the priority of a record from its impact and urgency. Navigate to the rules, open the row for a combination, and choose the priority it should give."),
+    hit(2, "it-service-management", "Incident priority", "How priority is calculated", "By default, priority is read from a matrix of impact and urgency. An administrator can change what each combination gives."),
+    hit(3, "customer-service-management", "Case priority", "Before you begin", "Role required: admin. The case priority matrix is separate from the incident matrix and is maintained per table.")] },
+  "search-br": { ok: true, release: "brazil", snapshot: "2026-11-06", message: "", hits: [
+    hit(1, "it-service-management", "Define priority lookup rules", "Procedure", "Priority lookup rules set the priority of a record from its impact and urgency, per assignment group when the group has its own rules.")].map((h) => ({ ...h, release: "brazil", id: h.id.replace("australia:", "brazil:") })) },
+  "compare": { ok: true, message: "", australia_snapshot: "2026-11-06", brazil_snapshot: "2026-11-06",
+    release_notes: [{ ...hit(1, "delta-australia-brazil", "Combined Incident Management release notes for upgrades from Australia to Brazil", "New features", "Priority lookup rules can now be set per assignment group."), release: "brazil" }],
+    more_release_notes: [{ id: "brazil:markdown/delta-australia-brazil/a.md::", application: "Service Operations Workspace for ITSM" }, { id: "brazil:markdown/delta-australia-brazil/b.md::", application: "Major Incident Management" }],
+    changed_pages: [], only_in_australia: [], only_in_brazil: [] },
+  "compare-page": { ok: true, message: "", australia_snapshot: "2026-11-06", brazil_snapshot: "2026-11-06", release_notes: [], more_release_notes: [],
+    changed_pages: [{ page: "markdown/it-service-management/priority.md", page_title: "Define priority lookup rules", product: "it-service-management", minor_changes: 2, sections_left_out: 0,
+      sections: [
+        { heading_path: "Define priority lookup rules > Procedure", change: "changed", changed_words: 14, australia_id: "australia:markdown/x.md::A", brazil_id: "brazil:markdown/x.md::A",
+          australia_excerpt: "…open the row for a combination, and choose the priority it should give. The rule applies to every assignment group.",
+          brazil_excerpt: "…open the row for a combination, and choose the priority it should give. A group with its own rules uses those instead of the shared ones." },
+        { heading_path: "Define priority lookup rules > Rules per assignment group", change: "added", changed_words: 31, australia_id: "", brazil_id: "brazil:markdown/x.md::B",
+          australia_excerpt: "", brazil_excerpt: "An assignment group can have its own priority lookup rules. Add the group to a rule set, then define the combinations that differ from the shared rules." }] }],
+    only_in_australia: [], only_in_brazil: ["markdown/it-service-management/new.md"] },
+  "read": { ok: true, message: "", id: "x", title: "Define priority lookup rules", url: "", heading_path: "Procedure", truncated: false,
+    content: "## Procedure\n\nRole required: **admin**\n\n1.  Navigate to **All** > **System Policy** > **Priority Lookup Rules**.\n2.  Open the row for a combination of impact and urgency.\n3.  Choose the priority, then select **Update**.\n\n|Impact|Urgency|Priority|\n|------|-------|--------|\n|1 - High|1 - High|1 - Critical|\n|2 - Medium|1 - High|2 - High|\n\n```\nvar gr = new GlideRecord('dl_u_priority');\ngr.query();\n```\n\nSee [Priority](https://www.servicenow.com/docs/r/priority.html) for the defaults." },
+};
+async function sample(name) {
+  if (!params.get("samples")) return BUILT_IN[name];
+  try { return await (await fetch(`${params.get("samples")}/${name}.json`)).json(); } catch { return BUILT_IN[name]; }
+}
+const TOOL = { search: "snow_docs_search", empty: "snow_docs_search", error: "snow_docs_search", loading: "snow_docs_search", compare: "snow_docs_compare", "compare-page": "snow_docs_compare" };
+const ARGS = { search: { query: "how is incident priority calculated", limit: 5 }, empty: { query: "zebra migration patterns", limit: 5 }, error: { query: "incident", limit: 5 },
+  loading: { query: "how is incident priority calculated", limit: 5 }, compare: { query: "AI Control Tower", limit: 5 }, "compare-page": { page: "markdown/release-notes/ai-control-tower-rn.md" } };
+const send = (message) => frame.contentWindow.postMessage(message, "*");
+const wrap = (data) => ({ content: [{ type: "text", text: JSON.stringify(data) }], structuredContent: data });
+const note = (text) => { log.textContent = (text + "\n" + log.textContent).slice(0, 1500); };
+
+window.addEventListener("message", async (event) => {
+  if (event.source !== frame.contentWindow) return;
+  const m = event.data, view = form.elements.view.value;
+  if (!m || m.jsonrpc !== "2.0") return;
+  if (m.method === "ui/initialize") {
+    send({ jsonrpc: "2.0", id: m.id, result: { protocolVersion: "2026-01-26", hostInfo: { name: "panel-preview", version: "1" }, hostCapabilities: {},
+      hostContext: { theme: form.elements.theme.value, locale: form.elements.locale.value, displayMode: "inline", toolInfo: { tool: { name: TOOL[view] } } } } });
+  } else if (m.method === "ui/notifications/initialized") {
+    send({ jsonrpc: "2.0", method: "ui/notifications/tool-input", params: { arguments: ARGS[view] } });
+    if (view === "loading") return;
+    const result = view === "error" ? { ok: false, message: "The australia docs are still being set up. Downloading the docs index: 41%. Try again in a minute or two; snow_docs_status shows progress." }
+      : view === "empty" ? { ok: true, release: "australia", snapshot: "2026-11-06", message: "", hits: [] }
+      : await sample(view === "search" ? "search-au" : view);
+    setTimeout(() => send({ jsonrpc: "2.0", method: "ui/notifications/tool-result", params: wrap(result) }), 250);
+  } else if (m.method === "ui/notifications/size-changed") {
+    frame.style.height = Math.min(Math.max(m.params.height + 2, 80), 4000) + "px";
+  } else if (m.method === "tools/call") {
+    note(`tools/call ${m.params.name} ${JSON.stringify(m.params.arguments).slice(0, 120)}`);
+    const data = m.params.name === "snow_docs_read" ? await sample("read") : await sample(m.params.arguments.release === "brazil" ? "search-br" : "search-au");
+    setTimeout(() => send({ jsonrpc: "2.0", id: m.id, result: wrap(data) }), 300);
+  } else if (m.method === "ui/open-link") {
+    note(`ui/open-link ${m.params.url}`); send({ jsonrpc: "2.0", id: m.id, result: {} });
+  } else if (m.id !== undefined) send({ jsonrpc: "2.0", id: m.id, result: {} });
+});
+function load() {
+  document.body.className = form.elements.theme.value;
+  document.documentElement.style.setProperty("--w", form.elements.width.value);
+  frame.src = "/src/snow_docs_mcp/ui/panel.html?" + Date.now();
+}
+form.addEventListener("change", load);
+load();
+</script>
+</body>
+</html>

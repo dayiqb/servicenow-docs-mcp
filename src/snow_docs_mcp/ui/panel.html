@@ -1,0 +1,553 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>ServiceNow Docs</title>
+<style>
+/* One self-contained page: the host's sandbox allows nothing external. Colors and type come
+   from the host's standard variables when it sends them; the values here are the fallback.
+
+   Type: three sizes for text (12 meta, 14 secondary, 16 body) and one for the title (20),
+   three weights (400, 500, 600). Space: a 4/8 grid (4, 8, 12, 16, 24, 32). Nothing is there
+   for decoration: color appears only where it tells the two releases apart. */
+:root {
+  color-scheme: light dark;
+  --bg: var(--color-background-primary, light-dark(#ffffff, #1f1e1d));
+  --bg-quiet: var(--color-background-secondary, light-dark(#f6f5f1, #282725));
+  --ink: var(--color-text-primary, light-dark(#1b1b19, #f2f1ed));
+  --ink-2: var(--color-text-secondary, light-dark(#5c5b56, #b4b2aa));
+  --line: var(--color-border-primary, light-dark(#e3e1da, #3b3a36));
+  --ring: var(--color-ring-primary, light-dark(#1f6feb, #8ab4ff));
+  --sans: var(--font-sans, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif);
+  --mono: var(--font-mono, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
+  /* Text quoted from the docs is set in a reading face, so source and interface never blur. */
+  --serif: "Iowan Old Style", Charter, "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+  /* The two releases keep one color each, in the comparison only. */
+  --au: light-dark(#8a5300, #efb35c);
+  --au-wash: light-dark(#fbefd9, #3a2c12);
+  --br: light-dark(#136c3b, #7ad39b);
+  --br-wash: light-dark(#e0f4e7, #15331f);
+  --radius: var(--border-radius-md, 8px);
+  --radius-sm: var(--border-radius-sm, 6px);
+  --meta: 0.75rem; --secondary: 0.875rem; --body: 1rem; --title: 1.25rem;
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s6: 24px; --s8: 32px;
+  --prose: 68ch;
+}
+* { box-sizing: border-box; }
+html { font-size: 16px; -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; padding: var(--s4) var(--s6) var(--s6);
+  background: var(--bg); color: var(--ink);
+  font: 400 var(--body)/1.55 var(--sans); font-feature-settings: "kern", "liga", "calt";
+  text-rendering: optimizeLegibility; overflow-wrap: break-word;
+}
+h1, h2, h3, h4, p, ol, ul, blockquote { margin: 0; padding: 0; }
+ol, ul { list-style: none; }
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; text-align: inherit; }
+:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; border-radius: var(--radius-sm); }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* Head: what was asked, how much came back, and which release it is from. */
+.head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: var(--s3) var(--s6);
+  padding-bottom: var(--s4); border-bottom: 1px solid var(--line); }
+.head-text { flex: 1 1 16rem; min-width: 0; }
+.head h1 { font: 600 var(--title)/1.2 var(--sans); text-wrap: balance; }
+.head .count { margin-top: var(--s1); color: var(--ink-2); font-size: var(--secondary); line-height: 1.4; }
+.switch { display: inline-flex; padding: 2px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg-quiet); }
+.switch label { position: relative; }
+.switch input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
+.switch span { display: block; padding: var(--s1) var(--s3); border-radius: var(--radius-sm); font-size: var(--secondary); font-weight: 500; line-height: 1.4; color: var(--ink-2); }
+.switch input:checked + span { background: var(--bg); color: var(--ink); box-shadow: 0 0 0 1px var(--line); }
+.switch input:focus-visible + span { outline: 2px solid var(--ring); outline-offset: 2px; }
+.switch input:disabled + span { opacity: 0.55; }
+.legend { display: flex; gap: var(--s4); color: var(--ink-2); font-size: var(--secondary); line-height: 1.4; }
+.key { display: inline-block; width: 8px; height: 8px; margin-right: var(--s2); border-radius: 2px; }
+.key.australia { background: var(--au); } .key.brazil { background: var(--br); }
+
+/* Entries: one ranked list, best match first. The number is the rank. */
+.entries > li { display: grid; grid-template-columns: var(--s6) minmax(0, 1fr); column-gap: var(--s2);
+  padding: var(--s6) 0; border-bottom: 1px solid var(--line); }
+.entries > li > * { grid-column: 2; }
+.entries .rank { grid-column: 1; grid-row: 1; color: var(--ink-2); font: 400 var(--secondary)/1.5 var(--sans); font-variant-numeric: tabular-nums; padding-top: 1px; }
+.entries.plain > li { grid-template-columns: minmax(0, 1fr); } .entries.plain > li > * { grid-column: 1; }
+.entry h2, .entry h3 { font: 600 var(--body)/1.25 var(--sans); }
+.where { margin-top: var(--s1); color: var(--ink-2); font-size: var(--secondary); line-height: 1.4; }
+.where .sep { margin: 0 var(--s2); }
+.quote { margin-top: var(--s2); max-width: var(--prose); font: 400 var(--body)/1.55 var(--serif); }
+.acts { display: flex; flex-wrap: wrap; gap: var(--s2); margin-top: var(--s4); }
+.act { min-height: 32px; padding: var(--s1) var(--s3); border: 1px solid var(--line); border-radius: var(--radius-sm);
+  font-size: var(--secondary); font-weight: 500; line-height: 1.4; }
+.act:hover { background: var(--bg-quiet); }
+.act[aria-expanded="true"] { background: var(--bg-quiet); border-color: var(--ink-2); }
+.act[disabled] { opacity: 0.55; cursor: progress; }
+
+/* Reader: the full section, opened in place. */
+.reader { margin-top: var(--s4); border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg-quiet); }
+.reader-body { max-height: 28rem; overflow: auto; padding: var(--s4) var(--s6); font: 400 var(--body)/1.55 var(--serif); }
+.reader-body > * + * { margin-top: var(--s3); }
+.reader-body h3, .reader-body h4 { font: 600 var(--body)/1.25 var(--sans); margin-top: var(--s6); }
+.reader-body p, .reader-body li { max-width: var(--prose); }
+.reader-body ul, .reader-body ol { padding-left: var(--s6); } .reader-body ul { list-style: disc; } .reader-body ol { list-style: decimal; }
+.reader-body li + li { margin-top: var(--s1); }
+.reader-body code { font: var(--secondary)/1.4 var(--mono); padding: 1px var(--s1); border-radius: 4px; background: color-mix(in oklab, var(--ink) 9%, transparent); }
+.reader-body pre { overflow: auto; padding: var(--s3) var(--s4); border-radius: var(--radius-sm); background: color-mix(in oklab, var(--ink) 8%, transparent); font: var(--secondary)/1.5 var(--mono); }
+.reader-body pre code { padding: 0; background: none; }
+.reader-body table { border-collapse: collapse; font: var(--secondary)/1.5 var(--sans); width: 100%; }
+.reader-body th, .reader-body td { padding: var(--s2) var(--s3); border: 1px solid var(--line); text-align: left; vertical-align: top; }
+.reader-body th { font-weight: 600; background: color-mix(in oklab, var(--ink) 5%, transparent); }
+.reader-body a { color: inherit; text-decoration: underline; text-decoration-color: var(--ink-2); text-underline-offset: 2px; }
+.reader-note { padding: var(--s2) var(--s6); border-top: 1px solid var(--line); color: var(--ink-2); font-size: var(--secondary); }
+
+/* Compare: Australia beside Brazil, the words that differ marked in each. */
+.part { margin-top: var(--s8); }
+.part > h2 { font: 600 var(--secondary)/1.4 var(--sans); color: var(--ink-2); padding-bottom: var(--s2); border-bottom: 1px solid var(--line); }
+.page { padding: var(--s6) 0; border-bottom: 1px solid var(--line); }
+.page > h3 { font: 600 var(--body)/1.25 var(--sans); }
+.change { margin-top: var(--s6); }
+.change-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s2); }
+.change-head h4 { font: 500 var(--secondary)/1.4 var(--sans); }
+.kind { font-size: var(--secondary); line-height: 1.4; color: var(--ink-2); }
+.kind.added { color: var(--br); } .kind.removed { color: var(--au); }
+.sides { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: var(--s4); margin-top: var(--s2); }
+.side { border: 1px solid var(--line); border-radius: var(--radius); }
+.side .rel { display: block; padding: var(--s2) var(--s4); border-bottom: 1px solid var(--line); font: 500 var(--meta)/1.4 var(--sans); color: var(--ink-2); }
+.side p { padding: var(--s3) var(--s4) var(--s4); font: 400 var(--body)/1.55 var(--serif); }
+del, ins { text-decoration: none; border-radius: 3px; padding: 0 2px; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+del { background: var(--au-wash); color: var(--au); } ins { background: var(--br-wash); color: var(--br); }
+.names { display: flex; flex-wrap: wrap; gap: var(--s2); margin-top: var(--s3); }
+.foot { margin-top: var(--s4); color: var(--ink-2); font-size: var(--secondary); line-height: 1.4; }
+.foot p + p { margin-top: var(--s1); }
+
+/* States */
+.state { padding: var(--s6) 0; color: var(--ink-2); font-size: var(--secondary); }
+.state strong { display: block; color: var(--ink); font-size: var(--body); font-weight: 600; margin-bottom: var(--s1); }
+.notice { margin-top: var(--s3); padding: var(--s2) var(--s3); border-radius: var(--radius-sm); background: var(--bg-quiet); border: 1px solid var(--line); font-size: var(--secondary); }
+.pulse { display: inline-block; width: 8px; height: 8px; margin-right: var(--s2); border-radius: 50%; background: var(--ink-2); animation: pulse 1.1s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: 0.25; } }
+@media (max-width: 30rem) { body { padding: var(--s3) var(--s4) var(--s4); } .entries > li { grid-template-columns: minmax(0, 1fr); } .entries > li > *, .entries .rank { grid-column: 1; grid-row: auto; } }
+@media (prefers-reduced-motion: reduce) { .pulse { animation: none; } * { scroll-behavior: auto !important; } }
+@media (forced-colors: active) { .key { forced-color-adjust: none; } .act, .side, .reader { border-color: CanvasText; } }
+</style>
+</head>
+<body>
+<main id="app"></main>
+<div id="live" class="sr" role="status" aria-live="polite"></div>
+<script>
+(() => {
+"use strict";
+
+// ---- words -------------------------------------------------------------------------------
+const WORDS = {
+  en: {
+    searching: "Searching the docs…", comparing: "Comparing Australia and Brazil…", reading: "Reading…",
+    passages: (n) => (n === 1 ? "1 passage" : n + " passages"), fromDocs: (r) => "from the " + r + " docs",
+    snapshot: (d) => "snapshot " + d, release: "Release", read: "Read section", hide: "Hide section",
+    open: "Open docs", readPage: "Read page", noHits: "No passages matched", tryOther: "Try other words, or search without a product area.",
+    failed: "Something went wrong", cancelled: "The search was stopped.", cut: "This section is cut short. Open the docs page for the rest.",
+    linkBlocked: (u) => "Could not open the link. Copy it: " + u, outside: "ServiceNow Docs",
+    outsideHint: "This panel shows search results when Claude uses the ServiceNow docs tools.",
+    whatChanged: "What changed from Australia to Brazil", notes: "Release notes", moreNotes: "More release notes by name",
+    changedDocs: "Changed in the documentation", noChanges: "No changes found in the documentation pages on this topic.",
+    added: "Added", removed: "Removed", changed: "Changed", small: (n) => (n === 1 ? "1 small rewording is not listed." : n + " small rewordings are not listed."),
+    leftOut: (n) => (n === 1 ? "1 more section is not shown." : n + " more sections are not shown."),
+    onlyIn: (r, n) => (n === 1 ? "1 page is only in the " + r + " docs." : n + " pages are only in the " + r + " docs."),
+    readIn: (r) => "Read in " + r, sectionOf: (s) => "Section: " + s,
+  },
+  nb: {
+    searching: "Søker i dokumentasjonen…", comparing: "Sammenligner Australia og Brazil…", reading: "Leser…",
+    passages: (n) => (n === 1 ? "1 avsnitt" : n + " avsnitt"), fromDocs: (r) => "fra dokumentasjonen for " + r,
+    snapshot: (d) => "øyeblikksbilde " + d, release: "Release", read: "Les seksjonen", hide: "Skjul seksjonen",
+    open: "Åpne dokumentasjonen", readPage: "Les siden", noHits: "Ingen avsnitt passet", tryOther: "Prøv andre ord, eller søk uten produktområde.",
+    failed: "Noe gikk galt", cancelled: "Søket ble stoppet.", cut: "Seksjonen er kuttet. Åpne siden i dokumentasjonen for resten.",
+    linkBlocked: (u) => "Kunne ikke åpne lenken. Kopier den: " + u, outside: "ServiceNow Docs",
+    outsideHint: "Dette panelet viser søketreff når Claude bruker verktøyene for ServiceNow-dokumentasjonen.",
+    whatChanged: "Hva som er endret fra Australia til Brazil", notes: "Release notes", moreNotes: "Flere release notes etter navn",
+    changedDocs: "Endret i dokumentasjonen", noChanges: "Ingen endringer funnet i dokumentasjonssidene om dette temaet.",
+    added: "Lagt til", removed: "Fjernet", changed: "Endret", small: (n) => (n === 1 ? "1 liten omskriving er ikke listet." : n + " små omskrivinger er ikke listet."),
+    leftOut: (n) => (n === 1 ? "1 seksjon til vises ikke." : n + " seksjoner til vises ikke."),
+    onlyIn: (r, n) => (n === 1 ? "1 side finnes bare i dokumentasjonen for " + r + "." : n + " sider finnes bare i dokumentasjonen for " + r + "."),
+    readIn: (r) => "Les i " + r, sectionOf: (s) => "Seksjon: " + s,
+  },
+};
+let lang = "en";
+const t = (key, ...args) => { const w = WORDS[lang][key] ?? WORDS.en[key]; return typeof w === "function" ? w(...args) : w; };
+const RELEASES = ["australia", "brazil"];
+const NAME = { australia: "Australia", brazil: "Brazil" };
+
+// ---- small DOM helpers (text only: nothing from a tool result is ever parsed as markup) ----
+const app = document.getElementById("app");
+const live = document.getElementById("live");
+function el(tag, attrs, ...kids) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v === false || v == null) continue;
+    if (k === "class") node.className = v;
+    else if (k === "text") node.textContent = v;
+    else if (k.startsWith("on")) node.addEventListener(k.slice(2), v);
+    else node.setAttribute(k, v === true ? "" : v);
+  }
+  for (const kid of kids.flat()) if (kid != null && kid !== false) node.append(kid);
+  return node;
+}
+const say = (text) => { live.textContent = ""; requestAnimationFrame(() => { live.textContent = text; }); };
+const sentence = (text) => { const s = String(text || "").trim(); return s ? s[0].toUpperCase() + s.slice(1) : s; };
+function day(iso) {
+  const d = new Date(iso + "T00:00:00");
+  if (Number.isNaN(d.getTime())) return iso;
+  return new Intl.DateTimeFormat(lang === "nb" ? "nb-NO" : "en-GB", { day: "numeric", month: "short", year: "numeric" }).format(d);
+}
+const ACRONYMS = { it: "IT", hr: "HR", csm: "CSM", cmdb: "CMDB", api: "API", ai: "AI", ui: "UI", grc: "GRC", itom: "ITOM", itsm: "ITSM" };
+const areaName = (folder) => /^delta-/.test(String(folder)) ? t("notes") : String(folder || "").split("-").filter(Boolean)
+  .map((w, i) => ACRONYMS[w] || (i === 0 || w.length > 3 ? w[0].toUpperCase() + w.slice(1) : w)).join(" ");
+// Docs text as plain words: no markdown emphasis marks, escapes or entities.
+const plainText = (s) => String(s || "").replace(/\*\*([^*]*)\*\*/g, "$1").replace(/\\([!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~])/g, "$1")
+  .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
+
+// ---- the bridge to the host (JSON-RPC over postMessage, MCP Apps) -----------------------
+const hosted = window.parent !== window;
+const pending = new Map();
+let nextId = 1;
+const post = (message) => window.parent.postMessage(message, "*");
+const notify = (method, params) => post({ jsonrpc: "2.0", method, params: params || {} });
+function request(method, params) {
+  return new Promise((resolve, reject) => {
+    const id = nextId++;
+    pending.set(id, { resolve, reject });
+    post({ jsonrpc: "2.0", id, method, params: params || {} });
+  });
+}
+function unwrap(result) {
+  if (result && result.structuredContent) return result.structuredContent;
+  const text = ((result && result.content) || []).find((c) => c && c.type === "text");
+  try { return JSON.parse(text.text); } catch { return { ok: false, message: (text && text.text) || t("failed") }; }
+}
+const callTool = (name, args) => request("tools/call", { name, arguments: args }).then(unwrap);
+
+const state = { args: {}, results: {}, release: "", tool: "" };
+const fromHost = {
+  "ui/notifications/tool-input": (p) => { state.args = (p && p.arguments) || {}; state.results = {}; busy(); },
+  "ui/notifications/tool-result": (p) => show(unwrap(p)),
+  "ui/notifications/tool-cancelled": () => message(t("cancelled")),
+  "ui/notifications/host-context-changed": (p) => useContext(p),
+};
+window.addEventListener("message", (event) => {
+  if (event.source !== window.parent) return;
+  const m = event.data;
+  if (!m || m.jsonrpc !== "2.0") return;
+  if (m.method) {
+    if (m.id !== undefined) post({ jsonrpc: "2.0", id: m.id, result: {} }); // ping, teardown
+    if (fromHost[m.method]) fromHost[m.method](m.params || {});
+  } else if (pending.has(m.id)) {
+    const waiting = pending.get(m.id);
+    pending.delete(m.id);
+    if (m.error) waiting.reject(m.error); else waiting.resolve(m.result);
+  }
+});
+
+function useContext(context) {
+  if (!context) return;
+  const rootStyle = document.documentElement.style;
+  if (context.theme === "light" || context.theme === "dark") rootStyle.colorScheme = context.theme;
+  const variables = (context.styles && context.styles.variables) || {};
+  for (const [key, value] of Object.entries(variables)) {
+    if (/^--[\w-]+$/.test(key) && typeof value === "string") rootStyle.setProperty(key, value);
+  }
+  const fonts = context.styles && context.styles.css && context.styles.css.fonts;
+  if (typeof fonts === "string" && !document.getElementById("host-fonts")) {
+    document.head.append(el("style", { id: "host-fonts", text: fonts }));
+  }
+  const tool = context.toolInfo && context.toolInfo.tool && context.toolInfo.tool.name;
+  if (typeof tool === "string") state.tool = tool;
+  if (typeof context.locale === "string") {
+    lang = /^(nb|nn|no)\b/i.test(context.locale) ? "nb" : "en";
+    document.documentElement.lang = lang;
+  }
+}
+
+// ---- states ------------------------------------------------------------------------------
+function busy() {
+  const comparing = state.tool === "snow_docs_compare" || "page" in state.args;
+  const text = comparing ? t("comparing") : t("searching");
+  app.replaceChildren(el("p", { class: "state" }, el("span", { class: "pulse", "aria-hidden": "true" }), text));
+  say(text);
+}
+function message(title, detail) {
+  app.replaceChildren(el("div", { class: "state" }, el("strong", { text: title }), detail ? el("span", { text: detail }) : null));
+  say(title);
+}
+
+// ---- reading a section in place ------------------------------------------------------------
+function inline(text, into) {
+  const pattern = /(`[^`\n]+`)|(\*\*[^*\n]+\*\*)|\[([^\]\n]+)\]\(([^)\s]+)\)/g;
+  const plain = (s) => s.replace(/\\([!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~])/g, "$1").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+  let last = 0;
+  for (const m of text.matchAll(pattern)) {
+    if (m.index > last) into.append(plain(text.slice(last, m.index)));
+    if (m[1]) into.append(el("code", { text: m[1].slice(1, -1) }));
+    else if (m[2]) into.append(el("strong", { text: plain(m[2].slice(2, -2)) }));
+    else if (/^https?:\/\//i.test(m[4])) into.append(el("a", { href: m[4], text: plain(m[3]), onclick: (e) => { e.preventDefault(); openLink(m[4], into); } }));
+    else into.append(plain(m[3]));
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) into.append(plain(text.slice(last)));
+  return into;
+}
+function tableFrom(rows) {
+  const table = el("table");
+  rows.forEach((cells, i) => table.append(el("tr", {}, cells.map((c) => inline(c, el(i === 0 ? "th" : "td", i === 0 ? { scope: "col" } : {}))))));
+  return table;
+}
+function htmlTable(source) {
+  // The docs carry some tables as HTML. Read the cells' text only; never insert their markup.
+  const parsed = new DOMParser().parseFromString(source, "text/html");
+  const rows = [...parsed.querySelectorAll("tr")].map((tr) => [...tr.children].map((c) => c.textContent.replace(/\s+/g, " ").trim()));
+  return rows.length ? tableFrom(rows) : null;
+}
+function markdown(text) {
+  const out = document.createDocumentFragment();
+  const lines = String(text).replace(/^---\n[\s\S]*?\n---\n/, "").replace(/<\/table>/g, "</table>\n").split("\n");
+  let para = [], list = null, i = 0;
+  const flush = () => { if (para.length) { out.append(inline(para.join(" "), el("p"))); para = []; } list = null; };
+  while (i < lines.length) {
+    const line = lines[i];
+    if (/^\s*```/.test(line)) {
+      flush(); const code = []; i++;
+      while (i < lines.length && !/^\s*```/.test(lines[i])) code.push(lines[i++]);
+      out.append(el("pre", {}, el("code", { text: code.join("\n") })));
+    } else if (/^\s*<table\b/i.test(line)) {
+      flush(); const block = [line];
+      while (!/<\/table>/i.test(lines[i]) && i + 1 < lines.length) block.push(lines[++i]);
+      const table = htmlTable(block.join("\n")); if (table) out.append(table);
+    } else if (/^\s*\|/.test(line)) {
+      flush(); const rows = [];
+      while (i < lines.length && /^\s*\|/.test(lines[i])) {
+        if (!/^[\s|:-]+$/.test(lines[i])) rows.push(lines[i].trim().replace(/^\||\|$/g, "").split(/(?<!\\)\|/).map((c) => c.trim()));
+        i++;
+      }
+      i--; if (rows.length) out.append(tableFrom(rows));
+    } else if (/^#{1,6}\s/.test(line)) {
+      flush(); const level = line.match(/^#+/)[0].length;
+      out.append(inline(line.replace(/^#+\s*/, ""), el(level <= 2 ? "h3" : "h4")));
+    } else if (/^\s*(?:[-*+]|\d+\.)\s+/.test(line)) {
+      if (para.length) { out.append(inline(para.join(" "), el("p"))); para = []; }
+      const ordered = /^\s*\d+\./.test(line);
+      if (!list || list.tagName !== (ordered ? "OL" : "UL")) { list = el(ordered ? "ol" : "ul"); out.append(list); }
+      list.append(inline(line.replace(/^\s*(?:[-*+]|\d+\.)\s+/, ""), el("li")));
+    } else if (!line.trim()) {
+      if (para.length) { out.append(inline(para.join(" "), el("p"))); para = []; }
+    } else if (list && /^\s{2,}\S/.test(line) && list.lastChild) {
+      list.lastChild.append(" "); inline(line.trim(), list.lastChild);
+    } else { list = null; para.push(line.trim()); }
+    i++;
+  }
+  flush();
+  return out;
+}
+function openLink(url, near) {
+  request("ui/open-link", { url }).catch(() => {
+    const host = near.closest(".entry, .page, .reader") || app;
+    host.append(el("p", { class: "notice", text: t("linkBlocked", url) }));
+  });
+}
+let readers = 0;
+function readerButton(id, label, holder) {
+  const panelId = "reader-" + ++readers;
+  let box = null;
+  const button = el("button", { class: "act", type: "button", "aria-expanded": "false", "aria-controls": panelId, text: label });
+  button.addEventListener("click", async () => {
+    if (box) { box.hidden = !box.hidden; button.setAttribute("aria-expanded", String(!box.hidden)); button.textContent = box.hidden ? label : t("hide"); return; }
+    button.disabled = true; say(t("reading"));
+    const body = el("div", { class: "reader-body", tabindex: "0", role: "region", "aria-label": label });
+    box = el("div", { class: "reader", id: panelId }, body);
+    let result;
+    try { result = await callTool("snow_docs_read", { id, max_chars: 12000 }); } catch (e) { result = { ok: false, message: (e && e.message) || t("failed") }; }
+    if (result.ok) {
+      body.append(markdown(result.content || ""));
+      if (result.truncated) box.append(el("p", { class: "reader-note", text: t("cut") }));
+    } else body.append(el("p", { text: result.message || t("failed") }));
+    holder.append(box);
+    button.disabled = false; button.setAttribute("aria-expanded", "true"); button.textContent = t("hide");
+    say(result.ok ? (result.title || label) : t("failed"));
+  });
+  return button;
+}
+const openButton = (url) => url ? el("button", { class: "act", type: "button", text: t("open"), onclick: (e) => openLink(url, e.currentTarget) }) : null;
+
+// ---- search --------------------------------------------------------------------------------
+function entry(hit, titleTag, rank) {
+  const crumbs = String(hit.heading_path || "").split(" > ").map((c) => c.replace(/\\(.)/g, "$1")).filter(Boolean);
+  const title = hit.page_title || crumbs[0] || hit.id;
+  const section = (crumbs[0] === title || crumbs[0] === hit.full_title ? crumbs.slice(1) : crumbs).join(" › ");
+  const li = el("li", { class: "entry" });
+  if (rank) li.append(el("span", { class: "rank", "aria-hidden": "true", text: String(rank) }));
+  li.append(
+    el(titleTag || "h2", { text: title }),
+    el("p", { class: "where" }, el("span", { text: areaName(hit.product) }),
+      section ? el("span", { class: "sep", "aria-hidden": "true", text: "/" }) : null, section ? el("span", { text: section }) : null),
+    quote(hit),
+  );
+  li.append(el("div", { class: "acts" }, readerButton(hit.id, t("read"), li), openButton(hit.url)));
+  return li;
+}
+function quote(hit) {
+  // The snippet opens with the section's own breadcrumb; the entry already shows it.
+  let text = String(hit.snippet || "");
+  for (const lead of [String(hit.heading_path || ""), String(hit.full_title || ""), String(hit.page_title || "")]) {
+    if (lead && text.startsWith(lead)) text = text.slice(lead.length).trimStart();
+  }
+  if (/^[a-z]/.test(text)) text = "…" + text; // a passage that starts inside a sentence
+  return text ? inline(text, el("blockquote", { class: "quote" })) : null;
+}
+function releaseSwitch(current) {
+  const group = el("div", { class: "switch", role: "radiogroup", "aria-label": t("release") });
+  for (const r of RELEASES) {
+    const input = el("input", { type: "radio", name: "release", value: r, checked: r === current });
+    input.addEventListener("change", () => switchRelease(r, group));
+    group.append(el("label", {}, input, el("span", { text: NAME[r] })));
+  }
+  return group;
+}
+async function switchRelease(release, group) {
+  if (state.results[release]) return showSearch(state.results[release]);
+  group.querySelectorAll("input").forEach((i) => { i.disabled = true; });
+  say(t("searching"));
+  let result;
+  try { result = await callTool("snow_docs_search", { ...state.args, release }); } catch (e) { result = { ok: false, message: (e && e.message) || t("failed") }; }
+  if (result.ok) return showSearch(result);
+  showSearch(state.results[state.release]);
+  app.querySelector(".head").after(el("p", { class: "notice", role: "alert", text: result.message || t("failed") }));
+}
+function showSearch(result) {
+  state.release = result.release; state.results[result.release] = result;
+  const hits = result.hits || [];
+  const count = [t("passages", hits.length), t("fromDocs", NAME[result.release] || result.release), result.snapshot ? t("snapshot", day(result.snapshot)) : ""].filter(Boolean).join(", ");
+  const head = el("header", { class: "head" },
+    el("div", { class: "head-text" }, el("h1", { text: sentence(state.args.query) || "ServiceNow Docs" }), el("p", { class: "count", text: count })),
+    releaseSwitch(result.release));
+  const body = hits.length ? el("ol", { class: "entries" }, hits.map((h, i) => entry(h, "h2", i + 1)))
+    : el("div", { class: "state" }, el("strong", { text: t("noHits") }), el("span", { text: t("tryOther") }));
+  app.replaceChildren(head, body);
+  say(count);
+}
+
+// ---- compare -------------------------------------------------------------------------------
+function marked(mine, other, tag) {
+  // The words of `mine` with those missing from `other` wrapped in <del> or <ins>.
+  const a = plainText(mine).split(" ").filter(Boolean), b = plainText(other).split(" ").filter(Boolean);
+  const p = el("p");
+  if (!b.length || a.length * b.length > 250000) { p.textContent = a.join(" "); return p; }
+  const rows = a.length + 1, cols = b.length + 1, lcs = new Uint16Array(rows * cols);
+  for (let i = a.length - 1; i >= 0; i--) for (let j = b.length - 1; j >= 0; j--)
+    lcs[i * cols + j] = a[i] === b[j] ? lcs[(i + 1) * cols + j + 1] + 1 : Math.max(lcs[(i + 1) * cols + j], lcs[i * cols + j + 1]);
+  let i = 0, j = 0, run = [], runMarked = false;
+  // Both excerpts are cut at a fixed length, so they end at different words: a difference
+  // that runs into the final "…" is the cut, not a change.
+  const cut = /…$/.test(a[a.length - 1] || "");
+  const flush = (last) => {
+    if (!run.length) return;
+    if (p.childNodes.length) p.append(" ");
+    p.append(runMarked && !(last && cut) ? el(tag, { text: run.join(" ") }) : run.join(" "));
+    run = [];
+  };
+  const push = (word, isMarked) => { if (isMarked !== runMarked) { flush(); runMarked = isMarked; } run.push(word); };
+  while (i < a.length) {
+    if (j < b.length && a[i] === b[j]) { push(a[i], false); i++; j++; }
+    else if (j < b.length && lcs[i * cols + j + 1] >= lcs[(i + 1) * cols + j]) j++;
+    else { push(a[i], true); i++; }
+  }
+  flush(true);
+  return p;
+}
+function side(release, text, other) {
+  return el("div", { class: "side " + release },
+    el("span", { class: "rel" }, el("i", { class: "key " + release, "aria-hidden": "true" }), NAME[release]),
+    marked(text, other, release === "australia" ? "del" : "ins"));
+}
+function changeBlock(section, holder) {
+  const heading = String(section.heading_path || "").split(" > ").map((c) => c.replace(/\\(.)/g, "$1")).slice(-2).join(" › ");
+  const block = el("div", { class: "change" },
+    el("div", { class: "change-head" }, el("h4", { text: heading || t("readPage") }), el("span", { class: "kind " + section.change, text: t(section.change) || section.change })));
+  const sides = el("div", { class: "sides" });
+  if (section.australia_excerpt) sides.append(side("australia", section.australia_excerpt, section.brazil_excerpt || ""));
+  if (section.brazil_excerpt) sides.append(side("brazil", section.brazil_excerpt, section.australia_excerpt || ""));
+  const acts = el("div", { class: "acts" });
+  if (section.australia_id) acts.append(readerButton(section.australia_id, t("readIn", "Australia"), block));
+  if (section.brazil_id) acts.append(readerButton(section.brazil_id, t("readIn", "Brazil"), block));
+  block.append(sides, acts);
+  holder.append(block);
+}
+function showCompare(result) {
+  const notes = result.release_notes || [], more = result.more_release_notes || [], pages = result.changed_pages || [];
+  const onePage = state.args.page && pages[0] ? pages[0].page_title : "";
+  const title = state.args.query || onePage || String(state.args.page || "").split("::")[0].split("/").pop() || "";
+  const head = el("header", { class: "head" },
+    el("div", { class: "head-text" }, el("h1", { text: sentence(title) || t("whatChanged") }), el("p", { class: "count", text: t("whatChanged") })),
+    el("p", { class: "legend" }, RELEASES.map((r) => el("span", {}, el("i", { class: "key " + r, "aria-hidden": "true" }), NAME[r]))));
+  const parts = [head];
+  if (notes.length || more.length) {
+    const part = el("section", { class: "part" }, el("h2", { text: t("notes") }));
+    if (notes.length) part.append(el("ol", { class: "entries plain" }, notes.map((n) => entry({ ...n, full_title: n.page_title, page_title: String(n.page_title || "").replace(/^Combined (.+) release notes for upgrades.*$/, "$1") }, "h3"))));
+    if (more.length) {
+      const holder = el("div", { class: "page" }, el("h3", { text: t("moreNotes") }));
+      holder.append(el("div", { class: "names" }, more.map((m) => readerButton(m.id, m.application, holder))));
+      part.append(holder);
+    }
+    parts.push(part);
+  }
+  const docs = el("section", { class: "part" }, el("h2", { text: t("changedDocs") }));
+  if (!pages.length) docs.append(el("p", { class: "state", text: t("noChanges") }));
+  for (const page of pages) {
+    // One page asked for: its title is already the heading of the panel.
+    const holder = el("article", { class: "page" }, onePage ? null : el("h3", { text: page.page_title || page.page }),
+      el("p", { class: "where", text: areaName(page.product) }));
+    (page.sections || []).forEach((s) => changeBlock(s, holder));
+    const foot = [];
+    if (page.minor_changes) foot.push(t("small", page.minor_changes));
+    if (page.sections_left_out) foot.push(t("leftOut", page.sections_left_out));
+    if (foot.length) holder.append(el("div", { class: "foot" }, foot.map((f) => el("p", { text: f }))));
+    docs.append(holder);
+  }
+  const only = [];
+  for (const r of RELEASES) { const n = (result["only_in_" + r] || []).length; if (n) only.push(t("onlyIn", NAME[r], n)); }
+  if (only.length) docs.append(el("div", { class: "foot" }, only.map((f) => el("p", { text: f }))));
+  parts.push(docs);
+  app.replaceChildren(...parts);
+  say(t("whatChanged"));
+}
+
+function show(result) {
+  if (!result || result.ok === false) return message(t("failed"), (result && result.message) || "");
+  if (Array.isArray(result.hits)) { state.view = "search"; return showSearch(result); }
+  if ("changed_pages" in result || "release_notes" in result) { state.view = "compare"; return showCompare(result); }
+  message(t("failed"));
+}
+
+// ---- start -------------------------------------------------------------------------------
+async function start() {
+  if (!hosted) return message(t("outside"), t("outsideHint"));
+  let init = {};
+  try {
+    init = await request("ui/initialize", {
+      protocolVersion: "2026-01-26",
+      appInfo: { name: "servicenow-docs-panel", version: "1.0.0" },
+      appCapabilities: { availableDisplayModes: ["inline"] },
+    });
+  } catch { /* an older host: carry on with the defaults */ }
+  useContext((init && init.hostContext) || {});
+  notify("ui/notifications/initialized");
+  busy();
+  let frame = 0;
+  new ResizeObserver(() => {
+    cancelAnimationFrame(frame);
+    frame = requestAnimationFrame(() => notify("ui/notifications/size-changed", {
+      width: Math.ceil(document.documentElement.scrollWidth), height: Math.ceil(document.documentElement.scrollHeight),
+    }));
+  }).observe(document.body);
+}
+start();
+})();
+</script>
+</body>
+</html>

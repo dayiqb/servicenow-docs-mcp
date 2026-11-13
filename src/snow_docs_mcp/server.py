@@ -56,8 +56,10 @@ import sys
 import threading
 from collections.abc import AsyncIterator
 from dataclasses import asdict
+from pathlib import Path
 
 from mcp.server import MCPServer
+from mcp.server.apps import Apps
 from mcp.types import ToolAnnotations
 from pydantic import BaseModel, Field
 
@@ -181,12 +183,33 @@ async def _lifespan(_server: MCPServer) -> AsyncIterator[dict]:
     yield {}
 
 
+# The results panel (MCP Apps): a host that supports it shows this page next to the result of
+# a search or a comparison; every other client just gets the result. One self-contained HTML
+# file, because the host's sandbox allows no external script, style, font or request.
+PANEL_URI = "ui://servicenow-docs/panel.html"
+_PANEL_META = {"ui": {"resourceUri": PANEL_URI}}
+
+
+def panel_html() -> str:
+    return (Path(__file__).parent / "ui" / "panel.html").read_text(encoding="utf-8")
+
+
+_apps = Apps()
+_apps.add_html_resource(
+    PANEL_URI,
+    panel_html(),
+    name="ServiceNow Docs results",
+    description="Search results and release comparisons from the ServiceNow docs, to read in place.",
+    prefers_border=True,
+)
+
 mcp = MCPServer(
     name="servicenow-docs",
     title="ServiceNow Docs",
     version=__version__,
     instructions=ANSWER_RULES,
     lifespan=_lifespan,
+    extensions=[_apps],
 )
 
 
@@ -672,7 +695,7 @@ def _unknown_release(value: str) -> str:
 # --- tools --------------------------------------------------------------------------------
 
 
-@mcp.tool(name="snow_docs_search", annotations=READ_ONLY)
+@mcp.tool(name="snow_docs_search", annotations=READ_ONLY, meta=_PANEL_META)
 def snow_docs_search(
     query: str, limit: int = 5, product: str | None = None, release: str | None = None
 ) -> SearchResult:
@@ -1238,7 +1261,7 @@ def _compare(q: str, page: str, product: str | None, limit: int, dbs: dict) -> C
     return result
 
 
-@mcp.tool(name="snow_docs_compare", annotations=READ_ONLY)
+@mcp.tool(name="snow_docs_compare", annotations=READ_ONLY, meta=_PANEL_META)
 def snow_docs_compare(
     query: str | None = None,
     page: str | None = None,
