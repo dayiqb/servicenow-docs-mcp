@@ -1957,21 +1957,27 @@ def snow_docs_open(id: str) -> OpenResult:
 def _mermaid(
     title: str, lanes: list[DiagramLane], steps: list[DiagramStep], links: list[DiagramLink]
 ) -> str:
+    """The diagram as Mermaid text. Steps are named s1, s2, ... and lanes lane1, ...: an id the
+    caller picked (`end`, `a--`, a lane and a step with the same id) can then never be read as
+    Mermaid syntax."""
+
     def text(value: str) -> str:
         return value.replace('"', "'").replace("\n", " ")
+
+    name = {step.id: f"s{n}" for n, step in enumerate(steps, 1)}
 
     def node(step: DiagramStep) -> str:
         label = text(step.label)
         if step.kind in ("start", "end"):
-            return f'{step.id}(["{label}"])'
+            return f'{name[step.id]}(["{label}"])'
         if step.kind == "decision":
-            return f'{step.id}{{"{label}"}}'
-        return f'{step.id}["{label}"]'
+            return f'{name[step.id]}{{"{label}"}}'
+        return f'{name[step.id]}["{label}"]'
 
     lines = ["flowchart TD"]
     if lanes:
-        for lane in lanes:
-            lines.append(f'  subgraph {lane.id}["{text(lane.label)}"]')
+        for n, lane in enumerate(lanes, 1):
+            lines.append(f'  subgraph lane{n}["{text(lane.label)}"]')
             lines += [f"    {node(s)}" for s in steps if s.lane == lane.id]
             lines.append("  end")
         lines += [f"  {node(s)}" for s in steps if not s.lane]
@@ -1979,7 +1985,7 @@ def _mermaid(
         lines += [f"  {node(s)}" for s in steps]
     for link in links:
         arrow = f'-- "{text(link.label)}" -->' if link.label else "-->"
-        lines.append(f"  {link.source} {arrow} {link.target}")
+        lines.append(f"  {name[link.source]} {arrow} {name[link.target]}")
     return "\n".join(lines)
 
 
@@ -1998,7 +2004,8 @@ def snow_docs_diagram(
     snow_docs_read), then pass the steps exactly as the docs give them, each with the
     `source_id` of the passage it comes from; the user can open that passage from the step.
     Do not add steps the docs do not have. The diagram is checked before it is shown: ids
-    must be unique, links must join existing steps, and every source id must be a real page.
+    of steps and of lanes must be unique, links must join existing steps, and every source id
+    must be a real page.
 
     Args:
         title: What the diagram shows, e.g. "Incident lifecycle".
@@ -2023,7 +2030,15 @@ def snow_docs_diagram(
             seen.add(step.id)
             if not step.label.strip():
                 problems.append(f"step '{step.id}' has no label")
-        lane_ids = {lane.id for lane in lanes}
+        lane_ids: set[str] = set()
+        for lane in lanes:
+            if not _STEP_ID.match(lane.id):
+                problems.append(f"lane id '{lane.id}' must be 1-40 letters, digits, _ or -")
+            if lane.id in lane_ids:
+                problems.append(f"the id '{lane.id}' is used by more than one lane")
+            lane_ids.add(lane.id)
+            if not lane.label.strip():
+                problems.append(f"lane '{lane.id}' has no label")
         for step in steps:
             if step.lane and step.lane not in lane_ids:
                 problems.append(
