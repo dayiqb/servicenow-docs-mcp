@@ -5,7 +5,7 @@ The files here are taken from it by `scripts/import_sdk_panel.py`, which says wh
 changes and why. Change the panel there and run the script again; do not edit these
 files here.
 
-Taken from commit `d93f9a310c2b6afc6dd7a3da8cad4a40a5ff79b7` (Setup: Versions rows are drawn with the row of Checks).
+Taken from commit `6d64121384afee4e40d8dfba885fbdf56dba992d` (Setup: each thing once, in one list).
 
 | Here | There |
 | --- | --- |

@@ -931,75 +931,92 @@ export const register: Register = on => {
         instancesError: d.instancesError,
         docs: d.docs,
       })
-      const toFix = setup.checks.filter(check => check.status === 'problem').length
-      const toLookAt = setup.checks.filter(check => check.status !== 'ok').length
+      // Each thing is on the screen once: a check carries its version, and what
+      // has a version but no check (the panel, the package managers, Git, AIUX)
+      // follows in the same list. `latest` is what Check for updates got from the
+      // npm registry; it is asked about the SDK and the AIUX package only.
+      const updateOf = (name: 'ServiceNow SDK' | 'AIUX', installed: string) => {
+        const latest = d.latest?.[name]
+        const canUpdate = isUpdateAvailable(latest, installed)
+        const id = name === 'AIUX' ? 'update-aiux' : 'update-sdk'
+        return {
+          canUpdate,
+          // What is out, or why the registry gave no version.
+          note: canUpdate ? <Text color="warning">{`${latest} is out`}</Text> : latest !== undefined && !/^\d/.test(latest) ? quiet(latest) : null,
+          button: canUpdate ? (
+            <Button
+              key={id}
+              label="Update"
+              onPress={() => {
+                const command =
+                  name === 'AIUX'
+                    ? updateCommand({ kind: 'project', name: d.aiux?.frameworkName ?? '', manager: d.aiux?.manager ?? 'npm' })
+                    : updateCommand({ kind: 'sdk' })
+                void confirmAndRun($, {
+                  id,
+                  label: `Update ${name} to ${latest}`,
+                  program: command.program,
+                  argv: command.argv,
+                  effects: ['changes-local'],
+                  confirmation: 'review',
+                  cwd: name === 'AIUX' ? d.cwd : undefined,
+                })
+              }}
+            />
+          ) : undefined,
+        }
+      }
+      const sdkUpdate = updateOf('ServiceNow SDK', d.sdkVersion ?? '')
+      // A newer SDK turns a passing check into one to look at; it never hides a problem.
+      const checks = setup.checks.map(check =>
+        check.id === 'sdk' && check.status === 'ok' && sdkUpdate.canUpdate ? { ...check, status: 'attention' as const } : check,
+      )
+      const tools: [string, string][] = [
+        ['Panel', PANEL_VERSION],
+        ...VERSION_TOOLS.map(([name]): [string, string] => [name, d.versions?.[name] ?? '']),
+      ]
+      const aiuxUpdate = d.aiux?.framework ? updateOf('AIUX', d.aiux.frameworkInstalled ?? '') : undefined
+      const toFix = checks.filter(check => check.status === 'problem').length
+      const toLookAt = checks.filter(check => check.status !== 'ok').length + (aiuxUpdate?.canUpdate ? 1 : 0)
       // The checks say whether the setup is ready, so they need no headline
-      // above them: their own title carries the state, with Refresh at its end.
-      const checksTitle = d.isLoading ? 'Reading the SDK setup…' : toFix > 0 ? `Checks, ${toFix} to fix` : toLookAt > 0 ? `Checks, ${toLookAt} to look at` : 'Checks'
+      // above them: their own title carries the state, with the actions at its end.
+      const checksTitle = d.isLoading
+        ? 'Reading the SDK setup…'
+        : d.isCheckingUpdates
+          ? 'Checking for updates…'
+          : toFix > 0
+            ? `Checks, ${toFix} to fix`
+            : toLookAt > 0
+              ? `Checks, ${toLookAt} to look at`
+              : 'Checks'
       return (
         <Box flexDirection="column" gap="md">
           {section(
             null,
-            between(label(checksTitle), <Button key="refresh" label="Refresh" onPress={() => void load($)} />),
+            <Box flexDirection="row" justifyContent="space-between" alignItems="center" gap="sm" flexWrap="wrap">
+              {label(checksTitle)}
+              <Box flexDirection="row" gap="sm" flexShrink={0}>
+                <Button key="check-updates" label="Check for updates" onPress={() => void checkUpdates($)} />
+                <Button key="refresh" label="Refresh" onPress={() => void load($)} />
+              </Box>
+            </Box>,
             d.sdkError ? <Text color="error">{d.sdkError}</Text> : null,
-            ...setup.checks.map(checkRow),
-          )}
-          {section(
-            null,
-            // Everything with a version, in one place. Check for updates asks the npm
-            // registry for the newest SDK and AIUX package; an update is offered beside
-            // the version it replaces, and runs only after a confirmation.
-            between(
-              label(d.isCheckingUpdates ? 'Checking for updates…' : 'Versions'),
-              <Button key="check-updates" label="Check for updates" onPress={() => void checkUpdates($)} />,
+            ...checks.map(check =>
+              check.id === 'sdk'
+                ? statusRow(
+                    check.status,
+                    check.label,
+                    [check.value ? quiet(check.value) : null, sdkUpdate.note],
+                    sdkUpdate.button,
+                    check.fix,
+                  )
+                : checkRow(check),
             ),
-            ...(
-              [
-                ['Panel', PANEL_VERSION, ''],
-                ['Node.js', (d.nodeVersion ?? '').replace(/^v/, ''), ''],
-                ['ServiceNow SDK', d.sdkVersion ?? '', d.sdkVersion ?? ''],
-                ['ServiceNow Docs extension', d.docs?.version ?? '', ''],
-                ...VERSION_TOOLS.map(([name]): [string, string, string] => [name, d.versions?.[name] ?? '', '']),
-                ...(d.aiux?.framework ? [['AIUX', d.aiux.framework, d.aiux.frameworkInstalled ?? ''] as [string, string, string]] : []),
-              ] as [string, string, string][]
-            ).map(([name, version, installed]) => {
-              const latest = d.latest?.[name]
-              const canUpdate = isUpdateAvailable(latest, installed)
-              // The mark says the state: a dash until the registry has been asked (and
-              // for what it is not asked about), a check mark when the newest is
-              // installed, the attention mark when a newer version is out.
-              const status = canUpdate ? 'attention' : version && latest !== undefined && /^\d/.test(latest) ? 'ok' : 'unknown'
-              const update = canUpdate ? (
-                <Button
-                  key={name === 'AIUX' ? 'update-aiux' : 'update-sdk'}
-                  label="Update"
-                  onPress={() => {
-                    const command =
-                      name === 'AIUX'
-                        ? updateCommand({ kind: 'project', name: d.aiux?.frameworkName ?? '', manager: d.aiux?.manager ?? 'npm' })
-                        : updateCommand({ kind: 'sdk' })
-                    void confirmAndRun($, {
-                      id: name === 'AIUX' ? 'update-aiux' : 'update-sdk',
-                      label: `Update ${name} to ${latest}`,
-                      program: command.program,
-                      argv: command.argv,
-                      effects: ['changes-local'],
-                      confirmation: 'review',
-                      cwd: name === 'AIUX' ? d.cwd : undefined,
-                    })
-                  }}
-                />
-              ) : undefined
-              return statusRow(
-                status,
-                name,
-                [
-                  quiet(version || 'Not found'),
-                  canUpdate ? <Text color="warning">{`${latest} is out`}</Text> : latest !== undefined && !/^\d/.test(latest) ? quiet(latest) : null,
-                ],
-                update,
-              )
-            }),
+            // Found is fine; a tool that is not there is not a fault, so it gets the dash.
+            ...tools.map(([name, version]) => statusRow(version ? 'ok' : 'unknown', name, quiet(version || 'Not found'))),
+            d.aiux?.framework && aiuxUpdate
+              ? statusRow(aiuxUpdate.canUpdate ? 'attention' : 'ok', 'AIUX', [quiet(d.aiux.framework), aiuxUpdate.note], aiuxUpdate.button)
+              : null,
             d.run && d.run.commandId.startsWith('update-') ? output(d.run) : null,
           )}
           {section(

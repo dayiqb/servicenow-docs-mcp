@@ -226,6 +226,11 @@ test('a version row says a newer version is out and offers Update, only when one
       out: Boolean(await ui.find({ type: 'Text', text: '4.15.0 is out' })),
       update: Boolean(await ui.find({ key: 'update-sdk' })),
     }
+    // One list: the tools without a check are in it, and there is no second section.
+    expect(Boolean(await ui.find({ type: 'Text', text: 'Panel' }))).toBe(true)
+    expect(Boolean(await ui.find({ type: 'Text', text: 'Versions' }))).toBe(false)
+    expect(Boolean(await ui.find({ key: 'check-updates' }))).toBe(true)
+    expect(Boolean(await ui.find({ key: 'refresh' }))).toBe(true)
     await ui.unmount()
     return found
   }
