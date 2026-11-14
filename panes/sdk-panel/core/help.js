@@ -82,7 +82,7 @@ export function parseHelp(text) {
     const header = HEADER.exec(line);
     if (header && !line.startsWith(' ')) {
       flush();
-      section = header[1];
+      section = header[1] ?? '';
       continue;
     }
     if (!section) {
@@ -122,8 +122,9 @@ export function parseHelp(text) {
 
   const text0 = intro.filter((line) => !BANNER.test(line) || line.trim() === '');
   const firstText = text0.findIndex((line) => line.trim() !== '');
-  if (firstText >= 0 && text0[firstText].trimStart().startsWith('now-sdk')) {
-    help.usage = text0[firstText].trim();
+  const first = text0[firstText] ?? '';
+  if (first.trimStart().startsWith('now-sdk')) {
+    help.usage = first.trim();
     help.description = paragraph(text0.slice(firstText + 1));
   } else {
     help.description = paragraph(text0);
@@ -156,7 +157,7 @@ export function stripAnsi(text) {
  */
 function match(pattern, line, kind) {
   const found = pattern.exec(line);
-  return found ? { kind, head: found[1].trim(), body: found[2].trim() } : undefined;
+  return found ? { kind, head: (found[1] ?? '').trim(), body: (found[2] ?? '').trim() } : undefined;
 }
 
 /**
@@ -197,7 +198,7 @@ function splitTags(body) {
   let rest = body;
   const tag = /\s*\[(boolean|string|number|array|count|required|(?:choices|default|aliases): [^\]]*)\]\s*$/;
   for (let found = tag.exec(rest); found; found = tag.exec(rest)) {
-    const value = found[1];
+    const value = found[1] ?? '';
     if (value === 'required') tags.isRequired = true;
     else if (value.startsWith('choices: ')) tags.choices = splitList(value.slice(9));
     else if (value.startsWith('default: ')) tags.defaultValue = unquote(value.slice(9).trim());
@@ -229,7 +230,7 @@ function unquote(value) {
  */
 function addOption(help, section, head, body) {
   const flags = head.split(/,\s+/);
-  const name = (flags.find((flag) => flag.startsWith('--')) ?? flags[0]).replace(/^-+/, '');
+  const name = (flags.find((flag) => flag.startsWith('--')) ?? flags[0] ?? '').replace(/^-+/, '');
   const { description, tags } = splitTags(body);
   /** @type {HelpOption} */
   const option = { name, flags, description, isRequired: tags.isRequired, isGlobal: GLOBAL_OPTIONS.has(name) };

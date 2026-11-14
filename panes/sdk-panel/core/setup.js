@@ -177,10 +177,8 @@ export function compareVersions(a, b) {
 
 /** @param {string} version */
 function parts(version) {
-  return version
-    .trim()
-    .replace(/^v/i, '')
-    .split('-')[0]
+  const release = version.trim().replace(/^v/i, '').split('-')[0] ?? '';
+  return release
     .split('.')
     .map((part) => Number.parseInt(part, 10) || 0);
 }

@@ -46,13 +46,13 @@ export function parseAuthList(text) {
   for (const line of stripAnsi(text).replaceAll('\r', '').split('\n')) {
     const alias = ALIAS_LINE.exec(line.trim());
     if (alias && !line.includes('=')) {
-      current = { alias: alias[2], host: '', signIn: 'unknown', isDefault: alias[1] === '*' };
+      current = { alias: alias[2] ?? '', host: '', signIn: 'unknown', isDefault: alias[1] === '*' };
       instances.push(current);
       continue;
     }
     const pair = PAIR_LINE.exec(line);
     if (!pair || !current) continue;
-    const [, key, value] = pair;
+    const [, key, value = ''] = pair;
     if (key === 'host') current.host = value.replace(/\/+$/, '');
     else if (key === 'type') current.signIn = value === 'basic' || value === 'oauth' ? value : 'unknown';
     else if (key === 'default') current.isDefault = current.isDefault || /^yes$/i.test(value);

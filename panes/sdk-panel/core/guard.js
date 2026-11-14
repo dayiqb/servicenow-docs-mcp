@@ -119,7 +119,7 @@ export function isReadOnly(argv) {
  */
 export function valueOf(argv, flag) {
   for (let index = 0; index < argv.length; index += 1) {
-    const arg = argv[index];
+    const arg = argv[index] ?? '';
     if (arg === flag) {
       const next = argv[index + 1];
       return next !== undefined && !next.startsWith('-') ? next : undefined;

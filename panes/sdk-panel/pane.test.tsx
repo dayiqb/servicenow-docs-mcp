@@ -38,7 +38,7 @@ test('a command opens its detail with the command line and no run without a conf
   let started = 0
   on('process.spawn', async function* () {
     started += 1
-    return { code: 0, signal: null }
+    return { value: { code: 0, signal: null } }
   })
   // The help of the command is asked for when it opens; answer with none.
   on('process.run', () => ({ value: { exitCode: 1, stdout: '', stderr: 'no help', isStdoutTruncated: false, isStderrTruncated: false } }))

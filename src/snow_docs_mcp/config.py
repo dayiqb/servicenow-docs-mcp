@@ -40,7 +40,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-VERSION = "2.4.0"
+VERSION = "2.4.1"
 RELEASES = ("australia", "brazil")
 DEFAULT_RELEASE = "australia"
 

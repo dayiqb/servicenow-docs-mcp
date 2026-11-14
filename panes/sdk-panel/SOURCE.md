@@ -5,7 +5,7 @@ The files here are taken from it by `scripts/import_sdk_panel.py`, which says wh
 changes and why. Change the panel there and run the script again; do not edit these
 files here.
 
-Taken from commit `6e4113e5557f33476f81056ca6a1ed6ce5a2d35a` (Setup checks for updates of the SDK and the AIUX package and can install them; AIUX scripts come before the contents).
+Taken from commit `d5069b47051afeb22c87b3f645d8a8027ed9db8c` (README: the panel setting in the docs plugin is on as installed from 2.4.0).
 
 | Here | There |
 | --- | --- |

@@ -39,7 +39,7 @@ export function parseTopicList(text) {
     if (!line || line.startsWith('#')) continue;
     const found = TOPIC_LINE.exec(line);
     if (!found) continue;
-    const name = found[1];
+    const name = found[1] ?? '';
     const kind = name.endsWith('-api') ? 'api' : name.endsWith('-guide') ? 'guide' : 'other';
     topics.push({
       name,
