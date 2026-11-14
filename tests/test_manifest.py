@@ -58,6 +58,14 @@ def test_the_rules_leave_the_release_to_the_setting() -> None:
     assert "leave it out" in ANSWER_RULES and "Release setting" in ANSWER_RULES
 
 
+def test_readme_counts_the_tools_the_manifest_lists() -> None:
+    words = {9: "nine", 10: "ten", 11: "eleven", 12: "twelve"}
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert f"It adds {words[len(MANIFEST['tools'])]} read-only tools to Claude" in readme
+    for tool in MANIFEST["tools"]:
+        assert f"| `{tool['name']}` |" in readme, tool["name"]
+
+
 def test_uv_server_config_is_runnable() -> None:
     server = MANIFEST["server"]
     assert MANIFEST["manifest_version"] == "0.4" and server["type"] == "uv"

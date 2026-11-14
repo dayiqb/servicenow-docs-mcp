@@ -4,7 +4,7 @@ Ask Claude questions about ServiceNow and get answers taken from the **official 
 documentation**, for the **Australia** and **Brazil** releases, each claim with a citation you can
 open.
 
-It adds eleven read-only tools to Claude:
+It adds ten read-only tools to Claude:
 
 | Tool | What it does |
 |---|---|
