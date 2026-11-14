@@ -91,7 +91,7 @@ def test_the_page_speaks_the_apps_protocol_and_only_calls_read_only_tools():
     ):
         assert method in html, method
     called = set(re.findall(r"callTool\(\s*[\"'](\w+)[\"']", html))
-    assert called == {"snow_docs_search", "snow_docs_read", "snow_docs_browse"}
+    assert called == {"snow_docs_read"}
 
 
 def test_the_page_never_puts_tool_text_into_the_document_as_markup():
@@ -127,6 +127,21 @@ def test_the_page_draws_no_diagrams():
     html = panel_html()
     for gone in ("snow_docs_diagram", "showDiagram", "flowToggle", "chart-wrap", "<svg"):
         assert gone not in html
+
+
+def test_the_page_shows_a_page_or_a_comparison_and_nothing_else():
+    """Searching and browsing are Claude's own working steps and draw no panel. So the page has no
+    view for a list of hits or for a folder of the docs, and nothing that only those views used."""
+    html = panel_html()
+    for gone in (
+        "showSearch", "showBrowse", "switchRelease", "snow_docs_search", "snow_docs_browse",
+        ".trail", ".rows", ".rank", "noHits", "nFolders", "stoppedSearch", "search results",
+    ):  # fmt: skip
+        assert gone not in html, gone
+    # the stand-in host plays back what the page can show, and no more
+    host = (ROOT / "scripts" / "panel_host.html").read_text(encoding="utf-8")
+    for gone in ("snow_docs_search", "snow_docs_browse", "search-au", "browse-root"):
+        assert gone not in host, gone
 
 
 # ---- what the page puts on the screen ---------------------------------------------------------
@@ -388,9 +403,12 @@ def _style() -> str:
 def test_every_string_exists_in_english_and_norwegian():
     html = panel_html()
     (words,) = _render({"op": "words"})
-    assert set(words["en"]) == set(words["nb"]) and len(words["en"]) > 40
+    assert set(words["en"]) == set(words["nb"]) and len(words["en"]) > 25
     used = set(re.findall(r"""\bt\(\s*["'](\w+)["']\s*[,)]""", html))
     assert used <= set(words["en"]), used - set(words["en"])
+    # every string is said somewhere: these are the ones whose name is put together when used
+    made = {"stoppedCompare", "stoppedOpen", "added", "removed", "changed"}
+    assert set(words["en"]) - used == made, set(words["en"]) ^ used ^ made
     assert "sectionOf" not in html and "Ingen avsnitt passet" not in html
     assert "not listed" not in html and "ikke listet" not in html
 
@@ -505,11 +523,6 @@ def _hit(n: int, product: str, title: str, section: str = "") -> dict:
             "url": f"https://docs.test/p{n}"}  # fmt: skip
 
 
-def _search(*hits: dict) -> dict:
-    return {"ok": True, "message": "", "release": "australia", "snapshot": "2026-11-06",
-            "hits": list(hits)}  # fmt: skip
-
-
 def _has(node: ET.Element, name: str) -> bool:
     return name in (node.get("class") or "").split()
 
@@ -524,57 +537,6 @@ def _folds(root: ET.Element, heading: str) -> list[ET.Element]:
 
 def _bodies(root: ET.Element) -> list[ET.Element]:
     return [d for d in root.iter("div") if _has(d, "fold-body")]
-
-
-@needs_node
-def test_search_hits_are_grouped_by_product_area_and_start_closed():
-    root = _show(
-        _search(
-            _hit(1, "it-service-management", "Create an SLA definition"),
-            _hit(2, "employee-service-management", "Create an SLA Definition", "Procedure"),
-            _hit(3, "it-service-management", "SLA definition", "Schedule"),
-        ),
-        {"query": "sla"},
-    )
-    areas = _folds(root, "h2")
-    assert [(_part(a, "fold-name"), _part(a, "fold-count"), a.get("aria-expanded")) for a in areas] == [
-        ("IT Service Management", "2 passages", "true"),
-        ("Employee Service Management", "1 passage", "true"),
-    ]  # fmt: skip
-    hits = _folds(root, "h3")
-    # an area stands where its best hit is, and every hit keeps the rank the search gave it
-    assert [(_part(h, "rank"), _part(h, "fold-name"), _part(h, "fold-more")) for h in hits] == [
-        ("1", "Create an SLA definition", ""),
-        ("3", "SLA definition", "Schedule"),
-        ("2", "Create an SLA Definition", "Procedure"),
-    ]
-    assert [h.get("aria-expanded") for h in hits] == ["false"] * 3
-    bodies = _bodies(root)
-    assert len(bodies) == 3 and all(b.get("hidden") is not None for b in bodies)
-    assert [h.get("aria-controls") for h in hits] == [b.get("id") for b in bodies]
-
-
-@needs_node
-def test_opening_a_hit_shows_its_passage_and_what_can_be_done_with_it():
-    result = _search(_hit(1, "it-service-management", "Create an SLA definition"))
-    root = _show(result, {"query": "sla"}, open=[1])  # fold 0 is the area, fold 1 the hit
-    (hit,) = _folds(root, "h3")
-    (body,) = _bodies(root)
-    assert hit.get("aria-expanded") == "true" and body.get("hidden") is None
-    assert _text(body.find("blockquote")) == "Passage number 1 says something."
-    assert [_text(b) for b in body.iter("button")] == ["Read section", "Open docs"]
-    (again,) = _bodies(_show(result, {"query": "sla"}, open=[1, 1]))
-    assert again.get("hidden") is not None
-
-
-@needs_node
-def test_an_area_can_be_closed():
-    result = _search(_hit(1, "it-service-management", "A"), _hit(2, "it-service-management", "B"))
-    root = _show(result, {"query": "x"}, open=[0])
-    (area,) = _folds(root, "h2")
-    (leaves,) = [u for u in root.iter("ul") if _has(u, "leaves")]
-    assert area.get("aria-expanded") == "false" and leaves.get("hidden") is not None
-    assert area.get("aria-controls") == leaves.get("id")
 
 
 def _change(heading: str, change: str = "changed", small: bool = False) -> dict:
@@ -654,7 +616,7 @@ def test_release_notes_are_closed_rows_too():
 def test_what_is_hidden_is_not_drawn_and_long_text_scrolls_inside_the_panel():
     css = _style()
     assert re.search(r"\[hidden\]\s*\{\s*display:\s*none\s*!important", css)
-    for box in (".reader-body", ".doc-body", ".rows"):
+    for box in (".reader-body", ".doc-body"):
         rule = re.escape(box) + r"\s*\{[^}]*max-height:\s*\d+rem[^}]*overflow:\s*auto"
         assert re.search(rule, css), box
     # the frame is as tall as its content, so a height taken from the frame feeds on itself
@@ -683,17 +645,13 @@ def _switch(root: ET.Element) -> ET.Element:
 
 @needs_node
 def test_the_other_release_is_one_button_on_the_line_that_names_the_release():
-    result = _search(_hit(1, "it-service-management", "Create an SLA definition"))
-    root = _show(result, {"query": "sla"})
-    assert _text(_switch(root)) == "Switch to Brazil" and not list(root.iter("input"))
-    (count,) = [s for s in root.iter("span") if _has(s, "count-text")]
-    assert _text(count) == "1 passage, from the Australia docs, snapshot 6 Nov 2026"
-    brazil = _show({**result, "release": "brazil"}, {"query": "sla"})
-    assert _text(_switch(brazil)) == "Switch to Australia"
-
-
-@needs_node
-def test_a_document_has_the_same_button_to_the_other_release():
     page = {"ok": True, "message": "", "id": "australia:markdown/x.md::", "focus": "", "title": "A page",
             "url": "", "release": "australia", "product": "it-service-management", "headings": []}  # fmt: skip
-    assert _text(_switch(_show(page))) == "Switch to Brazil"
+    root = _show(page)
+    assert _text(_switch(root)) == "Switch to Brazil" and not list(root.iter("input"))
+    (count,) = [s for s in root.iter("span") if _has(s, "count-text")]
+    assert _text(count) == "IT Service Management, from the Australia docs"
+    brazil = _show({**page, "release": "brazil", "id": "brazil:markdown/x.md::"})
+    assert _text(_switch(brazil)) == "Switch to Australia"
+    # nothing leads back to a listing: the page is all the panel was asked to show
+    assert [_text(b) for b in root.iter("button")] == ["Switch to Brazil"]

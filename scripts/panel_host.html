@@ -19,19 +19,16 @@
 <!-- A stand-in for a host that supports MCP Apps, for looking at the panel during development.
      It answers the panel's requests the way a host does and plays back a tool call:
        /scripts/panel_host.html                  built-in sample data
-       /scripts/panel_host.html?samples=<dir>    real results saved as <dir>/search-au.json,
-                                                 search-br.json, compare.json, compare-page.json, read.json,
-                                                 open.json, read-page.json, browse-root.json, browse.json,
-                                                 browse-folder.json
+       /scripts/panel_host.html?samples=<dir>    real results saved as <dir>/compare.json,
+                                                 compare-page.json, read.json, open.json, read-page.json
        ...&view=open&page=<name>                 a real docs section as the document and in the readers:
                                                  tests/fixtures/panel/<name>.json (steps-nested, table-list, ...)
-       ...&fail=more|switch|read                 the host refuses that call, to see what the panel says
+       ...&fail=read                             the host refuses to read a section, to see what the panel says
      Serve the repository root (python -m http.server) and open it in a browser. -->
 <form id="controls">
   <label>View <select name="view">
-    <option value="search">Search</option><option value="empty">Search, no hits</option>
     <option value="compare">Compare a topic</option><option value="compare-page">Compare a page</option>
-    <option value="open">Document</option><option value="browse-root">Browse: product areas</option><option value="browse">Browse: a product</option>
+    <option value="open">Document</option>
     <option value="error">Error</option><option value="loading">Loading</option></select></label>
   <label>Theme <select name="theme"><option>light</option><option>dark</option></select></label>
   <label>Language <select name="locale"><option value="en-US">English</option><option value="nb-NO">Norsk</option></select></label>
@@ -49,12 +46,6 @@ const hit = (n, product, title, section, snippet) => ({
   id: `australia:markdown/${product}/page-${n}.md::${title} > ${section}`, release: "australia", page_title: title,
   url: `https://www.servicenow.com/docs/r/${product}/page-${n}.html`, heading_path: `${title} > ${section}`, product, snippet, score: 3 - n / 3 });
 const BUILT_IN = {
-  "search-au": { ok: true, release: "australia", snapshot: "2026-11-06", message: "", hits: [
-    hit(1, "it-service-management", "Define priority lookup rules", "Procedure", "Priority lookup rules set the priority of a record from its impact and urgency. Navigate to the rules, open the row for a combination, and choose the priority it should give."),
-    hit(2, "it-service-management", "Incident priority", "How priority is calculated", "By default, priority is read from a matrix of impact and urgency. An administrator can change what each combination gives."),
-    hit(3, "customer-service-management", "Case priority", "Before you begin", "Role required: admin. The case priority matrix is separate from the incident matrix and is maintained per table.")] },
-  "search-br": { ok: true, release: "brazil", snapshot: "2026-11-06", message: "", hits: [
-    hit(1, "it-service-management", "Define priority lookup rules", "Procedure", "Priority lookup rules set the priority of a record from its impact and urgency, per assignment group when the group has its own rules.")].map((h) => ({ ...h, release: "brazil", id: h.id.replace("australia:", "brazil:") })) },
   "compare": { ok: true, message: "", australia_snapshot: "2026-11-06", brazil_snapshot: "2026-11-06",
     release_notes: [{ ...hit(1, "delta-australia-brazil", "Combined Incident Management release notes for upgrades from Australia to Brazil", "New features", "Priority lookup rules can now be set per assignment group."), release: "brazil" }],
     more_release_notes: [{ id: "brazil:markdown/delta-australia-brazil/a.md::", application: "Service Operations Workspace for ITSM" }, { id: "brazil:markdown/delta-australia-brazil/b.md::", application: "Major Incident Management" }],
@@ -78,35 +69,22 @@ BUILT_IN.compare.changed_pages = [BUILT_IN["compare-page"].changed_pages[0],
   { page: "markdown/customer-service-management/case-priority.md", page_title: "Case priority", product: "customer-service-management", minor_changes: 0, sections_left_out: 2,
     sections: [{ heading_path: "Case priority > Before you begin", change: "removed", changed_words: 12, small: false, australia_id: "australia:markdown/y.md::A", brazil_id: "",
       australia_excerpt: "The case priority is set by the agent who opens the case.", brazil_excerpt: "" }] }];
-const lane = (id, label) => ({ id, label });
 Object.assign(BUILT_IN, {
   "open": { ok: true, message: "", id: "australia:markdown/it-service-management/page-1.md::", focus: "Define priority lookup rules > Procedure", title: "Define priority lookup rules",
     url: "https://www.servicenow.com/docs/r/it-service-management/page-1.html", release: "australia", product: "it-service-management", headings: [] },
   "read-page": { ok: true, message: "", id: "x", title: "Define priority lookup rules", url: "", heading_path: "", truncated: false,
     content: "# Define priority lookup rules\n\nPriority lookup rules set the priority of a record from its impact and urgency.\n\n## Before you begin\n\nRole required: **admin**\n\n**Note:** A group with its own rules uses those instead of the shared ones.\n\n" + BUILT_IN.read.content + "\n\n## Result\n\nNew records get their priority from the rules.\n\n## What to do next\n\nTest the rules with an incident.\n" },
-  "browse-root": { ok: true, message: "", release: "australia", snapshot: "2026-11-06", path: "", pages: [], pages_left_out: 0,
-    folders: [{ name: "it-service-management", path: "it-service-management", pages: 2311 }, { name: "customer-service-management", path: "customer-service-management", pages: 3104 }, { name: "api-reference", path: "api-reference", pages: 1258 }] },
-  "browse": { ok: true, message: "", release: "australia", snapshot: "2026-11-06", path: "it-service-management", pages_left_out: 17,
-    folders: [{ name: "incident-management", path: "it-service-management/incident-management", pages: 134 }, { name: "change-management", path: "it-service-management/change-management", pages: 222 }],
-    pages: [{ title: "Define priority lookup rules", id: "australia:markdown/it-service-management/page-1.md::" }, { title: "IT Service Management overview", id: "australia:markdown/it-service-management/page-2.md::" }] },
 });
 BUILT_IN["read-page-br"] = { ...BUILT_IN["read-page"], content: BUILT_IN["read-page"].content.replace("from its impact and urgency.", "from its impact and urgency, per assignment group when the group has its own rules.") };
-BUILT_IN["browse-folder"] = { ...BUILT_IN.browse, path: "it-service-management/incident-management", folders: [], pages_left_out: 0 };
 async function sample(name) {
   if (!params.get("samples")) return BUILT_IN[name];
   try { return await (await fetch(`${params.get("samples")}/${name}.json`)).json(); } catch { return BUILT_IN[name]; }
 }
 const fixture = async (name) => (await fetch(`/tests/fixtures/panel/${name}.json`)).json();
 const refused = (what) => ({ ok: false, message: `The stand-in host refused this call (fail=${what}).` });
-// The pages after the first ones of a listing: as many as the listing says are left.
-const nextPages = (listing, offset) => ({ ...listing, folders: [], pages_left_out: 0,
-  pages: Array.from({ length: listing.pages_left_out || 0 }, (_, n) => { const pg = listing.pages[n % listing.pages.length];
-    return { title: `${pg.title} (${offset + n + 1})`, id: pg.id.replace(/::$/, `-${offset + n}::`) }; }) });
-const TOOL = { search: "snow_docs_search", empty: "snow_docs_search", error: "snow_docs_search", loading: "snow_docs_search", compare: "snow_docs_compare", "compare-page": "snow_docs_compare",
-  open: "snow_docs_open", "browse-root": "snow_docs_browse", browse: "snow_docs_browse" };
-const ARGS = { search: { query: "how is incident priority calculated", limit: 5 }, empty: { query: "zebra migration patterns", limit: 5 }, error: { query: "incident", limit: 5 },
-  loading: { query: "how is incident priority calculated", limit: 5 }, compare: { query: "AI Control Tower", limit: 5 }, "compare-page": { page: "markdown/release-notes/ai-control-tower-rn.md" },
-  open: { id: "australia:markdown/x.md::" }, "browse-root": {}, browse: { product: "itsm" } };
+const TOOL = { compare: "snow_docs_compare", "compare-page": "snow_docs_compare", open: "snow_docs_open", error: "snow_docs_open", loading: "snow_docs_open" };
+const ARGS = { compare: { query: "AI Control Tower", limit: 5 }, "compare-page": { page: "markdown/release-notes/ai-control-tower-rn.md" },
+  open: { id: "australia:markdown/x.md::" }, error: { id: "australia:markdown/x.md::" }, loading: { id: "australia:markdown/x.md::" } };
 const send = (message) => frame.contentWindow.postMessage(message, "*");
 const wrap = (data) => ({ content: [{ type: "text", text: JSON.stringify(data) }], structuredContent: data });
 const note = (text) => { log.textContent = (text + "\n" + log.textContent).slice(0, 1500); };
@@ -122,23 +100,19 @@ window.addEventListener("message", async (event) => {
     send({ jsonrpc: "2.0", method: "ui/notifications/tool-input", params: { arguments: ARGS[view] } });
     if (view === "loading") return;
     const result = view === "error" ? { ok: false, message: "The australia docs are still being set up. Downloading the docs index: 41%. Try again in a minute or two; snow_docs_status shows progress." }
-      : view === "empty" ? { ok: true, release: "australia", snapshot: "2026-11-06", message: "", hits: [] }
       : view === "open" && form.elements.page.value ? await fixture(form.elements.page.value).then((page) => ({ ok: true, message: "", id: page.id.replace(/::.*$/, "::"), focus: "", title: page.title,
           url: page.url, release: page.id.split(":")[0], product: page.id.split("/")[1] || "", headings: [] }))
-      : await sample(view === "search" ? "search-au" : view);
+      : await sample(view);
     setTimeout(() => send({ jsonrpc: "2.0", method: "ui/notifications/tool-result", params: wrap(result) }), 250);
   } else if (m.method === "ui/notifications/size-changed") {
     frame.style.height = Math.min(Math.max(m.params.height + 2, 80), 4000) + "px";
   } else if (m.method === "tools/call") {
     note(`tools/call ${m.params.name} ${JSON.stringify(m.params.arguments).slice(0, 120)}`);
     const args = m.params.arguments || {}, fail = params.get("fail"), page = form.elements.page.value;
-    const data = m.params.name === "snow_docs_read"
-      ? fail === "read" ? refused(fail) : page ? await fixture(page)
-        : await sample(/::$/.test(args.id) ? (/^brazil:/.test(args.id) ? "read-page-br" : "read-page") : "read")
-      : m.params.name === "snow_docs_browse"
-        ? args.offset ? (fail === "more" ? refused(fail) : nextPages(await sample(/\//.test(args.folder || "") ? "browse-folder" : "browse"), args.offset))
-          : await sample(!args.folder && !args.product ? "browse-root" : /\//.test(args.folder || "") ? "browse-folder" : "browse")
-        : fail === "switch" ? refused(fail) : await sample(args.release === "brazil" ? "search-br" : "search-au");
+    // The page reads sections and nothing else; any other call is refused, as a host would.
+    const data = m.params.name !== "snow_docs_read" || fail === "read" ? refused(fail || m.params.name)
+      : page ? await fixture(page)
+      : await sample(/::$/.test(args.id) ? (/^brazil:/.test(args.id) ? "read-page-br" : "read-page") : "read");
     setTimeout(() => send({ jsonrpc: "2.0", id: m.id, result: wrap(data) }), 300);
   } else if (m.method === "ui/open-link") {
     note(`ui/open-link ${m.params.url}`); send({ jsonrpc: "2.0", id: m.id, result: {} });
