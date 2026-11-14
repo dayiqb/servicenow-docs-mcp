@@ -29,23 +29,23 @@ const SDK_PANE = {
   },
 } as const
 
-test('the SDK panel is not there until its setting is turned on', async ($, on) => {
-  // It can run SDK commands; the rest of the plugin only reads. So it is off as installed.
-  const names = commands(on)
-  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
-  expect(names).toEqual(['docs-figures'])
-
-  const ui = await $.ui.mount(SDK_PANE)
-  expect(await ui.find({ key: 'tab-commands' })).toBe(undefined)
-  await ui.unmount()
-})
-
-test('with the setting on, both panes are set up', { options: { sdk_panel: true } }, async ($, on) => {
+test('as installed, both panes are set up', async ($, on) => {
   const names = commands(on)
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   expect([...names].sort()).toEqual(['docs-figures', 'sdk-panel'])
 
   const ui = await $.ui.mount(SDK_PANE)
   expect(await ui.find({ key: 'tab-commands' })).toBeTruthy()
+  await ui.unmount()
+})
+
+test('with the setting off, the SDK panel is not there', { options: { sdk_panel: false } }, async ($, on) => {
+  // It can run SDK commands; the rest of the plugin only reads. Off leaves a plugin that only reads.
+  const names = commands(on)
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  expect(names).toEqual(['docs-figures'])
+
+  const ui = await $.ui.mount(SDK_PANE)
+  expect(await ui.find({ key: 'tab-commands' })).toBe(undefined)
   await ui.unmount()
 })

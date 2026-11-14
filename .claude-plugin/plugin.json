@@ -1,6 +1,6 @@
 {
   "name": "servicenow-docs",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "description": "Search the official ServiceNow product docs (Australia and Brazil releases) from Claude, with cited answers. Runs locally; needs uv.",
   "author": {
     "name": "Dayan Iqbal"
@@ -20,8 +20,8 @@
     "sdk_panel": {
       "type": "boolean",
       "title": "ServiceNow SDK panel",
-      "description": "Adds /sdk-panel in Claude Code: a pane for the ServiceNow SDK command line (now-sdk) with setup, instances, commands and explain. It can run SDK commands, also against your instances, after you confirm each one. Off: the plugin only reads documentation.",
-      "default": false
+      "description": "Adds /sdk-panel in Claude Code: a pane for the ServiceNow SDK command line (now-sdk) with setup, instances, commands and explain. It can run SDK commands, also against your instances, after you confirm each one. Turn it off for a plugin that only reads documentation.",
+      "default": true
     }
   },
   "mcpServers": {

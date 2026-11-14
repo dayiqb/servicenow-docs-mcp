@@ -2,8 +2,8 @@
 
 One plugin carries the docs server, the two hooks, the figures pane and the ServiceNow SDK
 panel, so one install gives all of it. A plugin has one hooks module, and one hook for an event:
-the module at hooks/register.tsx sets up both panes, and the SDK panel only when its setting is
-on, because it can run SDK commands and the rest of the plugin only reads."""
+the module at hooks/register.tsx sets up both panes, and the SDK panel unless its setting is
+turned off, because it can run SDK commands and the rest of the plugin only reads."""
 
 from __future__ import annotations
 
@@ -37,14 +37,15 @@ def test_one_plugin_is_offered_and_it_loads_one_hooks_module() -> None:
     assert not (ROOT / "mods").exists()
 
 
-def test_the_sdk_panel_is_a_setting_and_off_until_it_is_turned_on() -> None:
+def test_the_sdk_panel_is_a_setting_and_on_until_it_is_turned_off() -> None:
     """The panel runs now-sdk commands after a confirmation; everything else in the plugin only
-    reads. So the person who installs the plugin chooses it."""
+    reads. So it is a setting: on as installed, and turned off for a plugin that only reads."""
     option = PLUGIN["userConfig"]["sdk_panel"]
     assert (option["type"], option["title"]) == ("boolean", "ServiceNow SDK panel")
-    assert option["default"] is False
+    assert option["default"] is True
     assert "now-sdk" in option["description"] and "confirm" in option["description"]
-    assert "options.sdk_panel === true" in _read(ROOT / "hooks" / "register.tsx")
+    assert "Turn it off" in option["description"]
+    assert "options.sdk_panel !== false" in _read(ROOT / "hooks" / "register.tsx")
 
 
 def test_each_event_has_one_hook_in_the_plugin() -> None:
@@ -97,6 +98,8 @@ def test_readme_tells_about_both_panes_and_the_setting() -> None:
     for said in ("/docs-figures", "/sdk-panel", "ServiceNow SDK panel"):
         assert said in readme, said
     assert "mods/" not in readme and "--plugin-dir" not in readme and "in preview" not in readme
+    assert "on as installed" in readme and "turn it off" in readme.lower()
+    assert "off until" not in readme and "off as installed" not in readme
 
 
 @pytest.mark.skipif(CLAUDE is None, reason="the claude command line is not installed")

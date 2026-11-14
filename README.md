@@ -186,17 +186,18 @@ The plugin adds a few things that only Claude Code has:
   records relate, what happens over time), Claude draws it in a pane beside the chat, from the
   docs it has read, with links to the pages. The figure follows the width of the pane, and the
   answer itself stays short. `/docs-figures` opens the pane again.
-- **A ServiceNow SDK panel**, off until you turn it on. `/sdk-panel` opens a pane for the
-  ServiceNow SDK command line (`now-sdk`): whether it is set up, the instances it can reach,
-  every command with what it touches, the SDK's own documentation, and AIUX projects. Reading
+- **A ServiceNow SDK panel.** `/sdk-panel` opens a pane for the ServiceNow SDK command line
+  (`now-sdk`): whether it is set up, the instances it can reach, every command with what it
+  touches, the SDK's own documentation, and AIUX projects. Reading
   runs at once. A command that changes something shows the exact command line and asks first,
   and one that changes an instance asks you to type the alias of that instance. Signing in
   always happens in your own terminal: a password or a token never passes through the pane,
   the chat or a log.
 
-The SDK panel is the one part of the plugin that can change anything; everything else only
-reads. So it is a setting, **ServiceNow SDK panel**, and it is off as installed. Turn it on when
-you install the plugin, or later in `/config`.
+The SDK panel is the one part of the plugin that can change anything, and only after you
+confirm; everything else only reads. So it is a setting, **ServiceNow SDK panel**. It is
+on as installed. For a plugin that only reads, turn it off when you install the plugin, or
+later in `/config`.
 
 ## Compare releases
 
@@ -278,8 +279,8 @@ Both only read. The docs tools never sign in, never change the SDK's configurati
 contact an instance: adding an instance is something you do yourself in a terminal
 (`now-sdk auth --add <instance> --type oauth`). In Claude Code, the script check also reminds
 Claude to run `now-sdk build`, which type-checks locally, after it changes a Fluent file
-(`*.now.ts`). Running SDK commands from Claude Code is what the ServiceNow SDK panel is for; it
-is off until you turn it on (see [In Claude Code](#in-claude-code)).
+(`*.now.ts`). Running SDK commands from Claude Code is what the ServiceNow SDK panel is for
+(see [In Claude Code](#in-claude-code)).
 
 ## Command line and library
 
