@@ -84,8 +84,10 @@ memory until its first search, then about 3 GB.
 ## Releases and updates
 
 - **Australia** is the default. For **Brazil**, just say so ("check the Brazil docs") and Claude
-  passes `release: "brazil"`. To make Brazil the default, set the environment variable
-  `SNOW_DOCS_RELEASE=brazil`.
+  passes `release: "brazil"`. To make Brazil the default, in Claude Desktop write `brazil` in
+  Settings → Extensions → ServiceNow Docs → Release; in Claude Code, set the environment variable
+  `SNOW_DOCS_RELEASE=brazil`. A release the server does not have falls back to Australia, and
+  `snow_docs_status` says so.
 - Only releases you actually use are downloaded.
 - The Brazil docs don't yet cover every area: the current snapshot has no API reference and no
   Finance and Supply Chain pages, and only part of Employee Service Management. Brazil search

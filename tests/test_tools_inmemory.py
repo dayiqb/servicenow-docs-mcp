@@ -145,6 +145,15 @@ def test_brazil_not_published_yet_is_explained(ready, monkeypatch) -> None:
     assert res["ok"] is False and "No brazil docs index" in res["message"]
 
 
+def test_status_says_when_the_release_setting_names_no_release(ready, monkeypatch) -> None:
+    monkeypatch.setenv("SNOW_DOCS_RELEASE", "tokyo")
+    st = _call("snow_docs_status")
+    assert st["default_release"] == "australia" and "tokyo" in st["update_note"]
+    monkeypatch.setenv("SNOW_DOCS_RELEASE", " Australia ")  # as a person would write it
+    st = _call("snow_docs_status")
+    assert st["default_release"] == "australia" and "Release setting" not in st["update_note"]
+
+
 def test_status_reports_each_release(ready) -> None:
     st = _call("snow_docs_status")
     assert st["ok"] is True and st["default_release"] == "australia" and st["models"] == "ready"

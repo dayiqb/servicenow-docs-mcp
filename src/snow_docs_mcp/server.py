@@ -115,7 +115,9 @@ __version__ = config.VERSION
 
 ANSWER_RULES = """\
 You have tools for the official ServiceNow product documentation, for the australia and brazil
-releases (snow_docs_search's `release` argument; australia unless the user's instance runs brazil).
+releases. The tools take a `release` argument: leave it out to search the release the user
+chose in the Release setting (australia when none is chosen), and name a release only when
+the question is about that one.
 When answering a ServiceNow question with them:
 1. Call snow_docs_search first, with the query in English using ServiceNow's own terms: the docs
    are English-only, so translate a question asked in another language (and still answer in
@@ -557,8 +559,8 @@ def snow_docs_search(
             "it-service-management", "servicenow-platform", "platform-security"; common
             abbreviations work too ("itsm", "csm", "hrsd", "cmdb", "ui builder"). An unknown
             value returns suggestions and the list of valid ones.
-        release: ServiceNow release: "australia" or "brazil". Defaults to the configured
-            release (australia unless SNOW_DOCS_RELEASE says otherwise). The result says
+        release: ServiceNow release: "australia" or "brazil". Leave it out for the release
+            chosen in the Release setting (australia when none is chosen). The result says
             when that release's docs lack an area (e.g. brazil's have no API reference yet).
     """
     try:
@@ -1641,7 +1643,7 @@ def snow_docs_status() -> StatusResult:
     models_state = (
         "ready" if setup.models_on_disk() else (setup.models_status().message or "missing")
     )
-    notes = [setup.update_note()]
+    notes = [config.release_setting_note(), setup.update_note()]
     legacy = setup.legacy_files()
     if legacy:
         notes.append(

@@ -17,7 +17,8 @@ entry, so a first run works even if latest.json cannot be reached.
 
 Configuration (env vars):
     SNOW_DOCS_HOME          Data folder. Default: ~/.servicenow-docs-mcp
-    SNOW_DOCS_RELEASE       Default release for searches: australia (default) or brazil.
+    SNOW_DOCS_RELEASE       Default release for searches: australia (default) or brazil. The
+                            Desktop extension's "Release" setting sets it.
     SNOW_DOCS_LATEST_URL    Where to read latest.json. "off" disables update checks.
     SNOW_DOCS_INDEX_URL     Testing / pre-release: download every index from this URL instead.
     SNOW_DOCS_INDEX_SHA256  ... and expect this sha256 of the gzipped download.
@@ -192,6 +193,19 @@ def data_home() -> Path:
 def default_release() -> str:
     raw = os.environ.get("SNOW_DOCS_RELEASE", "").strip().lower()
     return raw if raw in RELEASES else DEFAULT_RELEASE
+
+
+def release_setting_note() -> str:
+    """What to tell the user when SNOW_DOCS_RELEASE names no release this server has. The default
+    is used instead, and unsaid they would read Australia docs as the docs of their instance.
+    Empty when the setting is fine, not set, or a placeholder the host left unfilled."""
+    raw = os.environ.get("SNOW_DOCS_RELEASE", "").strip()
+    if not raw or raw.startswith("${") or raw.lower() in RELEASES:
+        return ""
+    return (
+        f'the Release setting "{raw}" is not a release this server has '
+        f"({' or '.join(RELEASES)}); searches use {DEFAULT_RELEASE}"
+    )
 
 
 def normalize_release(value: str | None) -> str | None:

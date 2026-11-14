@@ -37,6 +37,27 @@ def test_manifest_prompt_text_is_the_servers_answer_rules() -> None:
     assert prompt["text"] == f"{ANSWER_RULES}\n\nQuestion: ${{arguments.question}}"
 
 
+def test_the_release_is_a_setting_of_the_extension() -> None:
+    """Which release the instance runs is the one setting that changes the answers. It is the
+    first one, and a text field: an extension's settings have no list to choose from."""
+    assert next(iter(MANIFEST["user_config"])) == "release"
+    option = MANIFEST["user_config"]["release"]
+    assert (option["type"], option["title"]) == ("string", "Release")
+    assert option["default"] == "australia"
+    assert option["required"] is False
+    assert "australia" in option["description"] and "brazil" in option["description"]
+    assert MANIFEST["server"]["mcp_config"]["env"]["SNOW_DOCS_RELEASE"] == "${user_config.release}"
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "Settings → Extensions → ServiceNow Docs → Release" in readme
+
+
+def test_the_rules_leave_the_release_to_the_setting() -> None:
+    """Told that australia is the default, Claude names it in every call, and the setting would
+    never be used: a call that leaves the release out is what the setting answers."""
+    assert "australia unless" not in ANSWER_RULES
+    assert "leave it out" in ANSWER_RULES and "Release setting" in ANSWER_RULES
+
+
 def test_uv_server_config_is_runnable() -> None:
     server = MANIFEST["server"]
     assert MANIFEST["manifest_version"] == "0.4" and server["type"] == "uv"

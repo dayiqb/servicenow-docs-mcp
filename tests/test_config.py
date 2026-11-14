@@ -53,6 +53,31 @@ def test_releases_and_default(monkeypatch) -> None:
     assert config.default_release() == "australia"
 
 
+@pytest.mark.parametrize(
+    ("raw", "said"),
+    [
+        (None, False),
+        ("", False),
+        (" Brazil ", False),
+        ("australia", False),
+        ("${user_config.release}", False),  # a host that left the setting unfilled
+        ("tokyo", True),
+        ("Brazil 2026", True),
+    ],
+)
+def test_a_release_setting_that_names_no_release_is_said(monkeypatch, raw, said) -> None:
+    """An unknown release falls back to australia. Unsaid, the user would read Australia docs
+    and believe they are the ones for their instance."""
+    if raw is None:
+        monkeypatch.delenv("SNOW_DOCS_RELEASE", raising=False)
+    else:
+        monkeypatch.setenv("SNOW_DOCS_RELEASE", raw)
+    note = config.release_setting_note()
+    assert bool(note) is said
+    if said:
+        assert raw in note and "australia" in note and "brazil" in note
+
+
 def test_latest_url_can_be_turned_off(monkeypatch) -> None:
     monkeypatch.delenv("SNOW_DOCS_LATEST_URL", raising=False)
     assert config.latest_url() == config.LATEST_URL
