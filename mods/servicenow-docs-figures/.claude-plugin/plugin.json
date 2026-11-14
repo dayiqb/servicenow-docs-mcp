@@ -1,6 +1,6 @@
 {
   "name": "servicenow-docs-figures",
-  "version": "2.1.1",
+  "version": "2.2.0",
   "description": "A pane beside the chat where Claude draws figures that explain ServiceNow concepts from the docs",
   "types": "./types/index.d.ts",
   "license": "MIT",

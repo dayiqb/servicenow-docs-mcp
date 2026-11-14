@@ -193,12 +193,12 @@ def test_plugin_server_and_hooks_avoid_desktop_reserved_env_names() -> None:
     assert plugin["mcpServers"]["servicenow-docs"]["args"][:2] == ["run", "--native-tls"]
 
 
-def test_version_is_2_1_1_everywhere() -> None:
+def test_version_is_2_2_0_everywhere() -> None:
     plugin = json.loads((ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
     market = json.loads((ROOT / ".claude-plugin" / "marketplace.json").read_text(encoding="utf-8"))
     versions = {__version__, MANIFEST["version"], plugin["version"]}
     versions |= {p["version"] for p in market["plugins"]}
-    assert versions == {"2.1.1"}
+    assert versions == {"2.2.0"}
 
 
 def test_instructions_and_readme_name_the_compare_tool() -> None:
