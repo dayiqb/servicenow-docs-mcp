@@ -7,8 +7,6 @@
 //   { op: "markdown", text }          -> the rendered blocks as an HTML-like string
 //   { op: "inline", text }            -> one run of inline text, the same way
 //   { op: "plain", text }             -> docs text as plain words
-//   { op: "flow", text, index }       -> the steps of the index-th "Show as flow" figure
-//   { op: "diagram", spec, pick }     -> the figure as a tree: { tag, attrs, text, kids }
 //   { op: "show", result, args, open } -> the whole panel after a tool result, as a string;
 //                                        `open` lists the fold buttons to click first, by position
 //   { op: "words" }                   -> the keys of the strings, per language
@@ -121,8 +119,8 @@ const page = readFileSync(process.argv[2], "utf8");
 const script = page.match(/<script>([\s\S]*)<\/script>/)[1];
 const tail = /\bstart\(\);\s*\}\)\(\);\s*$/;
 if (!tail.test(script)) throw new Error("the panel's script no longer ends with start(); })();");
-(0, eval)(script.replace(tail, "globalThis.panel = { markdown, inline, plainText, diagram, documentBody, show, state, WORDS }; })();"));
-const { markdown, inline, plainText, diagram, documentBody, show, state, WORDS } = globalThis.panel;
+(0, eval)(script.replace(tail, "globalThis.panel = { markdown, inline, plainText, documentBody, show, state, WORDS }; })();"));
+const { markdown, inline, plainText, documentBody, show, state, WORDS } = globalThis.panel;
 
 const KEPT = ["class", "start", "href", "colspan", "rowspan", "scope", "role", "aria-label", "aria-expanded", "aria-controls", "tabindex", "id"];
 const escape = (text) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -145,15 +143,6 @@ const run = {
   inline: (c) => html(inline(c.text, new Element("p"))),
   document: (c) => { const d = documentBody(c.text, c.title); return { html: html(d.body), anchors: d.anchors.map((a) => a.text) }; },
   plain: (c) => plainText(c.text),
-  flow: (c) => {
-    const doc = holder(markdown(c.text));
-    const toggles = doc.querySelectorAll(".flow-of");
-    const button = toggles[c.index || 0] && toggles[c.index || 0].querySelector("button");
-    if (!button) return { toggles: toggles.length, steps: null };
-    button.click();
-    return { toggles: toggles.length, steps: toggles[c.index || 0].querySelectorAll("g.node").map((g) => g.querySelectorAll("tspan").map((s) => s.textContent).join(" ")) };
-  },
-  diagram: (c) => tree(diagram(c.spec, c.label || "Flow", c.pick ? () => {} : undefined)),
   show: (c) => {
     state.args = c.args || {}; show(c.result);
     for (const at of c.open || []) byId.app.querySelectorAll("button.fold")[at].click();

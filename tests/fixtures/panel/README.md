@@ -7,8 +7,5 @@ Input for `tests/test_panel.py` and for the stand-in host (`scripts/panel_host.h
   snapshot 2026-11-06). The text is ServiceNow's, under the Apache License 2.0 (see `NOTICE`
   in the repository root). Each one holds a construct the panel once showed wrongly: sub-steps,
   links in bold, lists and placeholders in table cells, a table inside a table.
-- `diagram-*.json`: diagrams made up for the tests (lanes, steps and links as
-  `snow_docs_diagram` returns them).
 
-Show one in the browser: `scripts/panel_host.html?view=open&page=steps-nested`,
-`scripts/panel_host.html?view=diagram&case=lanes`.
+Show one in the browser: `scripts/panel_host.html?view=open&page=steps-nested`.

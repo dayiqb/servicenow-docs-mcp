@@ -173,21 +173,6 @@ ins { background: var(--br-wash); color: var(--br); text-decoration: underline; 
 .row:hover .row-name { text-decoration: underline; text-underline-offset: 2px; text-decoration-color: var(--ink-2); }
 .row-count { flex: none; color: var(--ink-2); font-size: var(--secondary); font-variant-numeric: tabular-nums; }
 
-/* Diagrams: neutral boxes and lines; the shape says what kind of step it is. */
-.chart-wrap { margin-top: var(--s4); overflow-x: auto; }
-.chart { display: block; max-width: none; height: auto; font: 400 var(--secondary) var(--sans); }
-.chart .node rect, .chart .node polygon { fill: var(--bg-quiet); stroke: var(--ink-2); stroke-width: 1; }
-.chart .node.start rect, .chart .node.end rect { fill: var(--bg); stroke: var(--ink); stroke-width: 1.5; }
-.chart .node text { fill: var(--ink); }
-.chart .node[role="button"] { cursor: pointer; }
-.chart .node[role="button"]:hover rect, .chart .node[role="button"]:hover polygon { stroke: var(--ink); }
-.chart .node:focus-visible { outline: none; } .chart .node:focus-visible rect, .chart .node:focus-visible polygon { stroke: var(--ring); stroke-width: 2; }
-.chart .link { fill: none; stroke: var(--ink-2); stroke-width: 1.25; }
-.chart .tip { fill: var(--ink-2); }
-/* A link's name is cut out of whatever line passes under it. */
-.chart .link-name { fill: var(--ink-2); font-size: var(--meta); paint-order: stroke; stroke: var(--bg); stroke-width: 4px; stroke-linejoin: round; }
-.chart .lane-name { fill: var(--ink-2); font-weight: 500; }
-.chart .lane-line { stroke: var(--line); stroke-width: 1; }
 .entry[tabindex]:focus-visible, h1:focus-visible { outline-offset: 4px; }
 
 /* States */
@@ -202,8 +187,6 @@ ins { background: var(--br-wash); color: var(--br); text-decoration: underline; 
 @media (prefers-reduced-motion: reduce) { .pulse { animation: none; } * { scroll-behavior: auto !important; } }
 @media (forced-colors: active) {
   .key { forced-color-adjust: none; } .act, .side, .reader { border-color: CanvasText; }
-  .chart .node rect, .chart .node polygon { fill: Canvas; stroke: CanvasText; } .chart .link { stroke: CanvasText; }
-  .chart .tip, .chart text { fill: CanvasText; } .chart .link-name { stroke: Canvas; }
 }
 </style>
 </head>
@@ -224,7 +207,7 @@ const WORDS = {
     snapshot: (d) => "snapshot " + d, switchTo: (r) => "Switch to " + r, read: "Read section", hide: "Hide section",
     open: "Open docs", readPage: "Read page", noHits: "No passages matched", tryOther: "Try other words, or search without a product area.",
     failed: "Something went wrong", cut: "This section is cut short. Open the docs page for the rest.",
-    stoppedSearch: "The search was stopped", stoppedCompare: "The comparison was stopped", stoppedOpen: "Opening was stopped", stoppedDiagram: "The diagram was stopped",
+    stoppedSearch: "The search was stopped", stoppedCompare: "The comparison was stopped", stoppedOpen: "Opening was stopped",
     linkBlocked: (u) => "Could not open the link. Copy it: " + u, outside: "ServiceNow Docs",
     outsideHint: "This panel shows search results when Claude uses the ServiceNow docs tools.",
     whatChanged: "What changed from Australia to Brazil", notes: "Release notes", moreNotes: "More release notes by name",
@@ -236,9 +219,8 @@ const WORDS = {
     onThisPage: "On this page", back: "Back", docs: "Docs", areas: "Product areas", folders: "Folders", pages: "Pages",
     nFolders: (n) => (n === 1 ? "1 folder" : n + " folders"), nPages: (n) => (n === 1 ? "1 page" : n + " pages"),
     nSections: (n) => (n === 1 ? "1 section" : n + " sections"),
-    more: (n) => "Show " + n + " more", moreFailed: "Could not load more pages", showFlow: "Show as flow", hideFlow: "Hide flow", stepsTitle: "Steps",
-    nSteps: (n) => (n === 1 ? "1 step" : n + " steps"), inLanes: (n) => "in " + n + " lanes", leadsTo: "Then", source: "Read source", hideSource: "Hide source",
-    start: "Start", end: "End", decision: "Decision", flowOf: (s) => "Flow: " + s, loadingPage: "Opening the page…",
+    more: (n) => "Show " + n + " more", moreFailed: "Could not load more pages",
+      loadingPage: "Opening the page…",
   },
   nb: {
     searching: "Søker i dokumentasjonen…", comparing: "Sammenligner Australia og Brazil…", reading: "Leser…", opening: "Åpner…",
@@ -246,7 +228,7 @@ const WORDS = {
     snapshot: (d) => "øyeblikksbilde " + d, switchTo: (r) => "Bytt til " + r, read: "Les seksjonen", hide: "Skjul seksjonen",
     open: "Åpne dokumentasjonen", readPage: "Les siden", noHits: "Ingen treff", tryOther: "Prøv andre ord, eller søk uten produktområde.",
     failed: "Noe gikk galt", cut: "Seksjonen er kuttet. Åpne siden i dokumentasjonen for resten.",
-    stoppedSearch: "Søket ble stoppet", stoppedCompare: "Sammenligningen ble stoppet", stoppedOpen: "Åpningen ble stoppet", stoppedDiagram: "Diagrammet ble stoppet",
+    stoppedSearch: "Søket ble stoppet", stoppedCompare: "Sammenligningen ble stoppet", stoppedOpen: "Åpningen ble stoppet",
     linkBlocked: (u) => "Kunne ikke åpne lenken. Kopier den: " + u, outside: "ServiceNow Docs",
     outsideHint: "Dette panelet viser søketreff når Claude bruker verktøyene for ServiceNow-dokumentasjonen.",
     whatChanged: "Hva som er endret fra Australia til Brazil", notes: "Release notes", moreNotes: "Flere release notes etter navn",
@@ -258,9 +240,8 @@ const WORDS = {
     onThisPage: "På denne siden", back: "Tilbake", docs: "Dokumentasjon", areas: "Produktområder", folders: "Mapper", pages: "Sider",
     nFolders: (n) => (n === 1 ? "1 mappe" : n + " mapper"), nPages: (n) => (n === 1 ? "1 side" : n + " sider"),
     nSections: (n) => (n === 1 ? "1 seksjon" : n + " seksjoner"),
-    more: (n) => "Vis " + n + " til", moreFailed: "Kunne ikke hente flere sider", showFlow: "Vis som flyt", hideFlow: "Skjul flyten", stepsTitle: "Steg",
-    nSteps: (n) => n + " steg", inLanes: (n) => "i " + n + " baner", leadsTo: "Deretter", source: "Les kilden", hideSource: "Skjul kilden",
-    start: "Start", end: "Slutt", decision: "Valg", flowOf: (s) => "Flyt: " + s, loadingPage: "Åpner siden…",
+    more: (n) => "Vis " + n + " til", moreFailed: "Kunne ikke hente flere sider",
+      loadingPage: "Åpner siden…",
   },
 };
 let lang = "en";
@@ -324,7 +305,7 @@ async function callTool(name, args) {
 const state = { args: {}, results: {}, release: "", tool: "", turn: 0 };
 // What the tool call is for: it picks the words for "busy" and "stopped".
 const purpose = () => state.tool === "snow_docs_compare" || "page" in state.args ? "Compare"
-  : state.tool === "snow_docs_diagram" ? "Diagram" : state.tool === "snow_docs_open" || state.tool === "snow_docs_browse" ? "Open" : "Search";
+  : state.tool === "snow_docs_open" || state.tool === "snow_docs_browse" ? "Open" : "Search";
 const fromHost = {
   "ui/notifications/tool-input": (p) => { state.args = (p && p.arguments) || {}; state.results = {}; busy(); },
   "ui/notifications/tool-result": (p) => show(unwrap(p)),
@@ -545,7 +526,6 @@ function blocks(lines, anchors, depth) {
   let para = [], list = null, i = 0;
   const closePara = () => { if (para.length) { out.append(paragraph(para)); para = []; } };
   const closeList = () => {
-    if (list && !depth && list.tagName === "OL" && list.children.length >= 3) out.append(flowToggle(list));
     list = null;
   };
   const flush = () => { closePara(); closeList(); };
@@ -632,28 +612,6 @@ function markdown(text, anchors) {
     .replace(/\n*\[… truncated[^\]\n]*\]\s*$/, "");
   return blocks(source.split("\n"), anchors, 0);
 }
-function flowToggle(list) {
-  // A numbered procedure can also be seen as a flow, one box per step (sub-steps stay in the text).
-  const holder = el("div", { class: "flow-of" });
-  let figure = null;
-  const button = el("button", { class: "act", type: "button", "aria-expanded": "false", text: t("showFlow") });
-  button.addEventListener("click", () => {
-    if (!figure) {
-      const first = Number(list.getAttribute("start") || 1);
-      const steps = [...list.children].map((li, n) => {
-        const lead = li.firstElementChild && li.firstElementChild.tagName === "P" ? li.firstElementChild : li;
-        return { id: "s" + n, label: (first + n) + ". " + lead.textContent.replace(/\s+/g, " ").trim(), kind: "step" };
-      });
-      figure = diagram({ steps, links: steps.slice(1).map((st, n) => ({ source: steps[n].id, target: st.id })), lanes: [] }, t("stepsTitle"));
-      holder.append(figure);
-    } else figure.hidden = !figure.hidden;
-    const open = !figure.hidden;
-    button.setAttribute("aria-expanded", String(open)); button.textContent = open ? t("hideFlow") : t("showFlow");
-  });
-  holder.append(button);
-  return holder;
-}
-
 function openLink(url, near) {
   if (!WEB.test(String(url))) return; // only https?: addresses go to the host
   request("ui/open-link", { url }).catch(() => {
@@ -872,7 +830,7 @@ function showCompare(result) {
   say(t("whatChanged"));
 }
 
-// ---- diagrams ------------------------------------------------------------------------------
+// ---- svg: the arrow of a row that opens -----------------------------------------------------
 const SVG = "http://www.w3.org/2000/svg";
 function svg(tag, attrs, ...kids) {
   const node = document.createElementNS(SVG, tag);
@@ -883,249 +841,6 @@ function svg(tag, attrs, ...kids) {
   for (const kid of kids.flat()) if (kid != null) node.append(kid);
   return node;
 }
-let charts = 0;
-const pen = (() => { try { return document.createElement("canvas").getContext("2d"); } catch { return null; } })();
-function ruler() {
-  // How wide a piece of text is in the figure's face; a fair guess where it cannot be measured.
-  const face = getComputedStyle(document.body).fontFamily;
-  return (text, size, weight) => {
-    if (!pen) return text.length * size * 0.56;
-    pen.font = (weight || 400) + " " + size + "px " + face;
-    return pen.measureText(text).width;
-  };
-}
-function wrapLines(text, fits, most) {
-  // Words onto lines that fit. A word wider than a line is broken, after punctuation when it
-  // has some; text past the last line allowed ends in "…" (the full text is the shape's title).
-  const lines = [];
-  let line = "";
-  for (let word of String(text).split(/\s+/).filter(Boolean)) {
-    for (;;) {
-      const joined = line ? line + " " + word : word;
-      if (fits(joined)) { line = joined; break; }
-      if (line && fits(word)) { lines.push(line); line = ""; continue; }
-      const lead = line ? line + " " : "";
-      let n = word.length - 1;
-      while (n > 0 && !fits(lead + word.slice(0, n))) n--;
-      if (line && n < 4) { lines.push(line); line = ""; continue; }
-      n = Math.max(n, 1);
-      const soft = word.slice(0, n).search(/[._\/(^=:,-][^._\/(^=:,-]*$/);
-      if (soft >= n / 2) n = soft + 1;
-      lines.push(lead + word.slice(0, n)); line = ""; word = word.slice(n);
-      if (!word) break;
-    }
-  }
-  if (line) lines.push(line);
-  if (lines.length > most) {
-    lines.length = most;
-    let last = lines[most - 1];
-    while (last && !fits(last + "…")) last = last.slice(0, -1);
-    lines[most - 1] = last.replace(/[\s.,;:]+$/, "") + "…";
-    lines.cut = true;
-  }
-  return lines.length ? lines : [""];
-}
-function diagram(spec, label, onPick) {
-  // Steps in rows, top to bottom: a step sits one row below the last step that leads to it.
-  // With lanes each lane is a column; without, a step stands under the step it follows and
-  // branches go to the right. Lines run only in the gaps between rows and the alleys between
-  // columns, each on a track of its own, so no line passes behind a step or along another.
-  const W = 208, LINE = 20, PAD = 32, PORT = 16, TRACK = 8, NAMED = 16;
-  const width = ruler(), fit = (max, size, weight) => (s) => width(s, size, weight) <= max;
-  const lanes = spec.lanes || [], laned = lanes.length > 0;
-  const steps = (spec.steps || []).map((st, order) => {
-    const decision = st.kind === "decision";
-    const lines = wrapLines(st.label, fit(decision ? 104 : W - 24, 14), decision ? 4 : 5);
-    let h = lines.length * LINE + 20;
-    if (decision) {
-      // a diamond tall enough that every line of its text lies inside it
-      let reach = 28;
-      lines.forEach((line, n) => {
-        const off = Math.abs(n - (lines.length - 1) / 2) * LINE + 10;
-        reach = Math.max(reach, off / (1 - (width(line, 14) / 2 + 6) / (W / 2)));
-      });
-      h = Math.ceil(reach / 2) * 4;
-    }
-    return { ...st, order, lines, h, row: 0, col: laned ? Math.max(0, lanes.findIndex((l) => l.id === st.lane)) : 0 };
-  });
-  const byId = new Map(steps.map((st) => [st.id, st]));
-  const links = (spec.links || []).filter((l) => byId.has(l.source) && byId.has(l.target)).map((l) => ({ ...l, a: byId.get(l.source), b: byId.get(l.target) }));
-  // which links go backwards (to a step already on the path)
-  const out = new Map(steps.map((st) => [st, []]));
-  links.forEach((l) => { if (l.a !== l.b) out.get(l.a).push(l); });
-  const mark = new Map();
-  const walk = (st) => { mark.set(st, 1); for (const l of out.get(st)) { const m = mark.get(l.b); if (m === 1) l.back = true; else if (!m) walk(l.b); } mark.set(st, 2); };
-  steps.forEach((st) => { if (!mark.get(st)) walk(st); });
-  const forward = links.filter((l) => !l.back && l.a !== l.b);
-  for (let pass = 0; pass < steps.length + 2; pass++) {
-    let moved = false;
-    for (const l of forward) if (l.b.row <= l.a.row) { l.b.row = l.a.row + 1; moved = true; }
-    if (laned) {
-      const taken = new Set();
-      for (const st of [...steps].sort((x, y) => x.row - y.row || x.order - y.order)) {
-        while (taken.has(st.col + ":" + st.row)) { st.row++; moved = true; }
-        taken.add(st.col + ":" + st.row);
-      }
-    }
-    if (!moved) break;
-  }
-  if (!laned) {
-    const taken = new Set(), tied = new Set(links.flatMap((l) => [l.a, l.b]));
-    const inFlow = steps.filter((st) => tied.has(st)).sort((x, y) => x.row - y.row || x.order - y.order);
-    for (const st of inFlow) {
-      const before = forward.filter((l) => l.b === st).map((l) => l.a).sort((x, y) => y.row - x.row)[0];
-      st.col = before ? before.col : 0;
-      while (taken.has(st.col + ":" + st.row)) st.col++;
-      taken.add(st.col + ":" + st.row);
-    }
-    // Steps that nothing leads to or from stand in rows of their own, as many abreast as fit.
-    const used = Math.max(0, ...inFlow.map((st) => st.col + 1)), under = Math.max(0, ...inFlow.map((st) => st.row + 1));
-    const abreast = Math.max(used, Math.min(4, Math.max(1, Math.floor(((app.clientWidth || 720) - 2 * PAD + 56) / (W + 56)))));
-    steps.filter((st) => !tied.has(st)).forEach((st, n) => { st.row = under + Math.floor(n / abreast); st.col = n % abreast; });
-  }
-  const nRows = Math.max(0, ...steps.map((st) => st.row + 1)), nCols = laned ? lanes.length : Math.max(1, ...steps.map((st) => st.col + 1));
-
-  // Tracks: gaps[r] is the gap above row r, alleys[c] the alley left of column c (the last
-  // one is right of the last column). Branches out of one step share a track, and so do the
-  // lines that come into one step from an alley; every other line has a track of its own.
-  const gaps = Array.from({ length: nRows + 1 }, () => ({ out: [], far: [], into: [], named: false }));
-  const alleys = Array.from({ length: nCols + 1 }, () => ({ tracks: [], loop: 0 }));
-  const shared = (list, key, named) => { let tr = list.find((x) => x.key === key); if (!tr) list.push(tr = { key, named: false }); tr.named = tr.named || named; return tr; };
-  for (const l of links) {
-    const { a, b } = l, named = !!l.label;
-    if (a === b) { l.kind = "self"; alleys[a.col + 1].loop = Math.max(alleys[a.col + 1].loop, named ? width(String(l.label), 12) + 12 : 24); }
-    else if (!l.back && b.row === a.row + 1 && b.col === a.col) { l.kind = "down"; gaps[b.row].named = gaps[b.row].named || named; }
-    else if (!l.back && b.row === a.row + 1) { l.kind = "step"; l.out = shared(gaps[b.row].out, a, named); }
-    else {
-      l.kind = "far";
-      l.alley = l.back || b.col === a.col ? Math.max(a.col, b.col) + 1 : b.col > a.col ? b.col : b.col + 1;
-      l.out = { named }; gaps[a.row + 1].far.push(l.out);
-      l.via = {}; alleys[l.alley].tracks.push(l.via);
-      l.into = shared(gaps[b.row].into, b, false);
-    }
-  }
-  const gapH = gaps.map((g, r) => {
-    let y = g.named ? 24 : 12; // room for the name of a link that goes straight down
-    const tracks = [...g.out, ...g.far, ...g.into];
-    for (const tr of tracks) { y += tr.named ? NAMED : TRACK; tr.at = y; }
-    const h = tracks.length ? y + 16 : 0;
-    return r > 0 && r < nRows ? Math.max(40, h) : h;
-  });
-  const alleyW = alleys.map((al, c) => {
-    const lead = Math.max(24, al.loop); // clear of a loop beside the column, and of its name
-    al.tracks.forEach((tr, n) => { tr.at = lead + n * TRACK; });
-    const need = al.tracks.length ? lead + (al.tracks.length - 1) * TRACK + 24 : al.loop;
-    return c === 0 ? 0 : c === nCols ? Math.max(0, need - PAD + 8) : Math.max(56, need);
-  });
-  const colX = [];
-  let x = PAD;
-  for (let c = 0; c < nCols; c++) { x += alleyW[c]; colX[c] = x; x += W; }
-  const fullW = x + alleyW[nCols] + PAD, alleyX = (c) => (c === nCols ? colX[c - 1] + W : colX[c] - alleyW[c]);
-  const laneLines = lanes.map((lane) => wrapLines(lane.label, fit(W, 14, 500), 3));
-  const head = laned ? Math.max(...laneLines.map((l) => l.length)) * LINE + 16 : 0;
-  const rowsOf = Array.from({ length: nRows }, () => []);
-  steps.forEach((st) => rowsOf[st.row].push(st));
-  const gapY = [];
-  let y = PAD + head;
-  rowsOf.forEach((row, r) => {
-    gapY[r] = y; y += gapH[r];
-    const tall = Math.max(0, ...row.map((st) => st.h));
-    row.forEach((st) => { st.x = colX[st.col] + W / 2; st.y = y + tall / 2; });
-    y += tall;
-  });
-  gapY[nRows] = y;
-  const fullH = y + gapH[nRows] + PAD;
-
-  const tip = "tip-" + ++charts;
-  const root = svg("svg", { viewBox: `0 0 ${fullW} ${fullH}`, width: fullW, height: fullH, class: "chart", ...(onPick ? {} : { role: "img", "aria-label": label }) });
-  root.append(svg("defs", {}, svg("marker", { id: tip, viewBox: "0 0 10 10", refX: "9", refY: "5", markerWidth: "7", markerHeight: "7", orient: "auto-start-reverse" },
-    svg("path", { d: "M0 0 L10 5 L0 10 z", class: "tip" }))));
-  const textOf = (lines, cx, top, cls) => svg("text", { x: cx, y: top, "text-anchor": "middle", class: cls }, lines.map((line, n) => svg("tspan", { x: cx, dy: n ? LINE : 0, text: line })));
-  lanes.forEach((lane, n) => {
-    if (n) { const at = alleyX(n) + alleyW[n] - 12; root.append(svg("line", { x1: at, y1: PAD, x2: at, y2: fullH - PAD, class: "lane-line", "aria-hidden": "true" })); }
-    root.append(textOf(laneLines[n], colX[n] + W / 2, PAD + 16, "lane-name"));
-  });
-  if (laned) root.append(svg("line", { x1: PAD, y1: PAD + head - 8, x2: fullW - PAD, y2: PAD + head - 8, class: "lane-line", "aria-hidden": "true" }));
-
-  // where a line meets a shape: the top at a given x, the right side at a given height
-  const topOf = (st, px) => st.y - (st.kind === "decision" ? (st.h / 2) * (1 - Math.abs(px - st.x) / (W / 2)) : st.h / 2);
-  const rightOf = (st, dy) => st.x + (st.kind === "decision" ? (W / 2) * (1 - Math.abs(dy) / (st.h / 2))
-    : W / 2 - (st.kind === "step" ? 0 : st.h / 2 - Math.sqrt(Math.max(0, (st.h / 2) ** 2 - dy * dy))));
-  const names = [];
-  for (const l of links) {
-    const { a, b } = l, from = `M${a.x} ${a.y + a.h / 2}`;
-    let d, name;
-    if (l.kind === "self") {
-      // out of the right side and back in just below: a loop in the alley beside the step
-      d = `M${rightOf(a, 8)} ${a.y - 8} H${a.x + W / 2 + 16} V${a.y + 8} H${rightOf(a, 8)}`; name = [a.x + W / 2 + 4, a.y - 12, "start"];
-    } else if (l.kind === "down") {
-      d = `${from} V${topOf(b, b.x)}`; name = [a.x + 8, a.y + a.h / 2 + 14, "start"];
-    } else {
-      const ty = gapY[a.row + 1] + l.out.at;
-      if (l.kind === "step") {
-        // across the gap under the step, then down into the next row; named beside the drop
-        const dir = a.x < b.x ? -1 : 1, px = b.x + dir * PORT;
-        d = `${from} V${ty} H${px} V${topOf(b, px)}`; name = [px + dir * 6, ty - 4, dir < 0 ? "end" : "start"];
-      } else {
-        // past other rows, or back up: along an alley, and into the step from above
-        const vx = alleyX(l.alley) + l.via.at, iy = gapY[b.row] + l.into.at, px = b.x + (vx < b.x ? -PORT : PORT);
-        d = `${from} V${ty} H${vx} V${iy} H${px} V${topOf(b, px)}`; name = [vx + (vx > a.x ? -6 : 6), ty - 4, vx > a.x ? "end" : "start"];
-      }
-    }
-    root.append(svg("path", { d, class: "link", "marker-end": `url(#${tip})`, "aria-hidden": "true" }));
-    if (l.label) names.push(svg("text", { x: name[0], y: name[1], class: "link-name", "text-anchor": name[2], "aria-hidden": "true", text: l.label }));
-  }
-  for (const st of steps) {
-    const g = svg("g", { class: "node " + st.kind });
-    const left = st.x - W / 2, top = st.y - st.h / 2;
-    if (st.lines.cut) g.append(svg("title", { text: st.label }));
-    if (st.kind === "decision") g.append(svg("polygon", { points: `${st.x},${top} ${left + W},${st.y} ${st.x},${top + st.h} ${left},${st.y}` }));
-    else g.append(svg("rect", { x: left, y: top, width: W, height: st.h, rx: st.kind === "start" || st.kind === "end" ? st.h / 2 : 6 }));
-    g.append(textOf(st.lines, st.x, st.y - ((st.lines.length - 1) * LINE) / 2 + 5));
-    if (onPick) {
-      g.setAttribute("tabindex", "0"); g.setAttribute("role", "button"); g.setAttribute("aria-label", st.label);
-      g.addEventListener("click", () => onPick(st.id));
-      g.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onPick(st.id); } });
-    }
-    root.append(g);
-  }
-  root.append(...names); // last, so a name is never under a line or a shape
-  // A figure wider than the panel scrolls sideways; then the keyboard can reach it to scroll.
-  // With steps to pick, the frame is the named group and the svg holds its buttons (neither an
-  // svg nor a figure can be a group). A plain one is an image; its frame is named only while
-  // it scrolls.
-  const figure = el("div", { class: "chart-wrap", ...(onPick ? { role: "group", "aria-label": label } : {}) }, root);
-  new ResizeObserver(() => {
-    const scrolls = figure.scrollWidth > figure.clientWidth + 1;
-    const while_scrolling = onPick ? [["tabindex", "0"]] : [["tabindex", "0"], ["role", "group"], ["aria-label", label]];
-    for (const [k, v] of while_scrolling) { if (scrolls) figure.setAttribute(k, v); else figure.removeAttribute(k); }
-  }).observe(figure);
-  return figure;
-}
-function showDiagram(result) {
-  const lanes = result.lanes || [], steps = result.steps || [], links = result.links || [];
-  const count = [t("nSteps", steps.length), lanes.length ? t("inLanes", lanes.length) : ""].filter(Boolean).join(" ");
-  const head = el("header", { class: "head" }, el("div", { class: "head-text" }, title(result.title || t("stepsTitle")), el("p", { class: "count", text: count })));
-  const items = new Map();
-  const pick = (id) => { const li = items.get(id); if (!li) return; li.scrollIntoView({ block: "nearest", behavior: "smooth" }); focusOn(li.querySelector("button") || li); };
-  const chart = diagram({ steps, links, lanes }, t("flowOf", result.title || ""), pick);
-  const laneName = new Map(lanes.map((l) => [l.id, l.label]));
-  const stepName = new Map(steps.map((st) => [st.id, st.label]));
-  const outline = el("ol", { class: "entries" });
-  steps.forEach((st, n) => {
-    const li = el("li", { class: "entry", tabindex: "-1" }, el("span", { class: "rank", "aria-hidden": "true", text: String(n + 1) }), el("h3", { text: st.label }));
-    const where = [st.kind !== "step" && WORDS.en[st.kind] ? t(st.kind) : "", laneName.get(st.lane) || ""].filter(Boolean).join(", ");
-    if (where) li.append(el("p", { class: "where", text: where }));
-    if (st.detail) li.append(el("blockquote", { class: "quote", text: st.detail }));
-    const next = links.filter((l) => l.source === st.id).map((l) => (l.label ? l.label + ": " : "") + (stepName.get(l.target) || l.target));
-    if (next.length) li.append(el("p", { class: "where", text: t("leadsTo") + " " + next.join("; ") }));
-    if (st.source_id) li.append(el("div", { class: "acts" }, readerButton(st.source_id, t("source"), li, { hide: t("hideSource"), name: st.label })));
-    items.set(st.id, li); outline.append(li);
-  });
-  app.replaceChildren(head, chart, el("section", { class: "part" }, el("h2", { text: t("stepsTitle") }), outline));
-  say(result.title || t("stepsTitle"));
-}
-
 // ---- a page as a document ----------------------------------------------------------------
 function documentBody(content, title) {
   // A page's text as a document, with its headings listed. A first heading that only repeats
@@ -1247,7 +962,6 @@ function showBrowse(result, focusId) {
 
 function show(result) {
   if (!result || result.ok === false) return message(t("failed"), (result && result.message) || "");
-  if (Array.isArray(result.steps) && "mermaid" in result) return showDiagram(result);
   if (Array.isArray(result.headings) && "focus" in result) return showDocument(result);
   if (Array.isArray(result.folders) && "path" in result) return showBrowse(result);
   if (Array.isArray(result.hits)) return showSearch(result);

@@ -3,8 +3,6 @@ the command line read it). Field descriptions are part of each tool's schema."""
 
 from __future__ import annotations
 
-from typing import Literal
-
 from pydantic import BaseModel, Field
 
 from snow_docs_mcp import config
@@ -222,39 +220,6 @@ class OpenResult(BaseModel):
     release: str = ""
     product: str = ""
     headings: list[str] = []
-
-
-class DiagramLane(BaseModel):
-    id: str
-    label: str
-
-
-class DiagramStep(BaseModel):
-    id: str = Field(description="Short and unique within the diagram, letters, digits, _ or -.")
-    label: str = Field(description="What happens, in a few words, as the docs put it.")
-    kind: Literal["start", "step", "decision", "end"] = "step"
-    lane: str = Field("", description="The id of the lane (role, team or system) that does it.")
-    detail: str = Field("", description="One or two sentences from the docs, shown with the step.")
-    source_id: str = Field("", description="The id of the passage this step comes from.")
-
-
-class DiagramLink(BaseModel):
-    source: str = Field(description="The id of the step it leaves.")
-    target: str = Field(description="The id of the step it goes to.")
-    label: str = Field("", description='For a decision: the answer this path is for, e.g. "Yes".')
-
-
-class DiagramResult(BaseModel):
-    ok: bool
-    message: str
-    title: str = ""
-    kind: str = Field("", description="flow or swimlane")
-    lanes: list[DiagramLane] = []
-    steps: list[DiagramStep] = []
-    links: list[DiagramLink] = []
-    mermaid: str = Field(
-        "", description="The same diagram as Mermaid text, for clients without panels."
-    )
 
 
 class ScriptFinding(BaseModel):

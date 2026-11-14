@@ -17,7 +17,6 @@ It adds eleven read-only tools to Claude:
 | `snow_docs_sdk_status` | Shows whether the ServiceNow SDK is installed, its version and the instances it is set up for |
 | `snow_docs_sdk_explain` | Reads the ServiceNow SDK's own documentation (Fluent) for the installed version |
 | `snow_docs_open` | Shows a page to you as a readable document, in a panel |
-| `snow_docs_diagram` | Shows a process from the docs as a flow diagram or swimlanes, in a panel |
 | `snow_docs_status` | Shows download/update progress and which docs snapshot is loaded |
 
 Claude writes the answer from the passages and cites them. The server itself runs no AI model
@@ -148,26 +147,25 @@ the same check itself with the `snow_docs_check_script` tool.
 
 ## The panel in Claude Desktop
 
-In Claude Desktop, a panel appears in the conversation when you ask to see something: a page, a
-diagram, or what changed between two releases. Claude's own searching and browsing draw
-nothing; you get the answer. The panel follows Claude's light or dark theme and your language
+In Claude Desktop, a panel appears in the conversation when you ask to see something: a page,
+or what changed between two releases. Claude's own searching and browsing draw nothing; you
+get the answer. The panel follows Claude's light or dark theme and your language
 (English or Norwegian), works with the keyboard, and needs no network: it is one page inside
 the extension. Long text scrolls inside the panel.
 
 - **A page as a document.** Ask *"show me that page"*: the page is laid out for reading, with
-  its sections listed beside it, notes set apart, and tables and code as they should be. A
-  numbered procedure can also be shown as a flow, one box per step. *Switch to Brazil* shows the
-  same page in the other release.
-- **Diagrams.** Ask *"draw the major incident process as swimlanes"*: Claude takes the steps
-  from the docs and the panel draws a flow, or swimlanes when several roles take part. Every
-  step lists the passage it comes from, and you can open it.
+  its sections listed beside it, notes set apart, and tables and code as they should be.
+  *Switch to Brazil* shows the same page in the other release.
 - **What changed.** A comparison of Australia and Brazil. Each changed page is a row that says
   how many of its sections changed; it opens to those sections, and a section opens to the two
   releases side by side, with the words that differ marked.
 
 Claude Desktop draws the panel in chat, in Cowork and in the Code tab. A client without panels,
-such as Claude Code in a terminal, gets the same results as text; a diagram comes as Mermaid
-text there.
+such as Claude Code in a terminal, gets the same results as text.
+
+Figures are not drawn by this panel. When a picture explains a concept better than text,
+Claude draws one where the client has a place for it: in Claude Code, the figures pane
+described below.
 
 ## In Claude Code
 

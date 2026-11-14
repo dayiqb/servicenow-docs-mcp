@@ -22,11 +22,9 @@
        /scripts/panel_host.html?samples=<dir>    real results saved as <dir>/search-au.json,
                                                  search-br.json, compare.json, compare-page.json, read.json,
                                                  open.json, read-page.json, browse-root.json, browse.json,
-                                                 browse-folder.json, diagram.json, diagram-flow.json
+                                                 browse-folder.json
        ...&view=open&page=<name>                 a real docs section as the document and in the readers:
                                                  tests/fixtures/panel/<name>.json (steps-nested, table-list, ...)
-       ...&view=diagram&case=<name>              a diagram that is hard to draw:
-                                                 tests/fixtures/panel/diagram-<name>.json (lanes, skip, loose)
        ...&fail=more|switch|read                 the host refuses that call, to see what the panel says
      Serve the repository root (python -m http.server) and open it in a browser. -->
 <form id="controls">
@@ -34,14 +32,12 @@
     <option value="search">Search</option><option value="empty">Search, no hits</option>
     <option value="compare">Compare a topic</option><option value="compare-page">Compare a page</option>
     <option value="open">Document</option><option value="browse-root">Browse: product areas</option><option value="browse">Browse: a product</option>
-    <option value="diagram">Diagram: swimlanes</option><option value="diagram-flow">Diagram: flow</option>
     <option value="error">Error</option><option value="loading">Loading</option></select></label>
   <label>Theme <select name="theme"><option>light</option><option>dark</option></select></label>
   <label>Language <select name="locale"><option value="en-US">English</option><option value="nb-NO">Norsk</option></select></label>
   <label>Width <select name="width"><option value="720px">720</option><option value="420px">420</option><option value="320px">320</option><option value="1000px">1000</option></select></label>
   <label>Page <select name="page"><option value="">sample</option><option>steps-nested</option><option>steps-substeps</option><option>links-bold</option><option>code-bold</option><option>italic</option>
     <option>table-placeholder</option><option>table-list</option><option>table-colspan</option><option>table-rowspan</option><option>table-nested</option><option>table-code</option></select></label>
-  <label>Diagram <select name="case"><option value="">sample</option><option>lanes</option><option>skip</option><option>loose</option></select></label>
 </form>
 <main><iframe id="view" title="Panel" sandbox="allow-scripts allow-same-origin"></iframe><pre id="log"></pre></main>
 <script>
@@ -93,20 +89,9 @@ Object.assign(BUILT_IN, {
   "browse": { ok: true, message: "", release: "australia", snapshot: "2026-11-06", path: "it-service-management", pages_left_out: 17,
     folders: [{ name: "incident-management", path: "it-service-management/incident-management", pages: 134 }, { name: "change-management", path: "it-service-management/change-management", pages: 222 }],
     pages: [{ title: "Define priority lookup rules", id: "australia:markdown/it-service-management/page-1.md::" }, { title: "IT Service Management overview", id: "australia:markdown/it-service-management/page-2.md::" }] },
-  "diagram": { ok: true, message: "", title: "Incident, from report to closure", kind: "swimlane", mermaid: "",
-    lanes: [lane("caller", "Caller"), lane("desk", "Service desk")],
-    steps: [{ id: "a", label: "Incident is created", kind: "start", lane: "caller", detail: "", source_id: "" },
-      { id: "b", label: "Set impact and urgency", kind: "step", lane: "desk", detail: "Priority is looked up from the two.", source_id: "australia:markdown/x.md::A" },
-      { id: "c", label: "Can it be resolved now?", kind: "decision", lane: "desk", detail: "", source_id: "australia:markdown/x.md::A" },
-      { id: "d", label: "Assign to a group", kind: "step", lane: "desk", detail: "", source_id: "" },
-      { id: "e", label: "Resolve the incident", kind: "step", lane: "desk", detail: "", source_id: "australia:markdown/x.md::A" },
-      { id: "f", label: "Confirm it works", kind: "end", lane: "caller", detail: "", source_id: "" }],
-    links: [{ source: "a", target: "b", label: "" }, { source: "b", target: "c", label: "" }, { source: "c", target: "e", label: "Yes" }, { source: "c", target: "d", label: "No" }, { source: "d", target: "e", label: "" }, { source: "e", target: "f", label: "" }] },
 });
 BUILT_IN["read-page-br"] = { ...BUILT_IN["read-page"], content: BUILT_IN["read-page"].content.replace("from its impact and urgency.", "from its impact and urgency, per assignment group when the group has its own rules.") };
 BUILT_IN["browse-folder"] = { ...BUILT_IN.browse, path: "it-service-management/incident-management", folders: [], pages_left_out: 0 };
-BUILT_IN["diagram-flow"] = { ...BUILT_IN.diagram, kind: "flow", title: "Incident triage", lanes: [], steps: BUILT_IN.diagram.steps.map((st) => ({ ...st, lane: "" })),
-  links: [...BUILT_IN.diagram.links, { source: "e", target: "b", label: "Reopened" }] };
 async function sample(name) {
   if (!params.get("samples")) return BUILT_IN[name];
   try { return await (await fetch(`${params.get("samples")}/${name}.json`)).json(); } catch { return BUILT_IN[name]; }
@@ -118,10 +103,10 @@ const nextPages = (listing, offset) => ({ ...listing, folders: [], pages_left_ou
   pages: Array.from({ length: listing.pages_left_out || 0 }, (_, n) => { const pg = listing.pages[n % listing.pages.length];
     return { title: `${pg.title} (${offset + n + 1})`, id: pg.id.replace(/::$/, `-${offset + n}::`) }; }) });
 const TOOL = { search: "snow_docs_search", empty: "snow_docs_search", error: "snow_docs_search", loading: "snow_docs_search", compare: "snow_docs_compare", "compare-page": "snow_docs_compare",
-  open: "snow_docs_open", "browse-root": "snow_docs_browse", browse: "snow_docs_browse", diagram: "snow_docs_diagram", "diagram-flow": "snow_docs_diagram" };
+  open: "snow_docs_open", "browse-root": "snow_docs_browse", browse: "snow_docs_browse" };
 const ARGS = { search: { query: "how is incident priority calculated", limit: 5 }, empty: { query: "zebra migration patterns", limit: 5 }, error: { query: "incident", limit: 5 },
   loading: { query: "how is incident priority calculated", limit: 5 }, compare: { query: "AI Control Tower", limit: 5 }, "compare-page": { page: "markdown/release-notes/ai-control-tower-rn.md" },
-  open: { id: "australia:markdown/x.md::" }, "browse-root": {}, browse: { product: "itsm" }, diagram: { title: "Major incident" }, "diagram-flow": { title: "Incident triage" } };
+  open: { id: "australia:markdown/x.md::" }, "browse-root": {}, browse: { product: "itsm" } };
 const send = (message) => frame.contentWindow.postMessage(message, "*");
 const wrap = (data) => ({ content: [{ type: "text", text: JSON.stringify(data) }], structuredContent: data });
 const note = (text) => { log.textContent = (text + "\n" + log.textContent).slice(0, 1500); };
@@ -140,7 +125,6 @@ window.addEventListener("message", async (event) => {
       : view === "empty" ? { ok: true, release: "australia", snapshot: "2026-11-06", message: "", hits: [] }
       : view === "open" && form.elements.page.value ? await fixture(form.elements.page.value).then((page) => ({ ok: true, message: "", id: page.id.replace(/::.*$/, "::"), focus: "", title: page.title,
           url: page.url, release: page.id.split(":")[0], product: page.id.split("/")[1] || "", headings: [] }))
-      : view.startsWith("diagram") && form.elements.case.value ? { ok: true, message: "", title: "A diagram that is hard to draw", kind: "flow", mermaid: "", ...(await fixture("diagram-" + form.elements.case.value)) }
       : await sample(view === "search" ? "search-au" : view);
     setTimeout(() => send({ jsonrpc: "2.0", method: "ui/notifications/tool-result", params: wrap(result) }), 250);
   } else if (m.method === "ui/notifications/size-changed") {

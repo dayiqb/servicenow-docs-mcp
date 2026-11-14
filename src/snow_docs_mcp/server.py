@@ -9,7 +9,6 @@ Tools (all read-only):
     snow_docs_check_script  which calls and tables in a script the docs do not have
     snow_docs_browse   the docs as a tree: product areas, folders and pages
     snow_docs_open     show a page to the user as a document (in the panel)
-    snow_docs_diagram  show a process from the docs as a flow or swimlanes (in the panel)
     snow_docs_sdk_status   whether the ServiceNow SDK is set up, and for which instances
     snow_docs_sdk_explain  the SDK's own documentation (Fluent), for the installed version
     snow_docs_status   setup/update progress per release, and where data lives
@@ -51,7 +50,6 @@ from __future__ import annotations
 import contextlib
 import difflib
 import hashlib
-import itertools
 import json
 import logging
 import os
@@ -68,7 +66,6 @@ from mcp.types import ToolAnnotations
 from snow_docs_mcp import (
     api_table,
     config,
-    diagram,
     entry,
     identifiers,
     models,
@@ -96,10 +93,6 @@ from snow_docs_mcp.results import (
     BrowseResult,
     ChangedPage,
     CompareResult,
-    DiagramLane,
-    DiagramLink,
-    DiagramResult,
-    DiagramStep,
     Hit,
     OpenResult,
     ReadResult,
@@ -149,11 +142,12 @@ When answering a ServiceNow question with them:
    documentation of the SDK version installed on this computer. snow_docs_sdk_status shows
    whether the SDK is set up and for which instances. After changing a Fluent file, suggest
    `now-sdk build`, which type-checks it locally.
-11. To show something to the user rather than read it yourself: snow_docs_open displays a page
-   as a document, and snow_docs_diagram draws a process as a flow, or as swimlanes when
-   several roles take part. Draw a diagram when a lifecycle, a procedure with decisions or a
-   hand-off is easier to see than to read; take every step from the docs you read and give
-   its source id. Clients without panels get the diagram as Mermaid text."""
+11. To show a page to the user rather than read it yourself, snow_docs_open displays it as a
+   document. When a picture explains a concept better than text (a lifecycle, how records
+   relate, what happens over time), draw one if the client gives you a way to show a figure
+   (in Claude Code, the show_figure tool of the docs figures pane): at most one per answer,
+   everything in it from the docs you read, with those pages as its sources. Keep the answer
+   itself short; the figure adds to it and does not repeat it."""
 
 # The upgrade review recipe: the `upgrade_review` prompt, manifest.json and the
 # servicenow-upgrade-review skill carry this text word for word (tests keep them in step).
@@ -231,7 +225,7 @@ async def _lifespan(_server: MCPServer) -> AsyncIterator[dict]:
 
 
 # The panel (MCP Apps): a host that supports it shows this page with the result of a tool that
-# is meant to be looked at: a page opened as a document, a diagram, a comparison. Searching and
+# is meant to be looked at: a page opened as a document, a comparison. Searching and
 # browsing get none: Claude does them many times for one answer, and a panel for each fills the
 # conversation with lists nobody asked for. Every other client just gets the result. One
 # self-contained HTML file, because the host's sandbox allows no external script, style, font
@@ -1605,70 +1599,6 @@ def snow_docs_open(id: str) -> OpenResult:
     except Exception as e:  # tools report errors, never raise
         logger.exception("snow_docs_open failed")
         return OpenResult(ok=False, message=f"Open failed: {e}")
-
-
-@mcp.tool(name="snow_docs_diagram", annotations=READ_ONLY, meta=_PANEL_META)
-def snow_docs_diagram(
-    title: str,
-    steps: list[DiagramStep],
-    links: list[DiagramLink] | None = None,
-    lanes: list[DiagramLane] | None = None,
-) -> DiagramResult:
-    """Show a process from the docs to the user as a diagram, in the panel: a flow, or
-    swimlanes when several roles, teams or systems take part.
-
-    Use this when a picture explains better than text: a lifecycle, a procedure with
-    decisions, an approval, a hand-off between roles. First read the docs (snow_docs_search,
-    snow_docs_read), then pass the steps exactly as the docs give them, each with the
-    `source_id` of the passage it comes from; the user can open that passage from the step.
-    Do not add steps the docs do not have. The diagram is checked before it is shown: ids
-    of steps and of lanes must be unique, links must join existing steps, and every source id
-    must be a real page.
-
-    Args:
-        title: What the diagram shows, e.g. "Incident lifecycle".
-        steps: The steps, in reading order (2 to 40). `kind` is "start", "step", "decision"
-            or "end". Give `lane` when you pass `lanes`.
-        links: The arrows between steps; a decision's paths carry a `label` ("Yes", "No").
-            Omit it for a straight sequence: each step then leads to the next.
-        lanes: For swimlanes: the roles, teams or systems, left to right.
-    """
-    try:
-        lanes = lanes or []
-        if links is None:
-            links = [DiagramLink(source=a.id, target=b.id) for a, b in itertools.pairwise(steps)]
-        problems = diagram.problems(steps, links, lanes)
-        if problems:
-            return DiagramResult(
-                ok=False,
-                message="The diagram was not shown: "
-                + "; ".join(problems)
-                + ". Fix these and call again.",
-            )
-        unsourced = sum(1 for s in steps if not s.source_id and s.kind in ("step", "decision"))
-        kind = "swimlane" if lanes else "flow"
-        message = (
-            f"The {kind} diagram '{title.strip()}' with {_count(len(steps), 'step')}"
-            + (f" in {_count(len(lanes), 'lane')}" if lanes else "")
-            + " is shown to the user in the panel."
-        )
-        if unsourced:
-            verb = "has" if unsourced == 1 else "have"
-            message += f" {_count(unsourced, 'step')} {verb} no source: say which steps are your own summary."
-        message += " If this client shows no panel, show the `mermaid` text in a code block."
-        return DiagramResult(
-            ok=True,
-            message=message,
-            title=title.strip(),
-            kind=kind,
-            lanes=lanes,
-            steps=steps,
-            links=links,
-            mermaid=diagram.mermaid(title, lanes, steps, links),
-        )
-    except Exception as e:  # tools report errors, never raise
-        logger.exception("snow_docs_diagram failed")
-        return DiagramResult(ok=False, message=f"Diagram failed: {e}")
 
 
 @mcp.tool(name="snow_docs_status", annotations=READ_ONLY)

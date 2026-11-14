@@ -44,7 +44,7 @@ def test_only_the_tools_that_show_something_point_at_the_panel():
     with_ui = {
         t.name for t in tools if (t.meta or {}).get("ui", {}).get("resourceUri") == PANEL_URI
     }
-    assert with_ui == {"snow_docs_compare", "snow_docs_open", "snow_docs_diagram"}
+    assert with_ui == {"snow_docs_compare", "snow_docs_open"}
 
 
 def test_the_panel_address_follows_what_the_panel_holds():
@@ -120,16 +120,19 @@ def test_readme_describes_the_panel_and_the_stand_in_host_exists():
     assert "ui/initialize" in host and "/src/snow_docs_mcp/ui/panel.html" in host
 
 
-def test_the_page_draws_diagrams_as_svg_built_from_elements():
+def test_the_page_draws_no_diagrams():
+    """Figures are Claude's to draw, where the client has a place for them (in Claude Code, the
+    figures pane). The page had a drawing engine of its own, with a step list under every figure:
+    long, and no match for a figure drawn for the concept. It is gone, and so is \"Show as flow\"."""
     html = panel_html()
-    assert "createElementNS" in html and '{ role: "img", "aria-label": label }' in html
-    assert "snow_docs_diagram" in html and "<svg" not in html  # no inline markup: built in script
+    for gone in ("snow_docs_diagram", "showDiagram", "flowToggle", "chart-wrap", "<svg"):
+        assert gone not in html
 
 
 # ---- what the page puts on the screen ---------------------------------------------------------
 #
 # The page's own script is run by node against a small stand-in for the DOM (panel_harness.mjs),
-# on real docs sections (tests/fixtures/panel, as snow_docs_read returns them) and on diagrams.
+# on real docs sections (tests/fixtures/panel, as snow_docs_read returns them).
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -182,12 +185,10 @@ def test_sub_steps_stay_inside_their_step():
     assert _text(first.find("./p")) == "Recommend solutions button"
     assert len(first.findall("./ol/li")) == 3
     assert _text(second).startswith("Navigate to the ServiceNow Otto panel")
-    # two steps are not worth a flow
-    assert root.findall(".//div[@class='flow-of']") == []
 
 
 @needs_node
-def test_a_procedure_keeps_its_numbers_and_the_flow_shows_the_real_steps():
+def test_a_procedure_keeps_its_numbers_and_what_belongs_to_each_step():
     source = _page("steps-substeps")
     top_level = [line for line in source.split("\n") if re.match(r"\d+\.\s", line)]
     assert len(top_level) == 3
@@ -201,10 +202,8 @@ def test_a_procedure_keeps_its_numbers_and_the_flow_shows_the_real_steps():
     # step 3: numbered sub-steps, with their code block inside the sub-step
     assert len(items[2].findall("./ol/li")) >= 3
     assert items[2].find("./ol/li/pre") is not None
-    (flow,) = _render({"op": "flow", "text": source})
-    assert flow["toggles"] == 1 and len(flow["steps"]) == len(top_level)
-    assert flow["steps"][0].startswith("1. Download the Mobile SDK")
-    assert flow["steps"][2].startswith("3. Use Android Studio IDE")
+    # the list is the procedure: there is no second drawing of it as boxes
+    assert root.findall(".//div[@class='flow-of']") == []
 
 
 @needs_node
@@ -222,8 +221,6 @@ def test_a_table_at_the_margin_after_a_step_belongs_to_that_step():
     items = steps.findall("./li")
     assert len(items) == 4 and items[2].find("./div/table") is not None
     assert _text(items[3]) == "Click Submit."
-    (flow,) = _render({"op": "flow", "text": _page("table-colspan")})
-    assert [step[:2] for step in flow["steps"]] == ["1.", "2.", "3.", "4."]
 
 
 @needs_node
@@ -340,194 +337,6 @@ def test_text_that_looks_like_a_table_tag_is_text():
 def test_the_servers_own_note_about_a_cut_section_is_not_shown():
     root = _markdown("Some text.\n\n[… truncated — raise max_chars to see more]")
     assert _text(root) == "Some text."
-
-
-def _figure(spec: dict, pick: bool = True) -> dict:
-    (tree,) = _render({"op": "diagram", "spec": spec, "pick": pick})
-    return tree
-
-
-def _walk(node: dict):
-    yield node
-    for kid in node.get("kids", []):
-        if "tag" in kid:
-            yield from _walk(kid)
-
-
-CHAR = 14 * 0.56  # the width the page assumes for one character when it cannot measure
-
-
-def _parts(tree: dict) -> dict:
-    """The figure's boxes, lines and names, in the figure's own coordinates."""
-    nodes, links, names, lanes = [], [], [], []
-    svg = next(n for n in _walk(tree) if n["tag"] == "svg")
-    for n in _walk(svg):
-        cls = n["attrs"].get("class", "")
-        if n["tag"] == "g" and cls.startswith("node"):
-            shape = next(k for k in n["kids"] if k.get("tag") in ("rect", "polygon"))
-            a = shape["attrs"]
-            if shape["tag"] == "rect":
-                x0, y0 = float(a["x"]), float(a["y"])
-                box = (x0, y0, x0 + float(a["width"]), y0 + float(a["height"]))
-            else:
-                pts = [tuple(map(float, p.split(","))) for p in a["points"].split()]
-                box = (min(p[0] for p in pts), min(p[1] for p in pts),
-                       max(p[0] for p in pts), max(p[1] for p in pts))  # fmt: skip
-            text = next(k for k in n["kids"] if k.get("tag") == "text")
-            lines = [k["text"] for k in text["kids"] if k.get("tag") == "tspan"]
-            nodes.append({"box": box, "lines": lines, "kind": cls.split()[-1], "attrs": n["attrs"],
-                          "y": float(text["attrs"]["y"])})  # fmt: skip
-        elif n["tag"] == "path" and "link" in cls.split():
-            nums = re.findall(r"([MHV])\s*([-\d.]+)(?:[ ,]+([-\d.]+))?", n["attrs"]["d"])
-            points, x, y = [], 0.0, 0.0
-            for op, first, second in nums:
-                if op == "M":
-                    x, y = float(first), float(second)
-                elif op == "H":
-                    x = float(first)
-                else:
-                    y = float(first)
-                points.append((x, y))
-            links.append({"points": points, "marker": n["attrs"].get("marker-end", "")})
-        elif n["tag"] == "text" and "link-name" in cls.split():
-            width = len(n["text"]) * 12 * 0.56
-            x, y = float(n["attrs"]["x"]), float(n["attrs"]["y"])
-            left = x - width if n["attrs"].get("text-anchor") == "end" else x
-            names.append({"text": n["text"], "box": (left, y - 10, left + width, y + 3)})
-        elif n["tag"] == "text" and "lane-name" in cls.split():
-            lanes.append([k["text"] for k in n["kids"] if k.get("tag") == "tspan"])
-    return {"svg": svg, "nodes": nodes, "links": links, "names": names, "lanes": lanes,
-            "markers": [n["attrs"]["id"] for n in _walk(svg) if n["tag"] == "marker"]}  # fmt: skip
-
-
-def _crosses(a, b, box, slack=1.0) -> bool:
-    """Does the straight line a-b pass through the inside of the box?"""
-    x0, y0, x1, y1 = box[0] + slack, box[1] + slack, box[2] - slack, box[3] - slack
-    lo_x, hi_x = sorted((a[0], b[0]))
-    lo_y, hi_y = sorted((a[1], b[1]))
-    return lo_x < x1 and hi_x > x0 and lo_y < y1 and hi_y > y0
-
-
-def _overlap(a, b) -> bool:
-    return a[0] < b[2] and a[2] > b[0] and a[1] < b[3] and a[3] > b[1]
-
-
-def _spec(name: str) -> dict:
-    return json.loads((FIXTURES / f"diagram-{name}.json").read_text(encoding="utf-8"))
-
-
-# Diagrams that are hard to draw (the stand-in host shows them too: ?view=diagram&case=lanes).
-# lanes: long names, a long word, a long question, three ways out of a decision, links back
-# up, a link from a step to itself. skip: a link that passes a row. loose: 31 steps, no links.
-BUSY = _spec("lanes")
-SKIP = _spec("skip")
-LOOSE = _spec("loose")
-
-
-@needs_node
-@pytest.mark.parametrize("spec", [BUSY, SKIP], ids=["lanes", "flow"])
-def test_no_link_runs_behind_a_step_and_no_name_sits_on_another(spec):
-    parts = _parts(_figure(spec))
-    boxes = [n["box"] for n in parts["nodes"]]
-    assert len(parts["links"]) == len(spec["links"])
-    for link, wanted in zip(parts["links"], spec["links"], strict=True):
-        ends = {wanted["source"], wanted["target"]}
-        for a, b in zip(link["points"], link["points"][1:], strict=False):
-            for step, box in zip(spec["steps"], boxes, strict=True):
-                if step["id"] not in ends:
-                    assert not _crosses(a, b, box), (wanted, step["id"])
-    names = parts["names"]
-    assert sorted(n["text"] for n in names) == sorted(
-        k["label"] for k in spec["links"] if k["label"]
-    )
-    for i, one in enumerate(names):
-        assert not any(_overlap(one["box"], other["box"]) for other in names[i + 1 :]), one
-        assert not any(_overlap(one["box"], box) for box in boxes), one
-
-
-@needs_node
-def test_two_links_between_different_steps_never_share_a_stretch():
-    parts = _parts(_figure(BUSY))
-    runs = []
-    for link, wanted in zip(parts["links"], BUSY["links"], strict=True):
-        for a, b in zip(link["points"], link["points"][1:], strict=False):
-            runs.append((wanted, a, b))
-    for i, (first, a, b) in enumerate(runs):
-        for second, c, d in runs[i + 1 :]:
-            if first["source"] == second["source"] or first["target"] == second["target"]:
-                continue  # a shared trunk out of a step, or lines that join into one step
-            if a[0] == b[0] == c[0] == d[0]:  # both vertical, on the same x
-                shared = min(max(a[1], b[1]), max(c[1], d[1])) - max(
-                    min(a[1], b[1]), min(c[1], d[1])
-                )
-            elif a[1] == b[1] == c[1] == d[1]:
-                shared = min(max(a[0], b[0]), max(c[0], d[0])) - max(
-                    min(a[0], b[0]), min(c[0], d[0])
-                )
-            else:
-                continue
-            assert shared <= 1, (first, second)
-
-
-@needs_node
-def test_step_text_stays_inside_its_shape_and_long_text_ends_with_an_ellipsis():
-    parts = _parts(_figure(BUSY))
-    by_id = dict(zip((s["id"] for s in BUSY["steps"]), parts["nodes"], strict=True))
-    for node in parts["nodes"]:
-        x0, y0, x1, y1 = node["box"]
-        assert 1 <= len(node["lines"]) <= 5
-        for n, line in enumerate(node["lines"]):
-            half = len(line) * CHAR / 2
-            if node["kind"] == "decision":
-                # the line's top and bottom edges, as a share of the way out from the middle
-                middle, reach = (y0 + y1) / 2, (y1 - y0) / 2
-                centre = node["y"] - 5 + n * 20
-                room = (x1 - x0) / 2 * (1 - (abs(centre - middle) + 10) / reach)
-            else:
-                room = (x1 - x0) / 2 - 8
-            assert half <= room + 0.5, (line, half, room)
-    long_word = " ".join(by_id["s2"]["lines"])
-    assert long_word.replace(" ", "") == BUSY["steps"][1]["label"].replace(" ", "")
-    decision = by_id["s3"]["lines"]
-    assert decision[-1].endswith("…") and "manager?" not in " ".join(decision)
-    assert all(len(line) * CHAR <= 208 for lane in parts["lanes"] for line in lane)
-    assert len(parts["lanes"][0]) > 1
-
-
-@needs_node
-def test_a_link_from_a_step_to_itself_is_a_loop_and_markers_are_per_figure():
-    parts = _parts(_figure(BUSY))
-    loop = parts["links"][-1]["points"]
-    xs, ys = [p[0] for p in loop], [p[1] for p in loop]
-    assert max(xs) - min(xs) >= 12 and max(ys) - min(ys) >= 12
-    # two figures in one page: each has its own arrowhead
-    first, second = _render({"op": "diagram", "spec": BUSY}, {"op": "diagram", "spec": SKIP})
-    parts, other = _parts(first), _parts(second)
-    (one,), (two,) = parts["markers"], other["markers"]
-    assert one != two
-    assert {k["marker"] for k in parts["links"]} == {f"url(#{one})"}
-    assert {k["marker"] for k in other["links"]} == {f"url(#{two})"}
-
-
-@needs_node
-def test_steps_without_links_wrap_into_rows():
-    parts = _parts(_figure(LOOSE))
-    assert float(parts["svg"]["attrs"]["width"]) <= 1100
-    assert len({n["box"][1] for n in parts["nodes"]}) >= 8
-    boxes = [n["box"] for n in parts["nodes"]]
-    assert not any(_overlap(a, b) for i, a in enumerate(boxes) for b in boxes[i + 1 :])
-
-
-@needs_node
-def test_a_figure_with_steps_to_pick_is_a_group_of_buttons_and_a_plain_one_is_an_image():
-    picked = _figure(SKIP, pick=True)
-    svg = _parts(picked)
-    assert picked["attrs"]["role"] == "group" and picked["attrs"]["aria-label"]
-    assert all(n["attrs"].get("role") == "button" and n["attrs"].get("tabindex") == "0"
-               for n in svg["nodes"])  # fmt: skip
-    plain = _parts(_figure(SKIP, pick=False))
-    assert plain["svg"]["attrs"]["role"] == "img"
-    assert not any("tabindex" in n["attrs"] or "role" in n["attrs"] for n in plain["nodes"])
 
 
 def _show(result: dict, args: dict | None = None, open: list[int] | None = None) -> ET.Element:
@@ -652,16 +461,6 @@ def test_a_note_is_a_note_not_a_page_landmark():
     assert root.find(".//aside") is None
     (note,) = root.findall(".//div[@role='note']")
     assert "Activate the plugin first" in _text(note)
-
-
-@needs_node
-def test_the_group_of_step_buttons_is_not_the_svg_itself():
-    """`group` is not a role an svg can have; the figure is the group, the svg holds the buttons."""
-    picked = _figure(SKIP, pick=True)
-    svg = _parts(picked)["svg"]
-    assert "role" not in svg["attrs"] and "aria-label" not in svg["attrs"]
-    assert picked["attrs"]["role"] == "group" and picked["attrs"]["aria-label"]
-    assert picked["tag"] == "div"  # nor can a figure be a group
 
 
 def test_the_status_for_screen_readers_is_inside_the_main_landmark():
