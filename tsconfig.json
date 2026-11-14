@@ -1,0 +1,15 @@
+{
+  "extends": "./.claude-plugin/types/tsconfig.json",
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": false,
+    "allowImportingTsExtensions": true
+  },
+  "include": [
+    "hooks",
+    "types",
+    "panes/figures",
+    "panes/sdk-panel/pane.tsx",
+    "panes/sdk-panel/pane.test.tsx"
+  ]
+}

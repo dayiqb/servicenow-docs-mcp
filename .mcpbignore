@@ -19,5 +19,6 @@ agents/
 commands/
 panes/
 types/
+tsconfig.json
 .claude/
 .superpowers/

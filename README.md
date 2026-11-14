@@ -351,11 +351,15 @@ uv sync
 uv run pytest -q             # fast tests; no downloads
 scripts/build_mcpb.sh        # builds dist/servicenow-docs.mcpb
 claude plugin test .         # the panes (hooks/, panes/); needs Claude Code
+tsc -p .                     # strict type check of the panes; see below
 ```
 
 The panes are one hooks module, `hooks/register.tsx`, which sets up `panes/figures` and
 `panes/sdk-panel`. The SDK panel is developed in its own repository and taken in with
 `python3 scripts/import_sdk_panel.py <checkout>`; `panes/sdk-panel/SOURCE.md` names the commit.
+`tsc -p .` needs the types Claude Code writes to `.claude-plugin/types/` when it loads the
+plugin from this folder; `tsconfig.json` builds on them and also reads the SDK panel's
+JavaScript core, whose types are in JSDoc.
 
 CI runs the tests on Windows, macOS and Linux; the `e2e` job (manual, and for version tags)
 downloads the real index and searches it over stdio on Windows and macOS.

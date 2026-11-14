@@ -1,6 +1,6 @@
 {
   "name": "servicenow-docs",
-  "version": "2.4.1",
+  "version": "2.4.2",
   "description": "Search the official ServiceNow product docs (Australia and Brazil releases) from Claude, with cited answers. Runs locally; needs uv.",
   "author": {
     "name": "Dayan Iqbal"

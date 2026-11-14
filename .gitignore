@@ -7,3 +7,6 @@ __pycache__/
 # Virtual environments
 .venv/
 dist/
+
+# Written by Claude Code when it loads the plugin from this folder
+.claude-plugin/types/

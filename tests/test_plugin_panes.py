@@ -22,6 +22,9 @@ FIGURES = ROOT / "panes" / "figures"
 SDK = ROOT / "panes" / "sdk-panel"
 CLAUDE = shutil.which("claude")
 NODE = shutil.which("node")
+TSC = shutil.which("tsc")
+# Claude Code writes its types here when it loads the plugin from this folder.
+LAID = ROOT / ".claude-plugin" / "types" / "tsconfig.json"
 
 
 def _read(path: Path) -> str:
@@ -126,5 +129,38 @@ def test_the_sdk_panels_core_passes_its_own_tests() -> None:
     assert len(tests) >= 8
     done = subprocess.run(
         [NODE, "--test", *tests], cwd=SDK, capture_output=True, text=True, timeout=300, check=False
+    )
+    assert done.returncode == 0, (done.stdout + done.stderr)[-2000:]
+
+
+def test_the_type_check_of_the_panes_reads_the_sdk_panels_core() -> None:
+    """The SDK panel's core is JavaScript with its types in JSDoc. A check that does not read it
+    leaves every import from it untyped, and the pane then fails in dozens of places."""
+    config = json.loads(_read(ROOT / "tsconfig.json"))
+    assert config["extends"] == "./.claude-plugin/types/tsconfig.json"
+    options = config["compilerOptions"]
+    assert options["allowJs"] is True and options["checkJs"] is False
+    assert options["allowImportingTsExtensions"] is True  # the module imports panes/*/pane.tsx
+    # The pane files, not all of panes/: the core is read through their imports, and the
+    # panel's Node tests ask for a check of their own that needs Node's types.
+    assert config["include"] == [
+        "hooks",
+        "types",
+        "panes/figures",
+        "panes/sdk-panel/pane.tsx",
+        "panes/sdk-panel/pane.test.tsx",
+    ]
+    assert ".claude-plugin/types/" in _read(ROOT / ".gitignore").split()
+    assert "tsconfig.json" in _read(ROOT / ".mcpbignore").split()
+    assert "tsc -p ." in _read(ROOT / "README.md")
+
+
+@pytest.mark.skipif(
+    TSC is None or not LAID.is_file(),
+    reason="needs tsc, and the types Claude Code writes when it loads the plugin from here",
+)
+def test_the_strict_type_check_of_the_panes_is_clean() -> None:
+    done = subprocess.run(
+        [TSC, "-p", str(ROOT)], capture_output=True, text=True, timeout=300, check=False
     )
     assert done.returncode == 0, (done.stdout + done.stderr)[-2000:]
