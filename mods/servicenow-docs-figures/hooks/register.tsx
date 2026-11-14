@@ -58,7 +58,8 @@ svg: one <svg viewBox="0 0 680 H"> (always 680 wide, H as tall as needed; a narr
 - A thing or a state: <g class="node"><rect class="box" x= y= width= height= rx="8"/><text class="th" x= y= text-anchor="middle" dominant-baseline="central">Name</text><text class="ts" ...>Short note</text></g>. Coloured, not neutral: <g class="node c-teal"> with a plain <rect> inside. Colours: c-teal, c-amber, c-blue, c-green, c-red, c-purple, c-gray. At most two, and only where colour means something.
 - Text: class "th" is 14px medium, "t" 14px, "ts" 12px and quiet. A 14px letter is about 8px wide and a 12px letter about 6.5px: keep 12px between text and the edge of its box. Text outside a node is grey: use it for the names of arrows and one closing line.
 - An arrow: <line class="arr" x1= y1= x2= y2=/> or <path class="arr" d="M... L..."/>. The arrowhead is added. End it 8px before the box it points at, and never run it through a box or a label; go round with a bend.
-- Boxes at least 44px high (56 with two lines of text) and 60px apart. Read left to right or top to bottom.`
+- Boxes at least 44px high (56 with two lines of text) and 60px apart. Read left to right or top to bottom.
+- No empty band above or below: the first shape starts about 8px from the top, and H ends about 8px under the last one. The pane has its own margins.`
 
 const INPUT = {
   type: 'object',
