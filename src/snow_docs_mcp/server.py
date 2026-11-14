@@ -208,7 +208,7 @@ the docs. Use only the ServiceNow docs tools; do not fill gaps from memory.
    - Check that it works: how the docs say to verify the result. If they do not say, write
      that.
    - Next: optional configuration the docs point to.
-4. Where the docs for the user's release (Australia unless they say Brazil) lack a step, say
+4. Where the docs for the release the tools searched lack a step, say
    so instead of filling it in. If two pages disagree, show both.
 5. If a tool for the user's own ServiceNow instance is connected, ask before using it. With a
    yes, look up which plugins are active and which roles the user has, and mark the items

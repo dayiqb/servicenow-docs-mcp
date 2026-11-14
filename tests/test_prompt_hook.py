@@ -104,6 +104,57 @@ def test_other_prompts_are_left_alone(prompt: str) -> None:
     assert context_for(prompt) is None, prompt
 
 
+# What the app puts in a prompt itself: a command the user ran and its output, a note from
+# another session, a reminder. None of it is a question the user typed.
+_RAN = (
+    "<bash-input>claude plugin install servicenow-docs@servicenow-docs-mcp</bash-input>"
+    "<bash-stdout>Successfully installed plugin: servicenow-docs@servicenow-docs-mcp</bash-stdout>"
+    "<bash-stderr></bash-stderr>"
+)
+_RELOADED = (
+    "<local-command-caveat>The command below was run directly in Claude Code.</local-command-caveat>\n"
+    "<command-name>/reload-plugins</command-name>\n"
+    "<command-message>reload-plugins</command-message>\n"
+    "<local-command-stdout>Reloaded: 34 plugins, ServiceNow Docs among them</local-command-stdout>\n"
+)
+_NOTE = (
+    '<system-reminder>\nThe session "ServiceNow SDK panel" finished a turn.\n</system-reminder>\n'
+    "<side-sessions-event>None of the sessions is working now.</side-sessions-event>"
+)
+_MESSAGE = (
+    '<cross-session-message from="local_1" from-name="ServiceNow SDK panel">\n'
+    "The ServiceNow SDK panel setting is on as installed.\n</cross-session-message>"
+)
+
+
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        _RAN,
+        _RELOADED,
+        _NOTE,
+        _MESSAGE,
+        "<task-notification>The ServiceNow index build finished.</task-notification>",
+        _RELOADED + "wait, did the tests pass?",
+    ],
+)
+def test_what_the_app_wrote_into_a_prompt_is_not_a_question(prompt: str) -> None:
+    assert context_for(prompt) is None, prompt
+
+
+def test_a_question_typed_after_a_command_still_gets_the_nudge() -> None:
+    assert context_for(_RELOADED + "How do I make a field mandatory on the incident form?") is None
+    assert context_for(_RELOADED + "How do I make a field mandatory in ServiceNow?") is not None
+
+
+def test_the_nudge_leaves_the_release_to_the_setting() -> None:
+    """The release is a setting: telling Claude that Australia is the default overrides it."""
+    ctx = context_for("How do I make a field mandatory in ServiceNow?")
+    assert ctx is not None
+    assert "Australia is the default" not in ctx
+    assert "leave `release` out" in ctx
+
+
 def test_off_switch() -> None:
     assert context_for("How do I use GlideRecord?", SNOW_DOCS_PROMPT_HOOK="off") is None
 

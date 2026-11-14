@@ -54,8 +54,12 @@ def test_the_release_is_a_setting_of_the_extension() -> None:
 def test_the_rules_leave_the_release_to_the_setting() -> None:
     """Told that australia is the default, Claude names it in every call, and the setting would
     never be used: a call that leaves the release out is what the setting answers."""
+    from snow_docs_mcp.server import SETUP_CHECKLIST_RULES
+
     assert "australia unless" not in ANSWER_RULES
     assert "leave it out" in ANSWER_RULES and "Release setting" in ANSWER_RULES
+    assert "Australia unless" not in SETUP_CHECKLIST_RULES
+    assert "the release the tools searched" in SETUP_CHECKLIST_RULES
 
 
 def test_readme_counts_the_tools_the_manifest_lists() -> None:
@@ -201,12 +205,12 @@ def test_plugin_server_and_hooks_avoid_desktop_reserved_env_names() -> None:
     assert plugin["mcpServers"]["servicenow-docs"]["args"][:2] == ["run", "--native-tls"]
 
 
-def test_version_is_2_4_2_everywhere() -> None:
+def test_version_is_2_4_3_everywhere() -> None:
     plugin = json.loads((ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
     market = json.loads((ROOT / ".claude-plugin" / "marketplace.json").read_text(encoding="utf-8"))
     versions = {__version__, MANIFEST["version"], plugin["version"]}
     versions |= {p["version"] for p in market["plugins"]}
-    assert versions == {"2.4.2"}
+    assert versions == {"2.4.3"}
 
 
 def test_instructions_and_readme_name_the_compare_tool() -> None:

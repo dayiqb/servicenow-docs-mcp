@@ -74,18 +74,37 @@ _WEAK = re.compile(
 _GENERIC = {"instance", "incident", "change_request", "assignment_group", "sla", "related_list"}
 
 
+# What the app writes into a prompt itself: a command the user ran and its output, a note from
+# another session, a reminder. It is not a question, whatever words it holds.
+_FROM_THE_APP = re.compile(
+    r"""
+    <(?P<tag>bash-input|bash-stdout|bash-stderr|local-command-caveat|local-command-stdout
+        |local-command-stderr|command-name|command-message|command-args|system-reminder
+        |cross-session-message|side-sessions-event|task-notification|ci-monitor-event)
+    \b[^>]*> .*? </(?P=tag)>
+    """,
+    re.DOTALL | re.VERBOSE,
+)
+
+
+def typed(prompt: str) -> str:
+    """The part of a prompt the user typed."""
+    return _FROM_THE_APP.sub(" ", prompt).strip()
+
+
 def looks_like_servicenow(prompt: str) -> bool:
     if _STRONG.search(prompt):
         return True
     kinds = {m.lastgroup for m in _WEAK.finditer(prompt)}
     return len(kinds) >= 2 and bool(kinds - _GENERIC)
 
+
 NUDGE = (
     "This looks like a ServiceNow question. Before answering, search the official "
     "ServiceNow docs with the servicenow-docs tools: call snow_docs_search with an English "
     "query in ServiceNow's terms (translate the question if needed; answer in the user's "
-    "language; pass "
-    'release "brazil" if the user\'s instance runs Brazil; Australia is the default), '
+    "language; leave `release` out unless the question names a release, so the search uses "
+    "the release the user chose), "
     "answer only from the returned passages with [id] citations, and call snow_docs_read "
     "for the full section before giving steps. If the docs don't cover it, say so."
 )
@@ -99,9 +118,10 @@ def main() -> int:
     except (ValueError, UnicodeDecodeError):
         return 0
     prompt = payload.get("prompt") if isinstance(payload, dict) else None
-    if not isinstance(prompt, str) or not prompt.strip() or prompt.lstrip().startswith("/"):
+    if not isinstance(prompt, str):
         return 0
-    if not looks_like_servicenow(prompt):
+    question = typed(prompt)
+    if not question or question.startswith("/") or not looks_like_servicenow(question):
         return 0
     out = {"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": NUDGE}}
     sys.stdout.write(json.dumps(out))
