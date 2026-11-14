@@ -10,6 +10,9 @@ const TOOL = `mcp__${PLUGIN}__show_figure`
 const KEPT = 12
 // The surface takes a drawing of at most 131072 characters; the styling is added to Claude's.
 const LONGEST = 100_000
+// Columns of the pane, about 8px each. Under this the wide drawing shrinks until its text is
+// too small to read, so the narrow drawing is shown.
+const NARROW_BELOW = 68
 
 // Change the tag when a figure's fields change: it declines what an earlier
 // version stored, which outlives a reload.
@@ -59,13 +62,19 @@ svg: one <svg viewBox="0 0 680 H"> (always 680 wide, H as tall as needed; a narr
 - Text: class "th" is 14px medium, "t" 14px, "ts" 12px and quiet. A 14px letter is about 8px wide and a 12px letter about 6.5px: keep 12px between text and the edge of its box. Text outside a node is grey: use it for the names of arrows and one closing line.
 - An arrow: <line class="arr" x1= y1= x2= y2=/> or <path class="arr" d="M... L..."/>. The arrowhead is added. End it 8px before the box it points at, and never run it through a box or a label; go round with a bend.
 - Boxes at least 44px high (56 with two lines of text) and 60px apart. Read left to right or top to bottom.
-- No empty band above or below: the first shape starts about 8px from the top, and H ends about 8px under the last one. The pane has its own margins.`
+- No empty band above or below: the first shape starts about 8px from the top, and H ends about 8px under the last one. The pane has its own margins.
+
+svg_narrow: the same figure once more for a narrow pane, <svg viewBox="0 0 340 H">: the same things and words in the same classes and text sizes, stacked top to bottom in one column, arrows pointing down. Give it whenever the wide drawing has things side by side: the pane shows the one that fits its width, and without it the wide drawing only shrinks.`
 
 const INPUT = {
   type: 'object',
   properties: {
     title: { type: 'string', description: 'What the figure shows, in a few words.' },
     svg: { type: 'string', description: 'The drawing: one <svg viewBox="0 0 680 H">…</svg>.' },
+    svg_narrow: {
+      type: 'string',
+      description: 'The same figure for a narrow pane: one <svg viewBox="0 0 340 H">…</svg>, in one column.',
+    },
     alt: {
       type: 'string',
       description: 'What the figure says, in one or two sentences, for someone who cannot see it.',
@@ -149,10 +158,19 @@ export const register: Register = on => {
     if (alt === '') return refuse('alt is empty: say in a sentence or two what the figure shows.')
     const dressed = dress(text(input.svg))
     if ('why' in dressed) return refuse(dressed.why)
+    const narrow = text(input.svg_narrow) === '' ? undefined : dress(text(input.svg_narrow))
+    if (narrow && 'why' in narrow) return refuse(`svg_narrow: ${narrow.why}`)
     const sources = sourcesOf(input.sources)
     if ('why' in sources) return refuse(sources.why)
 
-    const figure: Figure = { title, svg: dressed.svg, alt, caption: text(input.caption), sources }
+    const figure: Figure = {
+      title,
+      svg: dressed.svg,
+      ...(narrow ? { narrow: narrow.svg } : {}),
+      alt,
+      caption: text(input.caption),
+      sources,
+    }
     await update($, book, ({ figures }): Book => {
       const kept = [...figures, figure].slice(-KEPT)
 
@@ -189,7 +207,9 @@ export const register: Register = on => {
     if (e.surface === 'terminal') drawing = <Text>{figure.alt}</Text>
     else {
       const { Svg } = $.ui.resolve(e)
-      drawing = <Svg source={figure.svg} alt={figure.alt} />
+      // The pane is asked again when its width changes, and takes the drawing that fits.
+      const source = figure.narrow && e.props.bodyColumns < NARROW_BELOW ? figure.narrow : figure.svg
+      drawing = <Svg source={source} alt={figure.alt} />
     }
     const turn = (to: number) => () => update($, book, (held): Book => ({ ...held, at: to }))
 

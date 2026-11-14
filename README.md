@@ -182,7 +182,7 @@ The plugin adds a few things that only Claude Code has:
 - **A figures pane** (`mods/servicenow-docs-figures`, in preview). When a picture explains a
   concept better than text (a lifecycle, how records relate, what happens over time), Claude
   draws it in a pane beside the chat, from the docs it has read, with links to the pages. The
-  answer itself stays short. `/docs-figures` opens the pane again. It is not offered for
+  figure follows the width of the pane. The answer itself stays short. `/docs-figures` opens the pane again. It is not offered for
   install yet; to try it from a checkout, start Claude Code with
   `claude --plugin-dir mods/servicenow-docs-figures`.
 

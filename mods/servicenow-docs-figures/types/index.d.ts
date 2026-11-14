@@ -9,6 +9,8 @@ export type Figure = {
   title: string
   /** The drawing as Claude wrote it, with the pane's styling added. */
   svg: string
+  /** The same figure drawn for a narrow pane, when Claude gave one. */
+  narrow?: string
   /** What the drawing says, for a reader or a surface that cannot show it. */
   alt: string
   caption: string

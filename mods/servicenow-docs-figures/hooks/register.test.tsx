@@ -94,6 +94,48 @@ test('the figure is a whole document, because the pane draws it as an image', as
   }
 })
 
+const NARROW =
+  '<svg viewBox="0 0 340 80"><g class="node c-teal"><rect x="90" y="8" width="160" height="56" rx="8"/>' +
+  '<text class="th" x="170" y="36" text-anchor="middle">Running</text></g></svg>'
+
+/** How wide the drawing is that a pane of that many columns shows. */
+async function widthAt($: any, bodyColumns: number): Promise<string | undefined> {
+  const ui = await $.ui.mount({ ...PANE, props: { ...PANE.props, bodyColumns }, surface: 'desktop' })
+  const source = String((await ui.find({ type: 'Svg' }))?.props.source)
+  await ui.unmount()
+
+  return /^<svg [^>]*width="(\d+)"/.exec(source)?.[1]
+}
+
+test('a wide pane shows the wide drawing and a narrow pane the narrow one', async ($, on) => {
+  // A drawing is an image: in a narrow pane the wide one would shrink, text and all. So Claude
+  // draws the figure twice, and the pane takes the one that fits, at each width it is given.
+  engine(on)
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  expect((await show($, { ...SLA, svg_narrow: NARROW })).isError).toBe(undefined)
+
+  expect(await widthAt($, 110)).toBe('680')
+  expect(await widthAt($, 48)).toBe('340')
+})
+
+test('a figure drawn once is shown at every width', async ($, on) => {
+  engine(on)
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await show($, SLA)
+
+  expect(await widthAt($, 110)).toBe('680')
+  expect(await widthAt($, 48)).toBe('680')
+})
+
+test('a narrow drawing that is not a drawing is refused, and says which one', async ($, on) => {
+  engine(on)
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+
+  const answer = await show($, { ...SLA, svg_narrow: 'graph TD; a-->b' })
+  expect(answer.isError).toBe(true)
+  expect(String(answer.result)).toMatch(/svg_narrow/)
+})
+
 test('what is not a drawing is refused, and the pane stays as it was', async ($, on) => {
   engine(on)
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
