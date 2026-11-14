@@ -754,18 +754,33 @@ export const register: Register = on => {
         {effects.map(mark)}
       </Box>
     )
-    const checkRow = (check: { status: string; label: string; value?: string; fix?: string; detail?: string }) => (
+    /**
+     * The row of Checks and Versions: a mark that says the state, the name, then
+     * a quiet value, so the values of both sections stand in one column.
+     */
+    const statusRow = (status: string, name: string, value: unknown, action?: unknown, under?: string) => (
       <Box flexDirection="column">
         <Box flexDirection="row" gap="sm" alignItems="flex-start">
-          <Text color={STATUS_COLOR[check.status]}>{STATUS_SIGN[check.status]}</Text>
+          <Text color={STATUS_COLOR[status]}>{STATUS_SIGN[status]}</Text>
           <Box width="40%">
-            <Text weight="medium">{check.label}</Text>
+            <Text weight="medium">{name}</Text>
           </Box>
-          {check.value ? quiet(check.value) : null}
+          <Box flexDirection="column" flexGrow={1} flexShrink={1} minWidth={0}>
+            {value}
+          </Box>
+          {action ? <Box flexShrink={0}>{action}</Box> : null}
         </Box>
-        {check.fix || (check.status !== 'ok' && check.detail) ? hint(`    ${check.fix ?? check.detail}`) : null}
+        {under ? hint(`    ${under}`) : null}
       </Box>
     )
+    const checkRow = (check: { status: string; label: string; value?: string; fix?: string; detail?: string }) =>
+      statusRow(
+        check.status,
+        check.label,
+        check.value ? quiet(check.value) : null,
+        undefined,
+        check.fix ?? (check.status !== 'ok' ? check.detail : undefined),
+      )
     /** One pane has one scroll, so a long detail ends with a way back up to the list. */
     const toTop = (key: string) => (
       <Button key={key} plain label="Back to top" onPress={() => void $.ui.scroll({ to: 'start', in: PANE })} />
@@ -950,39 +965,39 @@ export const register: Register = on => {
             ).map(([name, version, installed]) => {
               const latest = d.latest?.[name]
               const canUpdate = isUpdateAvailable(latest, installed)
-              return (
-                <Box flexDirection="row" gap="sm" alignItems="center">
-                  <Box width="40%">
-                    <Text>{name}</Text>
-                  </Box>
-                  <Box flexDirection="column" flexGrow={1} flexShrink={1} minWidth={0}>
-                    {version ? <Text mono>{version}</Text> : quiet('Not found')}
-                    {latest === undefined ? null : canUpdate ? <Text color="warning">{`${latest} is out`}</Text> : quiet(/^\d/.test(latest) ? 'Up to date' : latest)}
-                  </Box>
-                  {canUpdate ? (
-                    <Box flexShrink={0}>
-                      <Button
-                        key={name === 'AIUX' ? 'update-aiux' : 'update-sdk'}
-                        label="Update"
-                        onPress={() => {
-                          const command =
-                            name === 'AIUX'
-                              ? updateCommand({ kind: 'project', name: d.aiux?.frameworkName ?? '', manager: d.aiux?.manager ?? 'npm' })
-                              : updateCommand({ kind: 'sdk' })
-                          void confirmAndRun($, {
-                            id: name === 'AIUX' ? 'update-aiux' : 'update-sdk',
-                            label: `Update ${name} to ${latest}`,
-                            program: command.program,
-                            argv: command.argv,
-                            effects: ['changes-local'],
-                            confirmation: 'review',
-                            cwd: name === 'AIUX' ? d.cwd : undefined,
-                          })
-                        }}
-                      />
-                    </Box>
-                  ) : null}
-                </Box>
+              // The mark says the state: a dash until the registry has been asked (and
+              // for what it is not asked about), a check mark when the newest is
+              // installed, the attention mark when a newer version is out.
+              const status = canUpdate ? 'attention' : version && latest !== undefined && /^\d/.test(latest) ? 'ok' : 'unknown'
+              const update = canUpdate ? (
+                <Button
+                  key={name === 'AIUX' ? 'update-aiux' : 'update-sdk'}
+                  label="Update"
+                  onPress={() => {
+                    const command =
+                      name === 'AIUX'
+                        ? updateCommand({ kind: 'project', name: d.aiux?.frameworkName ?? '', manager: d.aiux?.manager ?? 'npm' })
+                        : updateCommand({ kind: 'sdk' })
+                    void confirmAndRun($, {
+                      id: name === 'AIUX' ? 'update-aiux' : 'update-sdk',
+                      label: `Update ${name} to ${latest}`,
+                      program: command.program,
+                      argv: command.argv,
+                      effects: ['changes-local'],
+                      confirmation: 'review',
+                      cwd: name === 'AIUX' ? d.cwd : undefined,
+                    })
+                  }}
+                />
+              ) : undefined
+              return statusRow(
+                status,
+                name,
+                [
+                  quiet(version || 'Not found'),
+                  canUpdate ? <Text color="warning">{`${latest} is out`}</Text> : latest !== undefined && !/^\d/.test(latest) ? quiet(latest) : null,
+                ],
+                update,
               )
             }),
             d.run && d.run.commandId.startsWith('update-') ? output(d.run) : null,

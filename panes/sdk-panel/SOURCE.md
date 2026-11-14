@@ -5,7 +5,7 @@ The files here are taken from it by `scripts/import_sdk_panel.py`, which says wh
 changes and why. Change the panel there and run the script again; do not edit these
 files here.
 
-Taken from commit `d5069b47051afeb22c87b3f645d8a8027ed9db8c` (README: the panel setting in the docs plugin is on as installed from 2.4.0).
+Taken from commit `d93f9a310c2b6afc6dd7a3da8cad4a40a5ff79b7` (Setup: Versions rows are drawn with the row of Checks).
 
 | Here | There |
 | --- | --- |

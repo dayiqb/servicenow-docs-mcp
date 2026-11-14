@@ -198,6 +198,46 @@ test('in a pane wide enough, all five are tabs and there is no More', { options:
   await ui.unmount()
 })
 
+test('a version row says a newer version is out and offers Update, only when one is', { options: { sdk_panel: true } }, async ($, on) => {
+  const stored = {
+    isLoading: false,
+    cwd: '/',
+    nodeVersion: 'v26.8.1',
+    sdkVersion: '4.14.0',
+    sdkError: null,
+    telemetry: true,
+    topics: [],
+    topicText: {},
+    instances: [],
+    instancesError: null,
+    helps: {},
+    aiux: null,
+    run: null,
+    docs: null,
+    docsFolder: '',
+    docsHits: {},
+    latest: undefined as Record<string, string> | undefined,
+  }
+  on('state.get', (_, e, next) => (e.key === 'data' ? { value: { value: { shape: 'data-2', value: stored }, version: 1 } } : next(e)))
+  const marks = async (latest: Record<string, string> | undefined) => {
+    stored.latest = latest
+    const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+    const found = {
+      out: Boolean(await ui.find({ type: 'Text', text: '4.15.0 is out' })),
+      update: Boolean(await ui.find({ key: 'update-sdk' })),
+    }
+    await ui.unmount()
+    return found
+  }
+
+  // Not asked yet, and asked with nothing newer: nothing is out and nothing to press.
+  // (The mark itself is not looked for: a check in Checks can carry the same one.)
+  expect(await marks(undefined)).toEqual({ out: false, update: false })
+  expect(await marks({ 'ServiceNow SDK': '4.14.0' })).toEqual({ out: false, update: false })
+  // A newer SDK is out: the row says so and has Update.
+  expect(await marks({ 'ServiceNow SDK': '4.15.0' })).toEqual({ out: true, update: true })
+})
+
 test('a long topic name is cut to fit a narrow list', { options: { sdk_panel: true } }, async ($, on) => {
   const long = 'building-ai-agents-advanced-guide'
   // What an earlier load stored: two topics, one with a long name.
