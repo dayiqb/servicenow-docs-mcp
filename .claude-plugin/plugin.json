@@ -15,6 +15,15 @@
     "rag",
     "mcp"
   ],
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "sdk_panel": {
+      "type": "boolean",
+      "title": "ServiceNow SDK panel",
+      "description": "Adds /sdk-panel in Claude Code: a pane for the ServiceNow SDK command line (now-sdk) with setup, instances, commands and explain. It can run SDK commands, also against your instances, after you confirm each one. Off: the plugin only reads documentation.",
+      "default": false
+    }
+  },
   "mcpServers": {
     "servicenow-docs": {
       "command": "uv",

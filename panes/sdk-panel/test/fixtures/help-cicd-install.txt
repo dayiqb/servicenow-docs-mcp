@@ -1,0 +1,40 @@
+now-sdk cicd install
+
+Install an application from the application repository onto the instance
+
+Options:
+  -d, --debug                  Print debug output     [boolean] [default: false]
+  -a, --auth                   Credential alias to use for authentication with
+                               instance                                 [string]
+  -o, --output                 Output format: json for a machine-readable
+                               envelope, raw to unquote the --select result
+                                               [string] [choices: "json", "raw"]
+  -s, --select                 Dot/bracket path to extract from the output (e.g.
+                               "result.links.progress.id"). Implies
+                               machine-readable output; pair with --output raw
+                               for direct use in shell command substitution.
+                                                                        [string]
+      --wait                   Wait for the operation to finish by polling its
+                               progress                [boolean] [default: true]
+      --poll-timeout           Maximum time in milliseconds to wait for the
+                               operation to finish    [number] [default: 900000]
+      --scope                  Scope name of the application to target (mutually
+                               exclusive with --app-sys-id; prefer --app-sys-id
+                               when known — it identifies the app directly)
+                                                                        [string]
+      --app-sys-id             sys_id of the application (sys_app) to target
+                               (mutually exclusive with --scope). Defaults from
+                               now.config.json (scopeId) when run inside a
+                               Fluent project and neither --scope nor
+                               --app-sys-id is given                    [string]
+      --app-version            Version of the application to install. Defaults
+                               from package.json (version) when run inside a
+                               Fluent project. CLI flag is --app-version (not
+                               --version) to avoid colliding with yargs'
+                               reserved --version/-v flag               [string]
+      --base-app-version       Version of the base application to install
+                               alongside this application               [string]
+      --auto-upgrade-base-app  Automatically upgrade the base application if
+                               required                                [boolean]
+  -h, --help                   Show help                               [boolean]
+  -v, --version                Show version number                     [boolean]

@@ -1,9 +1,9 @@
 import { atom, read, update } from 'claude-code'
-import type { Register } from 'claude-code'
+import type { EngineInterface, Register } from 'claude-code'
 
-import type { Book, Figure, Source } from '../types'
+import type { Book, Figure, Source } from '../../types'
 
-const PLUGIN = 'servicenow-docs-figures'
+const PLUGIN = 'servicenow-docs'
 const PANE = 'docs-figures'
 const TITLE = 'ServiceNow Docs'
 const TOOL = `mcp__${PLUGIN}__show_figure`
@@ -16,7 +16,7 @@ const NARROW_BELOW = 68
 
 // Change the tag when a figure's fields change: it declines what an earlier
 // version stored, which outlives a reload.
-const book = atom({ plugin: 'servicenow-docs-figures', key: 'book' } as const, { figures: [], at: 0 }, { shape: 'book-1' })
+const book = atom({ plugin: 'servicenow-docs', key: 'book' } as const, { figures: [], at: 0 }, { shape: 'book-1' })
 
 const ARROW =
   '<defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">' +
@@ -138,18 +138,17 @@ function newestOfEach(figures: Figure[]): Figure[] {
   return figures.filter((figure, i) => !figures.slice(i + 1).some(later => later.title === figure.title))
 }
 
-export const register: Register = on => {
-  on('session.start', async ($, e, next) => {
-    await $.command.register({
-      name: 'docs-figures',
-      description: 'Open the pane with the figures Claude drew from the ServiceNow docs',
-    })
-    // In the tool list from the start: Claude should reach for it without searching for it.
-    await $.tool.register({ name: 'show_figure', description: DESCRIPTION, inputSchema: INPUT, isDeferred: false })
-
-    return next(e)
+/** What the pane sets up when a session starts. The plugin's one `session.start` hook calls it. */
+export async function start($: EngineInterface): Promise<void> {
+  await $.command.register({
+    name: 'docs-figures',
+    description: 'Open the pane with the figures Claude drew from the ServiceNow docs',
   })
+  // In the tool list from the start: Claude should reach for it without searching for it.
+  await $.tool.register({ name: 'show_figure', description: DESCRIPTION, inputSchema: INPUT, isDeferred: false })
+}
 
+export const register: Register = on => {
   on('command.run', { command: 'docs-figures' }, async $ => {
     await $.ui.open({ id: PANE, title: TITLE })
 

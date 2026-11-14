@@ -1,0 +1,50 @@
+now-sdk exec [script]
+
+Execute a script on the instance
+
+Parameters:
+  script  Script to run on the instance. Omit to read from --file or piped stdin
+                                                                        [string]
+
+Options:
+  -d, --debug                Print debug output       [boolean] [default: false]
+  -f, --file                 Path to a file containing the script to run[string]
+      --scope                Scope to run the script in: an application sys_id,
+                             a scope name, or 'global'. Defaults to scopeId from
+                             now.config.json when run inside a Fluent project
+                                                                        [string]
+      --reason               Why the script is being run, recorded with it on
+                             the script's Script Execution History record
+                                                                        [string]
+      --record-for-rollback  Create a rollback context, so the script's record
+                             changes can be reverted from its Script Execution
+                             History record            [boolean] [default: true]
+      --timeout              How long to wait for the script's response, in
+                             milliseconds. Giving up does not cancel the script
+                             - it keeps running on the instance
+                                                      [number] [default: 300000]
+      --server-logs          Print the instance's session log for the run,
+                             including stack traces   [boolean] [default: false]
+  -a, --auth                 Credential alias to use for authentication with
+                             instance                                   [string]
+  -o, --output               Output format: json for a machine-readable
+                             envelope, raw to unquote the --select result
+                                               [string] [choices: "json", "raw"]
+  -s, --select               Dot/bracket path to extract from the output (e.g.
+                             "output[0]"). Implies machine-readable output; pair
+                             with --output raw for direct use in shell command
+                             substitution.                              [string]
+  -h, --help                 Show help                                 [boolean]
+  -v, --version              Show version number                       [boolean]
+
+Examples:
+  now-sdk exec "gs.info(gs.getProperty('gl  Run an inline script
+  ide.buildname'))"
+  now-sdk exec --file                       Run a script from a file
+  ./scripts/backfill.js
+  cat script.js | now-sdk exec              Run a script from stdin
+  now-sdk exec --reason "backfill missing   Record why the script was run
+  priority values" --file
+  ./scripts/backfill.js
+  now-sdk exec --server-logs --file         Include the instance's session log
+  ./scripts/backfill.js

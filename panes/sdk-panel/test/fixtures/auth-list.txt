@@ -1,0 +1,14 @@
+[INFO] Listing all credentials: 
+*[dev]
+      host = https://dev12345.service-now.com
+      type = oauth
+      default = Yes
+[test]
+      host = https://acmetest.service-now.com
+      type = basic
+      username = sample.user
+      default = No
+[prod]
+      host = https://acme.service-now.com
+      type = oauth
+      default = No

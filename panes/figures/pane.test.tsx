@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
 const PANE = {
-  plugin: 'servicenow-docs-figures',
+  plugin: 'servicenow-docs',
   component: 'Pane',
   requestId: 'docs-figures',
   props: {
@@ -14,7 +14,7 @@ const PANE = {
   },
 } as const
 
-const TOOL = 'mcp__servicenow-docs-figures__show_figure'
+const TOOL = 'mcp__servicenow-docs__show_figure'
 const SVG =
   '<svg width="100%" viewBox="0 0 680 120"><g class="node c-teal"><rect x="260" y="30" width="160" height="56" rx="8"/>' +
   '<text class="th" x="340" y="58" text-anchor="middle">Running</text></g>' +

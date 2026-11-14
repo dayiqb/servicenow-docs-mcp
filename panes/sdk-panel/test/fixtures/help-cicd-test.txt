@@ -1,0 +1,18 @@
+now-sdk cicd test <command>
+
+sn_cicd single-test operations
+
+Commands:
+  now-sdk cicd test run     Run a single ATF test on the instance and wait for
+                            its pass/fail result
+  now-sdk cicd test watch   Wait for a previously started single ATF test run to
+                            finish, polling for its pass/fail result
+  now-sdk cicd test result  Fetch a single ATF test's result (status, output,
+                            link) by its result id
+  now-sdk cicd test logs    Fetch an ATF test result's logs, optionally filtered
+                            by a regular expression
+
+Options:
+  -d, --debug    Print debug output                   [boolean] [default: false]
+  -h, --help     Show help                                             [boolean]
+  -v, --version  Show version number                                   [boolean]

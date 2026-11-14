@@ -1,0 +1,19 @@
+now-sdk cicd <command>
+
+Run sn_cicd operations against an instance (test suites, app repo
+install/publish)
+
+Commands:
+  now-sdk cicd test <command>       sn_cicd single-test operations
+  now-sdk cicd testsuite <command>  sn_cicd testsuite operations
+  now-sdk cicd install              Install an application from the application
+                                    repository onto the instance
+  now-sdk cicd publish              Publish an application to the application
+                                    repository
+  now-sdk cicd rollback             Roll back an installed application to a
+                                    previous version
+
+Options:
+  -d, --debug    Print debug output                   [boolean] [default: false]
+  -h, --help     Show help                                             [boolean]
+  -v, --version  Show version number                                   [boolean]

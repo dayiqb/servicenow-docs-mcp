@@ -1,0 +1,16 @@
+now-sdk cicd testsuite <command>
+
+sn_cicd testsuite operations
+
+Commands:
+  now-sdk cicd testsuite run     Run an ATF test suite on the instance
+  now-sdk cicd testsuite watch   Wait for a previously started test suite run to
+                                 complete, polling for status
+  now-sdk cicd testsuite result  Fetch a test suite run's detailed result
+                                 (including child suite results) by its result
+                                 id
+
+Options:
+  -d, --debug    Print debug output                   [boolean] [default: false]
+  -h, --help     Show help                                             [boolean]
+  -v, --version  Show version number                                   [boolean]

@@ -1,0 +1,27 @@
+now-sdk transform
+
+Download and convert XML records from instance or from a local path into Fluent
+source code
+
+Table-based Transform:
+      --table  Comma-separated table names to transform by table hierarchy. When
+               used with --id, transforms a specific record with its
+               relationships.                                           [string]
+      --force  Allow transforming descendant tables without their parent
+               hierarchy (use with --table).          [boolean] [default: false]
+
+Options:
+  -d, --debug      Print debug output                 [boolean] [default: false]
+      --from       Path to local XML file(s)/directory to transform     [string]
+      --directory  Path to the directory that contains package.json
+                   configuration
+  [string] [default: "/work/projects/my-app/.claude/worktree
+                                                            s/sdk-panel-22ceb0"]
+  -a, --auth       Credential alias to use for authentication with instance
+                                                                        [string]
+  -f, --format     Automatically format new and updated source code after
+                   transforming.                       [boolean] [default: true]
+      --timeout    Maximum time, in seconds, to wait for the instance to respond
+                   before giving up                     [number] [default: 3600]
+  -h, --help       Show help                                           [boolean]
+  -v, --version    Show version number                                 [boolean]

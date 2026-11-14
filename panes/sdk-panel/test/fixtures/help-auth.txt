@@ -1,0 +1,46 @@
+now-sdk auth
+
+Configure authentication to instance (encrypted; location configurable via
+SN_SDK_CREDENTIALS_DIR)
+
+Add:
+      --add    Instance name or url to store authentication credentials for
+                                                                        [string]
+      --type   Type of authentication to use for new authentication credential
+                                            [string] [choices: "basic", "oauth"]
+      --alias  The alias to use for new authentication credential       [string]
+
+Delete:
+      --delete  Alias of authentication credential to delete            [string]
+
+List:
+      --list  List all available authentication credentials            [boolean]
+
+Use:
+      --use  Alias of authentication credential to use by default       [string]
+
+Print:
+      --print   Print a live auth token for the given alias (or the default
+                credential if omitted) for use in manual API calls      [string]
+      --format  Output format for --print
+             [string] [choices: "headers", "bearer", "env"] [default: "headers"]
+
+Options:
+  -d, --debug    Print debug output                   [boolean] [default: false]
+  -h, --help     Show help                                             [boolean]
+  -v, --version  Show version number                                   [boolean]
+
+Examples:
+  now-sdk auth --add                        Adds basic credentials for instance
+  https://<instancename>.service-now.com    <instancename>
+  --type basic
+  now-sdk auth --delete bar                 Deletes saved credentials with alias
+                                            bar
+  now-sdk auth --use bar                    Sets credentials with alias bar as
+                                            default
+  now-sdk auth --list                       Lists all saved credentials
+  echo "$SN_PASSWORD" | now-sdk auth --add  Stores credentials fully
+  https://h --type basic --alias x          non-interactively (pipe password
+  --username admin --password-stdin         into stdin)
+  now-sdk auth --print                      Prints an auth token for the default
+                                            credential for manual API calls

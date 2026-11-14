@@ -1,0 +1,52 @@
+
+_____   ______ _       __  _____ ____  __  __
+___/ | / / __  /|     / / / ___// __ / / /_/
+__/  |/ / / / / | /| / / \__ // / / / <
+_/ /|  / /_/ /| |/ |/ / ___/ / /_/ / /| |
+/_/ |_/_____/ |__/|__/ /____/_____/_/ |_|
+
+Source-driven applications by writing actual code, and using modern,
+industry-standard development paradigms.
+
+
+Commands:
+  now-sdk auth                     Configure authentication to instance
+                                   (encrypted; location configurable via
+                                   SN_SDK_CREDENTIALS_DIR)
+  now-sdk init                     Initialize a new ServiceNow custom
+                                   application, apply a template to an existing
+                                   application, or convert a legacy ServiceNow
+                                   application from an instance or directory
+                                   within the current directory structure.
+                                                               [aliases: create]
+  now-sdk download <directory>     Download application metadata from instance.
+  now-sdk build [source]           Compile sources into app files and generate
+                                   installable package
+  now-sdk install                  Install or update application on instance
+                                                               [aliases: deploy]
+  now-sdk dependencies [sysIds..]  Download configured dependencies in
+                                   now.config.json and typescript type
+                                   definitions for use in the application
+  now-sdk transform                Download and convert XML records from
+                                   instance or from a local path into Fluent
+                                   source code
+  now-sdk clean [source]           Clean output directory
+  now-sdk pack [source]            Zip built app into installable artifact
+  now-sdk explain [topic]          Display documentation for a Fluent SDK topic
+  now-sdk query <table>            Query records from a ServiceNow table on the
+                                   instance
+  now-sdk exec [script]            Execute a script on the instance
+                                                              [aliases: execute]
+  now-sdk cicd <command>           Run sn_cicd operations against an instance
+                                   (test suites, app repo install/publish)
+
+Options:
+  -d, --debug    Print debug output                   [boolean] [default: false]
+  -h, --help     Show help                                             [boolean]
+  -v, --version  Show version number                                   [boolean]
+
+
+Use $now-sdk <command> --help for usage information.
+
+For more information, please visit:
+https://docs.servicenow.com/csh?topicname=servicenow-sdk-landing.html

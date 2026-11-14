@@ -17,6 +17,7 @@ index/
 hooks/
 agents/
 commands/
-mods/
+panes/
+types/
 .claude/
 .superpowers/

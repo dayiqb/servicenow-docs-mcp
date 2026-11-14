@@ -51,7 +51,8 @@ available in chat, in Cowork and in the Code tab.
 > a sandboxed virtual machine that can't reach GitHub or Hugging Face, so the plugin's server
 > can never download the docs there.
 
-**Claude Code (terminal or IDE): the plugin.** It also adds the "docs first" hook (below).
+**Claude Code (terminal or IDE): the plugin.** It also adds the "docs first" hook and the panes
+beside the chat (below). One install gives all of it.
 
 ```
 /plugin marketplace add dayiqb/servicenow-docs-mcp
@@ -181,12 +182,21 @@ The plugin adds a few things that only Claude Code has:
   questions; you can also ask for it by name.
 - **Two hooks**, described above: docs first for ServiceNow questions, and the script check
   after Claude writes ServiceNow code.
-- **A figures pane** (`mods/servicenow-docs-figures`, in preview). When a picture explains a
-  concept better than text (a lifecycle, how records relate, what happens over time), Claude
-  draws it in a pane beside the chat, from the docs it has read, with links to the pages. The
-  figure follows the width of the pane. The answer itself stays short. `/docs-figures` opens the pane again. It is not offered for
-  install yet; to try it from a checkout, start Claude Code with
-  `claude --plugin-dir mods/servicenow-docs-figures`.
+- **A figures pane.** When a picture explains a concept better than text (a lifecycle, how
+  records relate, what happens over time), Claude draws it in a pane beside the chat, from the
+  docs it has read, with links to the pages. The figure follows the width of the pane, and the
+  answer itself stays short. `/docs-figures` opens the pane again.
+- **A ServiceNow SDK panel**, off until you turn it on. `/sdk-panel` opens a pane for the
+  ServiceNow SDK command line (`now-sdk`): whether it is set up, the instances it can reach,
+  every command with what it touches, the SDK's own documentation, and AIUX projects. Reading
+  runs at once. A command that changes something shows the exact command line and asks first,
+  and one that changes an instance asks you to type the alias of that instance. Signing in
+  always happens in your own terminal: a password or a token never passes through the pane,
+  the chat or a log.
+
+The SDK panel is the one part of the plugin that can change anything; everything else only
+reads. So it is a setting, **ServiceNow SDK panel**, and it is off as installed. Turn it on when
+you install the plugin, or later in `/config`.
 
 ## Compare releases
 
@@ -264,11 +274,12 @@ If the ServiceNow SDK (`now-sdk`) is installed on your computer, two more lookup
   version and the instances the SDK has credentials for: alias, address, kind of sign-in and
   which one is the default. User names and secrets are never shown.
 
-Both only read. This extension never signs in, never changes the SDK's configuration and never
-contacts an instance: adding an instance is something you do yourself in a terminal
+Both only read. The docs tools never sign in, never change the SDK's configuration and never
+contact an instance: adding an instance is something you do yourself in a terminal
 (`now-sdk auth --add <instance> --type oauth`). In Claude Code, the script check also reminds
 Claude to run `now-sdk build`, which type-checks locally, after it changes a Fluent file
-(`*.now.ts`).
+(`*.now.ts`). Running SDK commands from Claude Code is what the ServiceNow SDK panel is for; it
+is off until you turn it on (see [In Claude Code](#in-claude-code)).
 
 ## Command line and library
 
@@ -338,7 +349,12 @@ Every docs index is verified by SHA-256 on download. The list of current indexes
 uv sync
 uv run pytest -q             # fast tests; no downloads
 scripts/build_mcpb.sh        # builds dist/servicenow-docs.mcpb
+claude plugin test .         # the panes (hooks/, panes/); needs Claude Code
 ```
+
+The panes are one hooks module, `hooks/register.tsx`, which sets up `panes/figures` and
+`panes/sdk-panel`. The SDK panel is developed in its own repository and taken in with
+`python3 scripts/import_sdk_panel.py <checkout>`; `panes/sdk-panel/SOURCE.md` names the commit.
 
 CI runs the tests on Windows, macOS and Linux; the `e2e` job (manual, and for version tags)
 downloads the real index and searches it over stdio on Windows and macOS.
