@@ -39,7 +39,7 @@ function engine(on: any, isPlaced = true) {
   // Nothing sits beneath the plugin: each hook here stands for the engine.
   on('command.register', () => ({ value: { command: 'docs-figures' } }))
   on('tool.register', () => ({ value: { tool: TOOL } }))
-  on('ui.open', () => ({ value: { isPlaced } }))
+  on('ui.open', () => ({ value: isPlaced ? { isPlaced } : { isPlaced, reason: 'no-surface: none attached' } }))
   on('session.start', (_: unknown, e: any) => ({ cwd: e.cwd }))
 }
 
@@ -143,13 +143,19 @@ test('a surface that draws no vector figure says what the figure says', async ($
   await ui.unmount()
 })
 
-test('where no pane can be drawn, Claude is told to say it in words', async ($, on) => {
+test('where no pane is drawn yet, Claude is told why, and the figure waits in the pane', async ($, on) => {
   engine(on, false)
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
 
   const answer = await show($, SLA)
   expect(answer.isError).toBe(undefined)
-  expect(String(answer.result)).toMatch(/not .*shown|no pane/i)
+  expect(String(answer.result)).toMatch(/not drawn yet/)
+  expect(String(answer.result)).toMatch(/no-surface: none attached/)
+
+  // the pane stays open with the figure, for the surface that attaches later
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect((await ui.find({ type: 'Svg' }))?.props.alt).toBe(SLA.alt)
+  await ui.unmount()
 })
 
 test('searching the docs draws nothing', async ($, on) => {

@@ -158,12 +158,15 @@ export const register: Register = on => {
       return { figures: kept, at: kept.length - 1 }
     })
     // The person asked to be shown something: the pane comes forward each time.
-    const { isPlaced } = await $.ui.open({ id: PANE, title: TITLE })
+    const opened = await $.ui.open({ id: PANE, title: TITLE })
 
     return {
-      result: isPlaced
+      result: opened.isPlaced
         ? `'${title}' is shown in the ServiceNow Docs pane beside the chat. Do not repeat it in the answer.`
-        : `'${title}' is kept but not shown: no pane is drawn here. Say in words what it shows.`,
+        : // The pane stays open with the figure, and is drawn when a surface that places panes
+          // attaches. Until then the person sees nothing of it.
+          `'${title}' is in the ServiceNow Docs pane, which is not drawn yet (${opened.reason}). ` +
+          'It appears when the pane can be drawn. Say in words what it shows as well.',
     }
   })
 
