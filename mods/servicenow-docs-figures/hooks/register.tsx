@@ -55,7 +55,7 @@ const STYLE =
 
 const DESCRIPTION = `Show a figure in the ServiceNow Docs pane beside the chat, to explain a ServiceNow concept the answer is about: a lifecycle and its states, how records or tables relate, what happens over time, how two values give a third.
 
-Use it when a picture explains what the text cannot say as briefly. At most one figure per answer, and keep the answer itself short: the figure adds to it, it does not repeat it. Take everything in the figure from documentation you have read with the docs tools, in the docs' own terms, and list those pages in \`sources\`.
+Use it when a picture explains what the text cannot say as briefly. At most one figure per answer, and keep the answer itself short: the figure adds to it, it does not repeat it. To draw a figure again, give it the same title: it takes the place of the one shown before. Take everything in the figure from documentation you have read with the docs tools, in the docs' own terms, and list those pages in \`sources\`.
 
 svg: one <svg viewBox="0 0 680 H"> (always 680 wide, H as tall as needed; a narrow figure is centred in it). No width or height, no <style>, no script: the pane adds the styling for light and dark. It is drawn as an image, so it must be well-formed XML: close every element and write & as &amp;.
 - A thing or a state: <g class="node"><rect class="box" x= y= width= height= rx="8"/><text class="th" x= y= text-anchor="middle" dominant-baseline="central">Name</text><text class="ts" ...>Short note</text></g>. Coloured, not neutral: <g class="node c-teal"> with a plain <rect> inside. Colours: c-teal, c-amber, c-blue, c-green, c-red, c-purple, c-gray. At most two, and only where colour means something.
@@ -130,6 +130,14 @@ function sourcesOf(value: unknown): Source[] | { why: string } {
   return sources
 }
 
+/**
+ * One figure for each title, the newest. A figure shown again under the same title is the same
+ * figure drawn again: as two pages, the old drawing and the new one read as two variants.
+ */
+function newestOfEach(figures: Figure[]): Figure[] {
+  return figures.filter((figure, i) => !figures.slice(i + 1).some(later => later.title === figure.title))
+}
+
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
@@ -172,7 +180,7 @@ export const register: Register = on => {
       sources,
     }
     await update($, book, ({ figures }): Book => {
-      const kept = [...figures, figure].slice(-KEPT)
+      const kept = newestOfEach([...figures, figure]).slice(-KEPT)
 
       return { figures: kept, at: kept.length - 1 }
     })
@@ -191,8 +199,10 @@ export const register: Register = on => {
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Text, Button, Link } = $.ui.resolve(e)
-    const { figures, at } = await read($, book)
-    const figure = figures[Math.min(Math.max(at, 0), figures.length - 1)]
+    const held = await read($, book)
+    // What an earlier version kept may hold a title twice: it is drawn as this version keeps it.
+    const figures = newestOfEach(held.figures)
+    const figure = figures[Math.min(Math.max(held.at, 0), figures.length - 1)]
     if (!figure) {
       return (
         <Text dimColor>
@@ -211,7 +221,8 @@ export const register: Register = on => {
       const source = figure.narrow && e.props.bodyColumns < NARROW_BELOW ? figure.narrow : figure.svg
       drawing = <Svg source={source} alt={figure.alt} />
     }
-    const turn = (to: number) => () => update($, book, (held): Book => ({ ...held, at: to }))
+    const turn = (to: number) => () =>
+      update($, book, (now): Book => ({ figures: newestOfEach(now.figures), at: to }))
 
     return (
       <Box flexDirection="column" gap={1}>

@@ -174,6 +174,40 @@ test('the newest figure is shown, and the earlier ones can be paged back to', as
   await ui.unmount()
 })
 
+test('a figure shown again under the same title takes the place of the old one', async ($, on) => {
+  // Claude draws a figure again to make it better. Kept as two pages, the old drawing and the
+  // new one look like two variants to page between.
+  engine(on)
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await show($, SLA)
+  await show($, { ...SLA, title: 'Incident states', sources: [] })
+  await show($, { ...SLA, svg_narrow: NARROW, caption: 'Drawn again.' })
+
+  let ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect((await ui.find({ type: 'Text', text: /How an SLA/ }))?.text).toBe('How an SLA runs')
+  expect((await ui.find({ type: 'Text', text: /again/ }))?.text).toBe('Drawn again.')
+  expect((await ui.find({ type: 'Text', text: / of / }))?.text).toBe('2 of 2')
+  await ui.press({ key: 'previous' })
+  await ui.unmount()
+
+  ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect((await ui.find({ type: 'Text', text: /Incident/ }))?.text).toBe('Incident states')
+  expect((await ui.find({ type: 'Text', text: / of / }))?.text).toBe('1 of 2')
+  await ui.unmount()
+})
+
+test('two figures with one title that an earlier version kept are shown as one, the newest', async ($, on) => {
+  const kept = (caption: string) => ({ title: SLA.title, svg: SVG, alt: SLA.alt, caption, sources: [] })
+  const stored = { shape: 'book-1', value: { figures: [kept('First drawing.'), kept('Second drawing.')], at: 0 } }
+  on('state.get', () => ({ value: { value: stored, version: 1 } }))
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect((await ui.find({ type: 'Text', text: /drawing/ }))?.text).toBe('Second drawing.')
+  expect(await ui.find({ type: 'Text', text: / of / })).toBe(undefined)
+  expect(await ui.find({ type: 'Button' })).toBe(undefined)
+  await ui.unmount()
+})
+
 test('a surface that draws no vector figure says what the figure says', async ($, on) => {
   engine(on)
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })

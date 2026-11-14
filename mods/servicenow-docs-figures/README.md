@@ -9,7 +9,8 @@ has read with the `servicenow-docs` plugin and names those pages as sources. The
 styling, for light and dark, and shows the figure with its title, one line of caption and
 links to the pages. Claude draws a figure twice, wide and narrow, and the pane shows the one
 that fits its width, so the text keeps its size when the pane is made narrow. Earlier figures
-of the session can be paged back to. Nothing is drawn for
+of the session can be paged back to; a figure shown again under the same title takes the place
+of the one before it. Nothing is drawn for
 a search or a read, and nothing is kept between sessions.
 
 `/docs-figures` opens the pane again after you close it. A terminal, which draws no vector
