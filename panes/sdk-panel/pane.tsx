@@ -29,6 +29,7 @@ import {
   useInstanceArgv,
 } from './core/instances.js'
 import { evaluateSetup } from './core/setup.js'
+import { expandHome, extensionFolders, homeFolder } from './core/extensions.js'
 import { SDK_PACKAGE, isPackageName, isUpdateAvailable, latestCommand, updateCommand } from './core/updates.js'
 import type { PanelData, PanelField, PanelHit, PanelScreen, PanelView } from '../../types'
 
@@ -290,12 +291,15 @@ function projectFiles($: Engine) {
  * line, so it is reported as old and never run.
  */
 async function findDocs($: Engine, optionFolder: string): Promise<NonNullable<PanelData['docs']>> {
-  let home = ''
-  try {
-    home = (await $.process.run(['printenv', 'HOME'], { timeoutMs: 5000 })).stdout.trim()
-  } catch {
-    // Without a home folder only an absolute option folder and the PATH are tried.
+  // Read from the environment, not with a command: `printenv` is not on Windows.
+  const env = {
+    HOME: await $.env.get('HOME'),
+    USERPROFILE: await $.env.get('USERPROFILE'),
+    APPDATA: await $.env.get('APPDATA'),
+    XDG_CONFIG_HOME: await $.env.get('XDG_CONFIG_HOME'),
   }
+  // Without a home folder only an absolute option folder and the PATH are tried.
+  const home = homeFolder(env)
   let old: NonNullable<PanelData['docs']> = { kind: 'none' }
   const check = async (folder: string) => {
     let version: string | undefined
@@ -309,18 +313,21 @@ async function findDocs($: Engine, optionFolder: string): Promise<NonNullable<Pa
     return undefined
   }
 
-  const option = optionFolder.trim().replace(/^~(?=\/|$)/, home)
+  const option = expandHome(optionFolder, home)
   if (option) {
     const found = await check(option)
     if (found) return found
   }
-  try {
-    if ((await $.process.run(['which', 'snow-docs-mcp'], { timeoutMs: 5000 })).exitCode === 0) return { kind: 'path' }
-  } catch {
-    // Not on the PATH.
+  // `which` finds a program on macOS and Linux, `where` on Windows.
+  for (const finder of ['which', 'where']) {
+    try {
+      if ((await $.process.run([finder, 'snow-docs-mcp'], { timeoutMs: 5000 })).exitCode === 0) return { kind: 'path' }
+    } catch {
+      // This system has no such command, or the program is not on the PATH.
+    }
   }
-  if (home) {
-    const extensions = `${home}/Library/Application Support/Claude/Claude Extensions`
+  // The "Claude Extensions" folder of Claude Desktop, wherever this system keeps it.
+  for (const extensions of extensionFolders(env)) {
     try {
       for (const entry of await $.fs.list(extensions)) {
         if (entry.kind !== 'dir') continue
@@ -334,7 +341,7 @@ async function findDocs($: Engine, optionFolder: string): Promise<NonNullable<Pa
         if (found) return found
       }
     } catch {
-      // Claude Desktop is not installed, or has no extensions.
+      // Not this system's folder, Claude Desktop is not installed, or it has no extensions.
     }
   }
   return old
