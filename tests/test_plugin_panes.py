@@ -105,6 +105,22 @@ def test_readme_tells_about_both_panes_and_the_setting() -> None:
     assert "off until" not in readme and "off as installed" not in readme
 
 
+def test_readme_gives_two_downloads() -> None:
+    """The extension for the docs tools, the plugin for what only Claude Code has."""
+    readme = _read(ROOT / "README.md")
+    assert "Two downloads" in readme
+    assert "starts no server of its own" in readme
+    assert "One install gives all of it" not in readme
+    assert "claude mcp add" in readme  # Claude Code without Claude Desktop
+
+
+def test_the_sdk_panel_looks_for_the_docs_where_they_are_installed() -> None:
+    """The plugin has no docs environment of its own: looked for in the plugin's folder, the
+    docs would be found by their version file and then fail to run."""
+    assert "$.plugin.root" not in _read(SDK / "pane.tsx")
+    assert "Claude Extensions" in _read(SDK / "pane.tsx")
+
+
 @pytest.mark.skipif(CLAUDE is None, reason="the claude command line is not installed")
 def test_the_plugin_validates_and_its_pane_tests_pass() -> None:
     def run(*args: str) -> str:

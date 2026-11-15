@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
   "name": "servicenow-docs-mcp",
-  "description": "ServiceNow product documentation search for Claude.",
+  "description": "ServiceNow Docs in Claude Code: panes, hooks and commands beside the ServiceNow Docs extension.",
   "owner": {
     "name": "Dayan Iqbal"
   },
@@ -9,8 +9,8 @@
     {
       "name": "servicenow-docs",
       "source": "./",
-      "description": "Search the official ServiceNow product docs (Australia and Brazil releases) from Claude, with cited answers. Runs locally; needs uv.",
-      "version": "2.4.5",
+      "description": "The panes, hooks and commands of ServiceNow Docs in Claude Code: figures that explain a concept, the ServiceNow SDK panel, docs first for ServiceNow questions and a check of ServiceNow script code. The docs tools themselves come from the ServiceNow Docs extension of Claude Desktop; needs uv.",
+      "version": "2.5.0",
       "category": "productivity"
     }
   ]

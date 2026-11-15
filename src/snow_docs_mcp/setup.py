@@ -301,7 +301,7 @@ def _apply_latest(doc: object) -> None:
         if not _compatible(entry):
             notes.append(
                 f"a newer {release} docs index needs server {entry.min_server_version}+; "
-                "update the plugin/extension to get it"
+                "update the extension to get it"
             )
         entries[release] = entry
     with _state_lock:
@@ -552,7 +552,7 @@ def _install(entry: IndexEntry) -> None:
         if not resumed:
             raise FatalSetupError(
                 f"the published {release} docs index does not match what this version of the "
-                "server expects (checksum mismatch). Update the plugin/extension, or tell "
+                "server expects (checksum mismatch). Update the extension, or tell "
                 "whoever shared it"
             )
         # A resumed file can be corrupt from an earlier interruption: retry once from scratch.
@@ -579,7 +579,7 @@ def _install(entry: IndexEntry) -> None:
             part.unlink(missing_ok=True)  # its checksum matched, so re-unpacking cannot help
             raise FatalSetupError(
                 f"the unpacked {release} docs index does not match what this version of the "
-                "server expects (checksum mismatch). Update the plugin/extension"
+                "server expects (checksum mismatch). Update the extension"
             )
         os.replace(tmp, db)
     except BaseException:
@@ -869,7 +869,7 @@ def ensure(release: str, *, with_models: bool = True) -> SetupStatus:
                     release,
                     "unavailable",
                     f"The {release} docs index needs server {newer.min_server_version} or "
-                    "newer. Update the plugin/extension to get it.",
+                    "newer. Update the extension to get it.",
                 )
             else:
                 _set(
@@ -884,7 +884,7 @@ def ensure(release: str, *, with_models: bool = True) -> SetupStatus:
             if _is_bad(entry):
                 failure = FatalSetupError(
                     f"the published {release} docs index failed its checksum before; update "
-                    "the plugin/extension, or tell whoever shared it"
+                    "the extension, or tell whoever shared it"
                 )
             else:
                 failure = _install_remembering_failure(release, entry)

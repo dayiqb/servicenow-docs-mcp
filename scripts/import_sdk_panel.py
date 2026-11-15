@@ -10,7 +10,6 @@ at the checkout's last commit, with only what that needs changed:
 - its state is kept under this plugin's name;
 - what it sets up at the start of a session becomes `start($)`, which this plugin's one
   `session.start` hook calls (hooks/register.tsx);
-- the docs it looks things up in are first looked for in this plugin's own folder;
 - its types go into this plugin's contract (types/index.d.ts);
 - its pane tests run with the panel's setting on.
 
@@ -79,17 +78,10 @@ def pane(source: str) -> str:
         ),
         out,
     )
-    option = (
-        "  if (option) {\n    const found = await check(option)\n    if (found) return found\n  }\n"
-    )
-    out = swap(
-        out,
-        option,
-        option + "  // As a pane of the ServiceNow Docs plugin, the docs are the plugin itself.\n"
-        "  const own = await check($.plugin.root)\n"
-        "  if (own) return own\n",
-        "where it looks for the docs",
-    )
+    # The docs are not looked for in this plugin's folder: the plugin starts no docs server, so
+    # the folder has no docs environment. The panel finds the Claude Desktop extension itself.
+    if "Claude Extensions" not in out:
+        sys.exit("import stopped: the pane no longer looks for the Claude Desktop extension")
     if "on('session.start'" in out or THEIRS in re.sub(r"//.*|/\*[\s\S]*?\*/", "", out):
         sys.exit("import stopped: the pane still names its own plugin or its own session.start")
     return out

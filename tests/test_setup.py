@@ -806,7 +806,7 @@ def test_a_brazil_index_needing_a_newer_server_says_update(home, payload, srv, m
     )
     st = setup.ensure("brazil", with_models=False)
     assert st.state == "unavailable" and "needs server 9.0.0" in st.message
-    assert "Update the plugin" in st.message
+    assert "Update the extension" in st.message
 
 
 def test_a_failed_model_download_is_reported_as_such(home, payload, srv, monkeypatch):

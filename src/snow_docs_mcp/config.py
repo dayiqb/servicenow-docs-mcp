@@ -1,8 +1,8 @@
 """Where the server keeps its data, and which docs indexes exist.
 
 Everything heavy lives in one data folder, shared by every Claude app on the machine that
-runs this server (the plugin, the Claude Desktop extension and any Claude Code install all
-use the same files, so each index downloads once):
+runs this server (the Claude Desktop extension and a server someone added to Claude Code
+themselves use the same files, so each index downloads once):
 
     <data folder>/
         index-<release>-<snapshot>-<sha12>.db    one docs index (read-only SQLite)
@@ -40,7 +40,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-VERSION = "2.4.5"
+VERSION = "2.5.0"
 RELEASES = ("australia", "brazil")
 DEFAULT_RELEASE = "australia"
 

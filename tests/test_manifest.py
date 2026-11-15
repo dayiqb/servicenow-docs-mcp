@@ -99,13 +99,21 @@ def test_plugin_and_marketplace_describe_this_version() -> None:
     assert entry["source"] == "./", "the repo root is the plugin"
 
 
-def test_plugin_launches_the_server_from_its_own_folder() -> None:
-    server = PLUGIN["mcpServers"]["servicenow-docs"]
-    assert server["command"] == "uv"
-    args = server["args"]
-    assert args[0] == "run" and "--frozen" in args  # the locked dependencies, never re-resolved
-    assert "${CLAUDE_PLUGIN_ROOT}" in args
-    assert (ROOT / args[-1]).is_file(), "the launcher script exists"
+def test_the_plugin_starts_no_docs_server_of_its_own() -> None:
+    """Two downloads: the extension has the docs tools, the plugin adds the panes, hooks and
+    commands of Claude Code. A server in the plugin too would give every tool twice wherever
+    both are installed, which is the Code tab of Claude Desktop."""
+    assert "mcpServers" not in PLUGIN
+    for said in (PLUGIN["description"], MARKET["plugins"][0]["description"]):
+        assert "extension" in said and "Claude Code" in said, said
+    assert (ROOT / "server" / "main.py").is_file(), "the extension still starts from here"
+
+
+def test_the_servers_messages_name_the_extension_as_what_to_update() -> None:
+    """The server comes with the extension; the plugin has none to update."""
+    for name in ("setup.py", "config.py"):
+        text = (ROOT / "src" / "snow_docs_mcp" / name).read_text(encoding="utf-8")
+        assert "plugin/extension" not in text and "(the plugin," not in text, name
 
 
 def test_plugin_skill_exists_and_names_the_tools() -> None:
@@ -191,26 +199,22 @@ DESKTOP_RESERVED_NAMES = {
 }
 
 
-def test_plugin_server_and_hooks_avoid_desktop_reserved_env_names() -> None:
-    plugin = json.loads((ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
+def test_the_plugins_hooks_avoid_desktop_reserved_env_names() -> None:
     hooks = json.loads((ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8"))
-    envs = [srv.get("env", {}) for srv in plugin["mcpServers"].values()]
-    envs += [h.get("env", {}) for g in hooks["hooks"].values() for e in g for h in e["hooks"]]
+    envs = [h.get("env", {}) for g in hooks["hooks"].values() for e in g for h in e["hooks"]]
     for env in envs:
         for name in env:
             upper = name.upper()
             assert upper not in DESKTOP_RESERVED_NAMES, name
             assert not upper.startswith(DESKTOP_RESERVED_PREFIXES), name
-    # system certificates for uv's own downloads, as a flag instead (any uv version)
-    assert plugin["mcpServers"]["servicenow-docs"]["args"][:2] == ["run", "--native-tls"]
 
 
-def test_version_is_2_4_5_everywhere() -> None:
+def test_version_is_2_5_0_everywhere() -> None:
     plugin = json.loads((ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
     market = json.loads((ROOT / ".claude-plugin" / "marketplace.json").read_text(encoding="utf-8"))
     versions = {__version__, MANIFEST["version"], plugin["version"]}
     versions |= {p["version"] for p in market["plugins"]}
-    assert versions == {"2.4.5"}
+    assert versions == {"2.5.0"}
 
 
 def test_instructions_and_readme_name_the_compare_tool() -> None:

@@ -314,9 +314,6 @@ async function findDocs($: Engine, optionFolder: string): Promise<NonNullable<Pa
     const found = await check(option)
     if (found) return found
   }
-  // As a pane of the ServiceNow Docs plugin, the docs are the plugin itself.
-  const own = await check($.plugin.root)
-  if (own) return own
   try {
     if ((await $.process.run(['which', 'snow-docs-mcp'], { timeoutMs: 5000 })).exitCode === 0) return { kind: 'path' }
   } catch {

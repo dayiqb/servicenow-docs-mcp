@@ -26,9 +26,18 @@ Works on **Windows 10/11 (x64)**, **macOS 14 or later on Apple silicon**, and **
 
 ## Install
 
+Two downloads. The second is optional and builds on the first:
+
+1. **The ServiceNow Docs extension** for Claude Desktop: the ten docs tools and the panel, in
+   chat, in Cowork and in the Code tab.
+2. **The Claude Code plugin**: what only Claude Code has. The figures pane, the ServiceNow SDK
+   panel, the two hooks, the commands and the docs researcher. It starts no server of its own:
+   it uses the docs tools of the extension, so every tool is there once.
+
 ### 1. Install uv (once)
 
-The plugin uses [uv](https://docs.astral.sh/uv/) to set up Python for the server.
+The extension uses [uv](https://docs.astral.sh/uv/) to set up Python for the server, and the
+plugin's hooks run with it.
 
 - **Windows** (PowerShell): `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`
 - **macOS / Linux**: `curl -LsSf https://astral.sh/uv/install.sh | sh`
@@ -38,32 +47,42 @@ Then quit and reopen Claude so it picks up uv.
 **Windows only:** the search models need the Microsoft Visual C++ Redistributable (x64), which
 most PCs already have. If not, install it from https://aka.ms/vs/17/release/vc_redist.x64.exe.
 
-### 2. Add it to Claude
+### 2. The extension: the docs tools
 
-**Claude Desktop (chat, Cowork and the Code tab): the extension.** Download
-`servicenow-docs.mcpb` from the
+Download `servicenow-docs.mcpb` from the
 [latest release](https://github.com/dayiqb/servicenow-docs-mcp/releases/latest) and double-click
 it (or **Settings → Extensions → Advanced settings → Install Extension…**). It is unsigned, so
 Claude Desktop shows a warning. Extensions run on your computer, and Claude Desktop makes them
 available in chat, in Cowork and in the Code tab.
 
-> Don't use **Customize → Plugins** for this one in Claude Desktop. Cowork runs plugins inside
-> a sandboxed virtual machine that can't reach GitHub or Hugging Face, so the plugin's server
-> can never download the docs there.
+The very first start takes a little longer (uv sets up Python, about 200 MB). If Claude says
+the server failed to start the first time, restart Claude once.
 
-**Claude Code (terminal or IDE): the plugin.** It also adds the "docs first" hook and the panes
-beside the chat (below). One install gives all of it.
+### 3. The plugin: panes, hooks and commands in Claude Code
+
+In Claude Code (the Code tab of Claude Desktop, a terminal or an IDE):
 
 ```
 /plugin marketplace add dayiqb/servicenow-docs-mcp
 /plugin install servicenow-docs@servicenow-docs-mcp
 ```
 
-Using both (the extension in Desktop, the plugin in the terminal) is fine: they share one data
-folder, so nothing downloads twice.
+It adds what [In Claude Code](#in-claude-code) describes. Install and start the extension
+first: the plugin's check of script code runs with the extension's Python environment, and
+stays silent until that is there.
 
-The very first start takes a little longer (uv sets up Python, about 200 MB). If Claude says
-the server failed to start the first time, restart Claude once.
+### Claude Code without Claude Desktop
+
+The extension reaches Claude Code through Claude Desktop. On a computer without it, add the
+server to Claude Code yourself from a checkout of this repository, and install the plugin from
+the same folder, so its check of script code finds the docs there:
+
+```bash
+git clone https://github.com/dayiqb/servicenow-docs-mcp
+claude mcp add servicenow-docs -- uv run --frozen --directory /path/to/servicenow-docs-mcp server/main.py
+claude plugin marketplace add /path/to/servicenow-docs-mcp
+claude plugin install servicenow-docs@servicenow-docs-mcp
+```
 
 ## First run
 
@@ -79,15 +98,14 @@ Everything is stored in one folder, shared by all Claude apps on the computer:
 
 About 1.7 GB per release once unpacked (2.4 GB free space needed while it unpacks), plus the
 models. After the first run it works offline. Each running
-copy of the server (Claude Desktop, plus one per open Claude Code session) uses under 100 MB of
-memory until its first search, then about 3 GB.
+copy of the server uses under 100 MB of memory until its first search, then about 3 GB.
 
 ## Releases and updates
 
 - **Australia** is the default. For **Brazil**, just say so ("check the Brazil docs") and Claude
   passes `release: "brazil"`. To make Brazil the default, in Claude Desktop write `brazil` in
-  Settings → Extensions → ServiceNow Docs → Release; in Claude Code, set the environment variable
-  `SNOW_DOCS_RELEASE=brazil`. A release the server does not have falls back to Australia, and
+  Settings → Extensions → ServiceNow Docs → Release; for a server you added to Claude Code
+  yourself, set the environment variable `SNOW_DOCS_RELEASE=brazil`. A release the server does not have falls back to Australia, and
   `snow_docs_status` says so.
 - Only releases you actually use are downloaded.
 - The Brazil docs don't yet cover every area: the current snapshot has no API reference and no
@@ -319,13 +337,13 @@ method = api.lookup("GlideRecord.addEncodedQuery")
 | Problem | Fix |
 |---|---|
 | The server fails to start | Check uv is installed (`uv --version` in a terminal), then quit and reopen Claude. |
-| Searches are slow (6+ seconds, e.g. a 2-CPU computer or container) | Claude Desktop: Settings → Extensions → ServiceNow Docs → turn on "Faster search on slow computers". Claude Code: set the environment variable `SNOW_DOCS_RERANK=fast`. The ranking step then reads less of each candidate: about 45% less work per search, slightly different results, same measured quality (nDCG@10 −.007, not significant). |
+| Searches are slow (6+ seconds, e.g. a 2-CPU computer or container) | Settings → Extensions → ServiceNow Docs → turn on "Faster search on slow computers". For a server you added to Claude Code yourself: set the environment variable `SNOW_DOCS_RERANK=fast`. The ranking step then reads less of each candidate: about 45% less work per search, slightly different results, same measured quality (nDCG@10 −.007, not significant). |
 | "HTTP 404" | The docs index release isn't published yet, or the link moved. Tell the maintainer. |
 | "not enough free disk space" | Free about 3 GB, or set `SNOW_DOCS_HOME` to a folder on a bigger disk. |
 | "DLL load failed" (Windows) | Install the Visual C++ Redistributable (link above), then restart Claude. |
 | Certificate / SSL errors on a company network | The server and uv use the operating system's certificates. If your company's proxy certificate isn't installed in Windows, ask IT to install it. |
 | "a proxy or Wi-Fi login page may be in the way" | Log in to the network (or try another network); it retries on the next question. |
-| "does not match what this version of the server expects" | Update the plugin; if it persists, tell the maintainer. |
+| "does not match what this version of the server expects" | Update the extension; if it persists, tell the maintainer. |
 | "waiting for another Claude app" | Another app on your computer is doing the one-time download; this one continues when it finishes. |
 | Anything else | Claude Desktop logs: `%APPDATA%\Claude\logs\` (Windows) or `~/Library/Logs/Claude/` (macOS), file `mcp-server-servicenow-docs.log`. |
 | Start over | Quit Claude, delete the data folder above, and start Claude again. |

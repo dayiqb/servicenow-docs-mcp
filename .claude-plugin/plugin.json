@@ -1,7 +1,7 @@
 {
   "name": "servicenow-docs",
-  "version": "2.4.5",
-  "description": "Search the official ServiceNow product docs (Australia and Brazil releases) from Claude, with cited answers. Runs locally; needs uv.",
+  "version": "2.5.0",
+  "description": "The panes, hooks and commands of ServiceNow Docs in Claude Code: figures that explain a concept, the ServiceNow SDK panel, docs first for ServiceNow questions and a check of ServiceNow script code. The docs tools themselves come from the ServiceNow Docs extension of Claude Desktop; needs uv.",
   "author": {
     "name": "Dayan Iqbal"
   },
@@ -22,20 +22,6 @@
       "title": "ServiceNow SDK panel",
       "description": "Adds /sdk-panel in Claude Code: a pane for the ServiceNow SDK command line (now-sdk) with setup, instances, commands and explain. It can run SDK commands, also against your instances, after you confirm each one. Turn it off for a plugin that only reads documentation.",
       "default": true
-    }
-  },
-  "mcpServers": {
-    "servicenow-docs": {
-      "command": "uv",
-      "args": [
-        "run",
-        "--native-tls",
-        "--frozen",
-        "--quiet",
-        "--directory",
-        "${CLAUDE_PLUGIN_ROOT}",
-        "server/main.py"
-      ]
     }
   }
 }

@@ -3,12 +3,14 @@ the API reference does not document."""
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 from test_script_check import TABLE
 
 from snow_docs_mcp import script_hook
@@ -239,3 +241,92 @@ def test_the_hook_is_silent_when_the_package_is_not_installed():
         check=False,
     )
     assert out.returncode == 0 and out.stdout == "" and out.stderr == ""
+
+
+# The plugin has no docs server, so its folder has no Python environment with the docs code.
+# The hook then runs the check where the docs are installed: the Claude Desktop extension.
+
+
+def launcher():
+    spec = importlib.util.spec_from_file_location("servicenow_script_check", SCRIPT)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def extension(folder: Path, name: str = "servicenow-docs", *, started: bool = True) -> Path:
+    folder.mkdir(parents=True)
+    (folder / "manifest.json").write_text(json.dumps({"name": name}), encoding="utf-8")
+    if started:
+        (folder / ".venv").mkdir()
+    return folder
+
+
+def test_the_docs_extension_is_found_among_the_others(tmp_path):
+    extension(tmp_path / "a.other", name="something-else")
+    (extension(tmp_path / "b.broken") / "manifest.json").write_text("{not json", encoding="utf-8")
+    extension(tmp_path / "c.never-started", started=False)
+    (tmp_path / "d.a-file").write_text("", encoding="utf-8")
+    docs = extension(tmp_path / "e.servicenow-docs")
+    assert launcher().docs_extension(tmp_path) == docs
+    assert launcher().docs_extension(tmp_path / "missing") is None
+
+
+def test_the_extensions_are_looked_for_where_claude_desktop_keeps_them(tmp_path, monkeypatch):
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    monkeypatch.setenv("APPDATA", str(tmp_path / "Roaming"))
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    where = launcher().extensions_dir
+    kept = Path("Claude") / "Claude Extensions"
+    assert where("darwin") == tmp_path / "Library" / "Application Support" / kept
+    assert where("win32") == tmp_path / "Roaming" / kept
+    assert where("linux") == tmp_path / ".config" / kept
+
+
+def test_the_check_runs_in_the_extension_with_the_environment_it_has(tmp_path):
+    argv = launcher().command(tmp_path)
+    assert argv[:2] == ["uv", "run"]
+    assert "--frozen" in argv and "--no-sync" in argv  # a hook never starts a download
+    assert argv[argv.index("--directory") + 1] == str(tmp_path)
+    assert "snow_docs_mcp.script_hook" in argv[-1]
+
+
+def bare_hook(home: Path, path: str, stdin: str) -> subprocess.CompletedProcess:
+    """The hook as a plugin without an environment runs it: a Python that has no docs code."""
+    env = {"HOME": str(home), "APPDATA": str(home), "PATH": path}
+    env.update({k: os.environ[k] for k in ("SYSTEMROOT",) if k in os.environ})
+    return subprocess.run(
+        [sys.executable, "-S", str(SCRIPT)],
+        input=stdin,
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=30,
+        check=False,
+    )
+
+
+@pytest.mark.skipif(os.name == "nt", reason="a stand-in uv on the PATH has to be an .exe there")
+def test_a_plugin_without_an_environment_runs_the_check_in_the_extension(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    monkeypatch.setattr(Path, "home", lambda: home)
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    docs = extension(launcher().extensions_dir() / "x.servicenow-docs")
+    stand_in = tmp_path / "bin" / "uv"
+    stand_in.parent.mkdir()
+    stand_in.write_text(
+        f"#!{sys.executable}\nimport json, sys\n"
+        "print(json.dumps({'argv': sys.argv[1:], 'stdin': sys.stdin.read()}))\n",
+        encoding="utf-8",
+    )
+    stand_in.chmod(0o755)
+    out = bare_hook(home, f"{stand_in.parent}{os.pathsep}{os.environ['PATH']}", '{"tool": 1}')
+    assert out.returncode == 0, out.stderr
+    ran = json.loads(out.stdout)
+    assert ran["stdin"] == '{"tool": 1}'
+    assert ran["argv"][ran["argv"].index("--directory") + 1] == str(docs)
+
+
+def test_without_the_docs_anywhere_the_hook_stays_silent(tmp_path):
+    out = bare_hook(tmp_path, os.environ["PATH"], json.dumps(payload("Write", content=BAD)))
+    assert out.returncode == 0 and out.stdout == ""
