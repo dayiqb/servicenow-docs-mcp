@@ -6,8 +6,12 @@ secret), and explain returns a topic's documentation. A fake `now-sdk` stands in
 
 from __future__ import annotations
 
+import json
 import os
 import stat
+import subprocess
+import sys
+import time
 
 import anyio
 import pytest
@@ -16,34 +20,106 @@ from mcp import Client
 from snow_docs_mcp import sdk
 from snow_docs_mcp.server import mcp
 
-FAKE = r"""#!/bin/sh
-case "$*" in
-  "--version") echo "4.14.0" ;;
-  "auth --list")
-    echo "[now-sdk] Listing all credentials: "
-    echo "[dev1]"
-    echo "      host = https://dev1.service-now.com"
-    echo "      type = basic"
-    echo "      username = admin.secret.name"
-    echo "      default = No"
-    echo "*[prod]"
-    echo "      host = https://prod.service-now.com/"
-    echo "      type = oauth"
-    echo "      default = Yes" ;;
-  "explain --list")
-    echo "Available topics:"
-    echo ""
-    echo "  acl-api  (Acl, acl, access control)"
-    echo "  business-rule-guide  (business rule, server script)"
-    echo "  businessrule-api  (BusinessRule, business rule, sys_script)" ;;
-  "explain --list flow") echo "Available topics:"; echo ""; echo "  flow-api  (Flow, flow designer)" ;;
-  "explain businessrule-api --format raw") printf '# BusinessRule\n\nCreates a Business Rule.\n' ;;
-  "explain nope --format raw")
-    echo "[now-sdk] ERROR: No matching topics for \"nope\""
-    echo "[now-sdk] Run \`now-sdk explain --list\` to see all available topics." ;;
-  *) echo "unexpected: $*" >&2; exit 9 ;;
-esac
+WINDOWS = sys.platform == "win32"
+
+# The fake SDK: a Python program that answers from a table, keyed by its arguments. Each answer
+# has `out` (written as UTF-8, as Node writes it), `err`, `code`, and optionally `sleep` seconds
+# and `stdin` (echo what it reads). It writes its process id to `pid` beside the table.
+PROGRAM = r"""
+import json, os, sys, time
+table = sys.argv[1]
+with open(os.path.join(os.path.dirname(table), "pid"), "w") as f:
+    f.write(str(os.getpid()))
+answers = json.load(open(table, encoding="utf-8"))
+key = " ".join(sys.argv[2:])
+a = answers.get(key, {"err": "unexpected: " + key, "code": 9})
+if a.get("stdin"):
+    sys.stdout.write(sys.stdin.read())
+    sys.stdout.flush()
+time.sleep(a.get("sleep", 0))
+sys.stdout.buffer.write(a.get("out", "").encode("utf-8"))
+sys.stdout.flush()
+sys.stderr.write(a.get("err", ""))
+sys.exit(a.get("code", 0))
 """
+
+LISTING = """[now-sdk] Listing all credentials:
+[dev1]
+      host = https://dev1.service-now.com
+      type = basic
+      username = admin.secret.name
+      default = No
+*[prod]
+      host = https://prod.service-now.com/
+      type = oauth
+      default = Yes
+"""
+
+TOPICS = """Available topics:
+
+  acl-api  (Acl, acl, access control)
+  business-rule-guide  (business rule, server script)
+  businessrule-api  (BusinessRule, business rule, sys_script)
+"""
+
+# The SDK's documentation is not all ASCII: a dash and an ellipsis, as Fluent's docs have.
+BUSINESS_RULE = "# BusinessRule\n\nCreates a Business Rule — on the server…\n"
+
+FAKE = {
+    "--version": {"out": "4.14.0\n"},
+    "auth --list": {"out": LISTING},
+    "explain --list": {"out": TOPICS},
+    "explain --list flow": {"out": "Available topics:\n\n  flow-api  (Flow, flow designer)\n"},
+    "explain businessrule-api --format raw": {"out": BUSINESS_RULE},
+    "explain nope --format raw": {
+        "out": '[now-sdk] ERROR: No matching topics for "nope"\n'
+        "[now-sdk] Run `now-sdk explain --list` to see all available topics.\n"
+    },
+}
+
+BROKEN = {
+    "--version": {"out": "4.14.0\n"},
+    "auth --list": {"err": "keychain is locked\n", "code": 3},
+    "explain --list": {"err": "boom\n", "code": 3},
+    "explain acl-api --format raw": {"err": "boom\n", "code": 3},
+}
+
+
+def _install(tmp_path, monkeypatch, answers: dict) -> None:
+    """Put a fake `now-sdk` first on the PATH, shaped like the one npm installs.
+
+    On Windows that is `now-sdk.cmd`, which starts the program as a child of cmd.exe; elsewhere
+    a shell script that does the same, so the program is a grandchild there too.
+    """
+    table = tmp_path / "answers.json"
+    table.write_text(json.dumps(answers), encoding="utf-8")
+    program = tmp_path / "fake_sdk.py"
+    program.write_text(PROGRAM, encoding="utf-8")
+    if WINDOWS:
+        (tmp_path / "now-sdk.cmd").write_text(
+            f'@"{sys.executable}" "{program}" "{table}" %*\r\n', encoding="utf-8"
+        )
+    else:
+        exe = tmp_path / "now-sdk"
+        exe.write_text(f'#!/bin/sh\n"{sys.executable}" "{program}" "{table}" "$@"\n')
+        exe.chmod(exe.stat().st_mode | stat.S_IEXEC)
+    monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
+
+
+def _running(pid: int) -> bool:
+    if WINDOWS:
+        found = subprocess.run(
+            ["tasklist", "/FI", f"PID eq {pid}", "/NH"],
+            capture_output=True,
+            text=True,
+            check=False,
+        ).stdout
+        return str(pid) in found
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    return True
 
 
 @pytest.fixture(autouse=True)
@@ -55,11 +131,7 @@ def _no_setup(monkeypatch):
 
 @pytest.fixture
 def fake_sdk(tmp_path, monkeypatch):
-    exe = tmp_path / "now-sdk"
-    exe.write_text(FAKE)
-    exe.chmod(exe.stat().st_mode | stat.S_IEXEC)
-    monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
-    return exe
+    _install(tmp_path, monkeypatch, FAKE)
 
 
 def call(tool: str, **args):
@@ -102,7 +174,7 @@ def test_explain_lists_topics_reads_one_and_reports_an_unknown_one(fake_sdk):
     assert [t.name for t in topics] == ["acl-api", "business-rule-guide", "businessrule-api"]
     assert topics[2].keywords == "BusinessRule, business rule, sys_script"
     assert [t.name for t in sdk.topics("flow")] == ["flow-api"]
-    assert sdk.explain("businessrule-api") == "# BusinessRule\n\nCreates a Business Rule.\n"
+    assert sdk.explain("businessrule-api") == BUSINESS_RULE
     assert sdk.explain("nope") is None
 
 
@@ -116,9 +188,7 @@ def test_the_status_tool_reports_the_setup(fake_sdk):
 
 def test_the_explain_tool_reads_a_topic_lists_them_and_suggests(fake_sdk):
     r = call("snow_docs_sdk_explain", topic="businessrule-api")
-    assert (
-        r["ok"] and r["topic"] == "businessrule-api" and "Creates a Business Rule" in r["content"]
-    )
+    assert r["ok"] and r["topic"] == "businessrule-api" and r["content"] == BUSINESS_RULE
     listing = call("snow_docs_sdk_explain")
     assert listing["ok"] and len(listing["topics"]) == 3 and listing["content"] == ""
     miss = call("snow_docs_sdk_explain", topic="nope")
@@ -135,8 +205,6 @@ def test_tools_explain_a_missing_sdk(tmp_path, monkeypatch):
 
 
 def test_the_command_line_and_the_library_have_them_too(fake_sdk, capsys):
-    import json
-
     from snow_docs_mcp import api
     from snow_docs_mcp.server import main
 
@@ -154,24 +222,6 @@ def test_the_command_line_and_the_library_have_them_too(fake_sdk, capsys):
 
 # --- failures are reported as failures, not as facts ---------------------------------------
 
-BROKEN = r"""#!/bin/sh
-case "$*" in
-  "--version") echo "4.14.0" ;;
-  "auth --list") echo "keychain is locked" >&2; exit 3 ;;
-  "explain --list") echo "boom" >&2; exit 3 ;;
-  "explain acl-api --format raw") echo "boom" >&2; exit 3 ;;
-  *) echo "unexpected: $*" >&2; exit 9 ;;
-esac
-"""
-
-
-def _install(tmp_path, monkeypatch, script: str):
-    exe = tmp_path / "now-sdk"
-    exe.write_text(script)
-    exe.chmod(exe.stat().st_mode | stat.S_IEXEC)
-    monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
-    return exe
-
 
 def test_a_failing_instance_list_is_not_reported_as_no_instances(tmp_path, monkeypatch):
     _install(tmp_path, monkeypatch, BROKEN)
@@ -184,12 +234,27 @@ def test_a_failing_instance_list_is_not_reported_as_no_instances(tmp_path, monke
 
 
 def test_a_timed_out_instance_list_is_not_reported_as_no_instances(tmp_path, monkeypatch):
-    slow = BROKEN.replace('echo "keychain is locked" >&2; exit 3', "sleep 5")
-    _install(tmp_path, monkeypatch, slow)
-    monkeypatch.setattr(sdk, "TIMEOUT_SECONDS", 0.3)
+    _install(tmp_path, monkeypatch, {**BROKEN, "auth --list": {"sleep": 30}})
+    monkeypatch.setattr(sdk, "TIMEOUT_SECONDS", 2)
     r = call("snow_docs_sdk_status")
     assert not r["ok"] and "timed out" in r["message"]
     assert "No instance is configured" not in r["message"]
+
+
+def test_a_command_that_hangs_is_stopped_with_what_it_started(tmp_path, monkeypatch):
+    """npm's now-sdk is a wrapper that starts Node. Stopping only the wrapper leaves Node
+    running, and on Windows the call then waits for Node instead of giving up."""
+    _install(tmp_path, monkeypatch, {"auth --list": {"sleep": 30}})
+    monkeypatch.setattr(sdk, "TIMEOUT_SECONDS", 2)
+    started = time.monotonic()
+    with pytest.raises(sdk.SdkError, match="timed out"):
+        sdk._run(["auth", "--list"])
+    assert time.monotonic() - started < 10
+    pid = int((tmp_path / "pid").read_text())
+    deadline = time.monotonic() + 5
+    while _running(pid) and time.monotonic() < deadline:
+        time.sleep(0.1)
+    assert not _running(pid)
 
 
 def test_a_failing_topic_list_is_not_reported_as_an_unknown_topic(tmp_path, monkeypatch):
@@ -208,15 +273,14 @@ def test_a_failing_explain_is_not_reported_as_a_missing_topic(tmp_path, monkeypa
 
 
 def test_explain_does_not_need_the_instance_list(tmp_path, monkeypatch):
-    works = FAKE.replace('"auth --list")', '"auth --list") exit 7 ;;\n  "never")')
-    _install(tmp_path, monkeypatch, works)
+    _install(tmp_path, monkeypatch, {**FAKE, "auth --list": {"code": 7}})
     r = call("snow_docs_sdk_explain", topic="businessrule-api")
     assert r["ok"] and r["version"] == "4.14.0" and "Creates a Business Rule" in r["content"]
 
 
 def test_the_sdk_never_reads_the_servers_standard_input(tmp_path, monkeypatch):
     """The MCP server talks JSON-RPC on stdin; a child that reads it would eat a request."""
-    _install(tmp_path, monkeypatch, "#!/bin/sh\ncat\necho 4.14.0\n")
+    _install(tmp_path, monkeypatch, {"--version": {"stdin": True, "out": "4.14.0\n"}})
     read_end, write_end = os.pipe()
     os.write(write_end, b"REQUEST-LINE\n")
     os.close(write_end)

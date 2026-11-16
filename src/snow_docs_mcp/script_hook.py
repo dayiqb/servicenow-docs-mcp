@@ -165,7 +165,8 @@ def main() -> int:
     if os.environ.get("SNOW_DOCS_SCRIPT_HOOK", "").strip().lower() in ("off", "0", "false"):
         return 0
     try:
-        payload = json.loads(sys.stdin.read() or "null")
+        # Claude Code sends UTF-8; on Windows sys.stdin would read it in the system's code page.
+        payload = json.loads(sys.stdin.buffer.read().decode("utf-8", errors="replace") or "null")
     except (ValueError, UnicodeDecodeError):
         return 0
     if not isinstance(payload, dict):

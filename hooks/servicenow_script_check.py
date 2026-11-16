@@ -74,16 +74,15 @@ def in_the_extension() -> int:
     env = {name: value for name, value in os.environ.items() if name != "VIRTUAL_ENV"}
     done = subprocess.run(
         command(folder),
-        input=sys.stdin.read(),
+        # Passed on as the bytes Claude Code sent (UTF-8), not read in the system's code page.
+        input=sys.stdin.buffer.read(),
         capture_output=True,
-        text=True,
-        encoding="utf-8",
         env=env,
         timeout=15,
         check=False,
     )
     if done.returncode == 0:
-        sys.stdout.write(done.stdout)
+        sys.stdout.buffer.write(done.stdout)
     return 0
 
 

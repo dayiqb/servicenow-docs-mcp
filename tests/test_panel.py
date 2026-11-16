@@ -163,6 +163,8 @@ def _render(*cases):
         input=json.dumps(cases),
         capture_output=True,
         text=True,
+        # Node writes UTF-8, whatever the system's own code page is (on Windows often not).
+        encoding="utf-8",
         timeout=120,
         check=False,
     )

@@ -4,6 +4,7 @@ the API reference does not document."""
 from __future__ import annotations
 
 import importlib.util
+import io
 import json
 import os
 import subprocess
@@ -291,19 +292,35 @@ def test_the_check_runs_in_the_extension_with_the_environment_it_has(tmp_path):
     assert "snow_docs_mcp.script_hook" in argv[-1]
 
 
-def bare_hook(home: Path, path: str, stdin: str) -> subprocess.CompletedProcess:
+def bare_hook(home: Path, path: str, stdin: str, **extra: str) -> subprocess.CompletedProcess:
     """The hook as a plugin without an environment runs it: a Python that has no docs code."""
-    env = {"HOME": str(home), "APPDATA": str(home), "PATH": path}
+    env = {"HOME": str(home), "APPDATA": str(home), "PATH": path, **extra}
     env.update({k: os.environ[k] for k in ("SYSTEMROOT",) if k in os.environ})
     return subprocess.run(
         [sys.executable, "-S", str(SCRIPT)],
-        input=stdin,
+        input=stdin.encode("utf-8"),  # Claude Code sends UTF-8
         capture_output=True,
-        text=True,
         env=env,
         timeout=30,
         check=False,
     )
+
+
+# On Windows a Python reads a pipe in the system's code page; cp1252 has no character for some
+# bytes of UTF-8, such as the last one of this emoji.
+EMOJI = "👍"
+WINDOWS_CODE_PAGE = {"PYTHONIOENCODING": "cp1252", "PYTHONUTF8": "0"}
+
+
+def test_the_hook_reads_what_claude_code_sends_as_utf_8(monkeypatch):
+    seen = []
+    monkeypatch.setattr(script_hook, "_worth_a_look", lambda p, _: seen.append(p) or False)
+    content = f"// {EMOJI}\n{BAD}"
+    sent = json.dumps(payload("Write", file_path="a.js", content=content), ensure_ascii=False)
+    stdin = io.TextIOWrapper(io.BytesIO(sent.encode("utf-8")), encoding="cp1252")
+    monkeypatch.setattr(sys, "stdin", stdin)
+    assert script_hook.main() == 0
+    assert [p["tool_input"]["content"] for p in seen] == [content]
 
 
 @pytest.mark.skipif(os.name == "nt", reason="a stand-in uv on the PATH has to be an .exe there")
@@ -316,17 +333,20 @@ def test_a_plugin_without_an_environment_runs_the_check_in_the_extension(tmp_pat
     stand_in.parent.mkdir()
     stand_in.write_text(
         f"#!{sys.executable}\nimport json, sys\n"
-        "print(json.dumps({'argv': sys.argv[1:], 'stdin': sys.stdin.read()}))\n",
+        "stdin = sys.stdin.buffer.read().decode('utf-8')\n"
+        "print(json.dumps({'argv': sys.argv[1:], 'stdin': stdin}))\n",
         encoding="utf-8",
     )
     stand_in.chmod(0o755)
-    out = bare_hook(home, f"{stand_in.parent}{os.pathsep}{os.environ['PATH']}", '{"tool": 1}')
+    sent = json.dumps({"tool": EMOJI}, ensure_ascii=False)
+    path = f"{stand_in.parent}{os.pathsep}{os.environ['PATH']}"
+    out = bare_hook(home, path, sent, **WINDOWS_CODE_PAGE)
     assert out.returncode == 0, out.stderr
     ran = json.loads(out.stdout)
-    assert ran["stdin"] == '{"tool": 1}'
+    assert ran["stdin"] == sent  # passed on as Claude Code sent it, whatever the code page
     assert ran["argv"][ran["argv"].index("--directory") + 1] == str(docs)
 
 
 def test_without_the_docs_anywhere_the_hook_stays_silent(tmp_path):
     out = bare_hook(tmp_path, os.environ["PATH"], json.dumps(payload("Write", content=BAD)))
-    assert out.returncode == 0 and out.stdout == ""
+    assert out.returncode == 0 and out.stdout == b""

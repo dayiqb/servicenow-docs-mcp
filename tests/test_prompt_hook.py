@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -153,6 +154,23 @@ def test_the_nudge_leaves_the_release_to_the_setting() -> None:
     assert ctx is not None
     assert "Australia is the default" not in ctx
     assert "leave `release` out" in ctx
+
+
+def test_a_prompt_is_read_as_utf_8_whatever_the_code_page() -> None:
+    """Claude Code sends UTF-8. On Windows a Python reads a pipe in the system's code page, and
+    cp1252 has no character for some bytes of it, such as the last one of this emoji."""
+    prompt = "Hvordan gjør jeg et felt obligatorisk i ServiceNow? 👍"
+    sent = json.dumps({"hook_event_name": "UserPromptSubmit", "prompt": prompt}, ensure_ascii=False)
+    out = subprocess.run(
+        [sys.executable, str(SCRIPT)],
+        input=sent.encode("utf-8"),
+        capture_output=True,
+        env={**os.environ, "PYTHONIOENCODING": "cp1252", "PYTHONUTF8": "0"},
+        timeout=20,
+        check=False,
+    )
+    assert out.returncode == 0, out.stderr
+    assert "snow_docs_search" in json.loads(out.stdout)["hookSpecificOutput"]["additionalContext"]
 
 
 def test_off_switch() -> None:

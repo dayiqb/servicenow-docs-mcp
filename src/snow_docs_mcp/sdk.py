@@ -9,9 +9,12 @@ SDK's configuration or sees a secret; user names are left out of the status on p
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
+import signal
 import subprocess
+import sys
 from dataclasses import dataclass, field
 
 EXECUTABLE = "now-sdk"
@@ -74,21 +77,58 @@ def _call(args: list[str]) -> tuple[int, str]:
         raise SdkError(NOT_INSTALLED)
     command = f"`{EXECUTABLE} {' '.join(args)}`"
     try:
-        done = subprocess.run(
+        child = subprocess.Popen(
             [exe, *args],
-            capture_output=True,
-            text=True,
-            timeout=TIMEOUT_SECONDS,
-            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             # Never the server's own stdin: that is the MCP connection, and a child that
             # reads it would swallow a request.
             stdin=subprocess.DEVNULL,
+            # Node writes UTF-8 whatever the system's own code page is (on Windows often not).
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            # In a group of its own, so that a timeout stops all of it (see _stop).
+            **_OWN_GROUP,
         )
-    except subprocess.TimeoutExpired as e:
-        raise SdkError(f"{command} timed out after {TIMEOUT_SECONDS:g} s") from e
     except (OSError, subprocess.SubprocessError) as e:
         raise SdkError(f"{command} could not be run: {e}") from e
-    return done.returncode, _ANSI.sub("", done.stdout)
+    try:
+        out, _ = child.communicate(timeout=TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired as e:
+        _stop(child)
+        raise SdkError(f"{command} timed out after {TIMEOUT_SECONDS:g} s") from e
+    return child.returncode, _ANSI.sub("", out)
+
+
+# npm's now-sdk is a wrapper that starts Node: on Windows `now-sdk.cmd`, run by cmd.exe. Stopping
+# the wrapper alone leaves Node running, and on Windows the pipes then stay open until it ends.
+if sys.platform == "win32":
+    _OWN_GROUP: dict = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+else:
+    _OWN_GROUP = {"start_new_session": True}
+
+
+def _stop(child: subprocess.Popen) -> None:
+    """Stop a command that ran too long, with every process it started."""
+    try:
+        if sys.platform == "win32":
+            subprocess.run(
+                ["taskkill", "/F", "/T", "/PID", str(child.pid)],
+                capture_output=True,
+                stdin=subprocess.DEVNULL,
+                timeout=10,
+                check=False,
+            )
+        else:
+            os.killpg(child.pid, signal.SIGKILL)
+    except (OSError, subprocess.SubprocessError):
+        pass
+    child.kill()
+    try:
+        child.communicate(timeout=5)
+    except subprocess.TimeoutExpired:
+        pass
 
 
 def _run(args: list[str]) -> str:
