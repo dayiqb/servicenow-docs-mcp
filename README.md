@@ -49,9 +49,11 @@ most PCs already have. If not, install it from https://aka.ms/vs/17/release/vc_r
 
 ### 2. The extension: the docs tools
 
-Download `servicenow-docs.mcpb` from the
-[latest release](https://github.com/dayiqb/servicenow-docs-mcp/releases/latest) and double-click
-it (or **Settings → Extensions → Advanced settings → Install Extension…**). It is unsigned, so
+Download
+[servicenow-docs.mcpb](https://github.com/dayiqb/servicenow-docs-mcp/releases/latest/download/servicenow-docs.mcpb)
+(always the newest; what changed is in the
+[latest release](https://github.com/dayiqb/servicenow-docs-mcp/releases/latest)) and
+double-click it (or **Settings → Extensions → Advanced settings → Install Extension…**). It is unsigned, so
 Claude Desktop shows a warning. Extensions run on your computer, and Claude Desktop makes them
 available in chat, in Cowork and in the Code tab.
 

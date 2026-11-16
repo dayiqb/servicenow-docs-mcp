@@ -114,6 +114,13 @@ def test_readme_gives_two_downloads() -> None:
     assert "claude mcp add" in readme  # Claude Code without Claude Desktop
 
 
+def test_readme_links_straight_to_the_newest_extension() -> None:
+    """One click downloads the file, and the link never goes stale: GitHub sends
+    `releases/latest/download/<asset>` to the asset of the newest release."""
+    link = "https://github.com/dayiqb/servicenow-docs-mcp/releases/latest/download/servicenow-docs.mcpb"
+    assert f"({link})" in _read(ROOT / "README.md")
+
+
 def test_the_sdk_panel_looks_for_the_docs_where_they_are_installed() -> None:
     """The plugin has no docs environment of its own: looked for in the plugin's folder, the
     docs would be found by their version file and then fail to run."""
