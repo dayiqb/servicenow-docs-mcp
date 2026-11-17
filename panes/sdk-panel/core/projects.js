@@ -1,8 +1,9 @@
 // @ts-check
 /**
- * Finds the ServiceNow projects in a folder. A session's folder is often a
- * workspace that holds several projects rather than one, so when the folder is
- * not a project itself, its subfolders are looked in, two levels down.
+ * Finds the ServiceNow projects for a folder. The folder itself first; then the
+ * folders above it, since a session can work in a folder inside a project; then,
+ * as a session's folder is often a workspace that holds several projects, the
+ * folders under it, two levels down.
  *
  * A project has `now.config.json` (a Fluent application) or `aiux.json` (an
  * AIUX application) at its root. Nothing under a project is looked in, nor
@@ -17,10 +18,27 @@ import { joinPath } from './aiux.js';
  * @property {string} path     Relative to the folder looked in; '' for that folder itself.
  * @property {boolean} isAiux
  * @property {boolean} isFluent
+ * @property {boolean} [isAbove] True when the folder looked in is inside this project.
  */
 
 /** How many levels under the folder are looked in. */
 export const PROJECT_DEPTH = 2;
+
+/**
+ * The folder a folder is in, or '' at the top. Takes "/" and "\\".
+ *
+ * @param {string} folder
+ */
+export function parentOf(folder) {
+  const trimmed = folder.replace(/[\\/]+$/, '');
+  const cut = Math.max(trimmed.lastIndexOf('/'), trimmed.lastIndexOf('\\'));
+  if (cut < 0) return '';
+  const parent = trimmed.slice(0, cut);
+  // "/Users" has "/" above it; "C:\\Users" has "C:\\".
+  if (parent === '') return trimmed === '/' ? '' : '/';
+  if (/^[A-Za-z]:$/.test(parent)) return `${parent}\\`;
+  return parent;
+}
 
 /** @param {string} name */
 function isPassedOver(name) {
@@ -51,6 +69,12 @@ async function projectAt(files, folder, path) {
 export async function findProjects(files, root, depth = PROJECT_DEPTH) {
   const self = await projectAt(files, root, '');
   if (self) return [self];
+  // A session can work in a folder inside a project (its notes, a plan folder,
+  // a dot folder): the nearest project above is the one it works on.
+  for (let folder = parentOf(root); folder; folder = parentOf(folder)) {
+    const above = await projectAt(files, folder, '');
+    if (above) return [{ ...above, isAbove: true }];
+  }
   /** @type {Project[]} */
   const found = [];
   /** @param {string} folder @param {string} path @param {number} level */

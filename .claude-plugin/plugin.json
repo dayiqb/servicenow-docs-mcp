@@ -1,6 +1,6 @@
 {
   "name": "servicenow-docs",
-  "version": "2.5.4",
+  "version": "2.5.5",
   "description": "The panes, hooks and commands of ServiceNow Docs in Claude Code: figures that explain a concept, the ServiceNow SDK panel, docs first for ServiceNow questions and a check of ServiceNow script code. The docs tools themselves come from the ServiceNow Docs extension of Claude Desktop; needs uv.",
   "author": {
     "name": "Dayan Iqbal"

@@ -1307,6 +1307,7 @@ export const register: Register = on => {
       if (d.projectChoice === 'pick') return [quiet(`${d.workspace} holds ${projects.length} projects. Pick the one to work in.`), projectPicker()]
       if (projects.length > 1) return [projectPicker()]
       const only = projects[0]
+      if (only?.isAbove) return [hint(`The session works in ${d.workspace}, inside this project`)]
       if (only && only.path) return [hint(`Found in ${d.workspace}`)]
       return []
     }

@@ -40,6 +40,18 @@ test('node_modules and folders whose name starts with a dot are passed over, so 
   assert.ok(!folders.some((folder) => /node_modules|\/\.|deeper/.test(folder)));
 });
 
+test('a folder inside a project, even under a dot folder, is in that project', async () => {
+  assert.deepEqual(await findProjects(workspace, '/ws/skygard-avs-aiux/.superpowers/sdd/plan'), [
+    { folder: '/ws/skygard-avs-aiux', path: '', isAiux: true, isFluent: true, isAbove: true },
+  ]);
+  // The nearest project above wins over one further up.
+  const nested = memoryFiles({ '/a/now.config.json': '{}', '/a/b/aiux.json': '{}', '/a/b/c/d/x.txt': '' });
+  assert.equal((await findProjects(nested, '/a/b/c/d'))[0]?.folder, '/a/b');
+  // On Windows too.
+  const windows = memoryFiles({ 'C:\\Users\\ada\\app/aiux.json': '{}' });
+  assert.equal((await findProjects(windows, 'C:\\Users\\ada\\app\\src'))[0]?.folder, 'C:\\Users\\ada\\app');
+});
+
 test('a folder with no project anywhere near gives none', async () => {
   assert.deepEqual(await findProjects(memoryFiles({ '/empty/readme.md': '' }), '/empty'), []);
   assert.deepEqual(await findProjects(memoryFiles({}), '/missing'), []);

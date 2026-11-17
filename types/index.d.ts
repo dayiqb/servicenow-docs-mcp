@@ -87,7 +87,7 @@ export type PanelField = {
   flags?: string[]
 }
 
-export type PanelProject = { folder: string; path: string; isAiux: boolean; isFluent: boolean }
+export type PanelProject = { folder: string; path: string; isAiux: boolean; isFluent: boolean; isAbove?: boolean }
 
 export type PanelCheck = { id: string; label: string; status: string; value?: string; fix?: string; detail?: string }
 
