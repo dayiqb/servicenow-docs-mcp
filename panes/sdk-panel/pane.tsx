@@ -30,8 +30,9 @@ import {
 } from './core/instances.js'
 import { evaluateSetup } from './core/setup.js'
 import { expandHome, extensionFolders, homeFolder } from './core/extensions.js'
+import { chooseProject, findProjects } from './core/projects.js'
 import { SDK_PACKAGE, isPackageName, isUpdateAvailable, latestCommand, updateCommand } from './core/updates.js'
-import type { PanelData, PanelField, PanelHit, PanelScreen, PanelView } from '../../types'
+import type { PanelData, PanelField, PanelHit, PanelProject, PanelScreen, PanelView } from '../../types'
 
 type Engine = EngineInterface
 
@@ -408,10 +409,25 @@ async function checkUpdates($: Engine): Promise<void> {
   await update($, data, value => ({ ...value, isCheckingUpdates: false, latest: Object.fromEntries(found) }))
 }
 
+/** Keeps the project picked for the session's folder and reads the panel again for it. */
+async function pickProject($: Engine, folder: string): Promise<void> {
+  const { workspace } = await read($, data)
+  if (!workspace) return
+  const picks = ((await $.store.get('projectPicks')) ?? {}) as Record<string, string>
+  await $.store.set('projectPicks', { ...picks, [workspace]: folder })
+  await load($)
+}
+
 /** Reads everything the pane shows: versions, topics, instances, the project folder. */
 async function load($: Engine): Promise<void> {
-  const cwd = await $.session.cwd()
-  await update($, data, value => ({ ...value, isLoading: true, cwd }))
+  // The session's folder may be a workspace with several projects in it: the
+  // panel works in the only one, or the one picked for this folder before.
+  const workspace = await $.session.cwd()
+  const projects = await findProjects(projectFiles($), workspace)
+  const picks = ((await $.store.get('projectPicks')) ?? {}) as Record<string, string>
+  const choice = chooseProject(projects, picks[workspace] ?? '')
+  const cwd = 'project' in choice ? choice.project.folder : workspace
+  await update($, data, value => ({ ...value, isLoading: true, cwd, workspace, projects, projectChoice: choice.kind }))
 
   const [version, node, versions] = await Promise.all([sdkRead($, ['--version']), nodeVersion($), toolVersions($)])
   const listed = version.ok ? await sdkRead($, ['explain', '--list', '--format', 'raw']) : undefined
@@ -1025,10 +1041,13 @@ export const register: Register = on => {
           )}
           {section(
             'Project',
+            ...projectLines(),
             // The folder in a frame of its own, across the section, as a setting has.
-            <Box flexDirection="column" paddingX="md" paddingY="sm" borderStyle="round" borderDimColor>
-              <Text mono>{d.cwd}</Text>
-            </Box>,
+            d.projectChoice === 'pick' ? null : (
+              <Box flexDirection="column" paddingX="md" paddingY="sm" borderStyle="round" borderDimColor>
+                <Text mono>{d.cwd}</Text>
+              </Box>
+            ),
           )}
           {section(
             'Settings',
@@ -1263,6 +1282,35 @@ export const register: Register = on => {
       return pair(labelOf(spec.name), spec.isRequired, control, spec.description)
     }
 
+    // ------------------------------------------------------------ project
+    const projects = d.projects ?? []
+    const projectName = (one: PanelProject) => `${one.path || one.folder}${one.isAiux ? '  AIUX' : ''}`
+    /** The projects of the session's folder, when there is more than one to choose from. */
+    const projectPicker = () =>
+      projects.length > 1 ? (
+        <Box flexShrink={0}>
+          <Select
+            key="project"
+            value={d.projectChoice === 'pick' ? 'pick' : d.cwd}
+            options={[
+              ...(d.projectChoice === 'pick' ? [{ value: 'pick', label: 'Pick a project' }] : []),
+              ...projects.map(one => ({ value: one.folder, label: projectName(one) })),
+            ]}
+            onSelect={(value: string) => {
+              if (value !== 'pick') void pickProject($, value)
+            }}
+          />
+        </Box>
+      ) : null
+    /** What Setup says about the folder: where the project was found, or that one is to be picked. */
+    const projectLines = () => {
+      if (d.projectChoice === 'pick') return [quiet(`${d.workspace} holds ${projects.length} projects. Pick the one to work in.`), projectPicker()]
+      if (projects.length > 1) return [projectPicker()]
+      const only = projects[0]
+      if (only && only.path) return [hint(`Found in ${d.workspace}`)]
+      return []
+    }
+
     const commandDetail = (entry: (typeof LISTED)[number]) => {
       const help = d.helps[entry.id]
       const command = { ...entry, help: help ?? { parameters: [], options: [] } }
@@ -1288,6 +1336,10 @@ export const register: Register = on => {
           $.ui.toast(verdict.reason ?? 'The panel does not run this command.')
           return
         }
+        if (entry.needsProject && d.projectChoice === 'pick') {
+          $.ui.toast('Pick the project to run it in')
+          return
+        }
         void confirmAndRun($, { id: entry.id, label: entry.label, program: 'now-sdk', argv, effects, confirmation: verdict.confirmation, cwd: d.cwd || undefined, alias })
       }
       return surface(
@@ -1307,6 +1359,12 @@ export const register: Register = on => {
           <Button key="run" label="Review and run" variant="primary" onPress={review} />,
           entry.contactsInstance && selected ? quiet(`on ${selected.alias} (${selected.host.replace('https://', '')})`) : null,
         ),
+        // A command that works on a project says which one, and asks when the folder holds several.
+        entry.needsProject && projects.length > 1
+          ? row(d.projectChoice === 'pick' ? quiet('In project') : quiet('In'), projectPicker())
+          : entry.needsProject && projects[0]?.path
+            ? quiet(`In ${projects[0].path}`)
+            : null,
         !help ? quiet('Reading the options…') : null,
         help && help.subcommands.length > 0 ? quiet(`It has its own commands: ${help.subcommands.map(name => name.split(' ').pop()).join(', ')}.`) : null,
         ...(help?.parameters ?? []).map(parameter => field(entry.id, `param:${parameter.name}`, parameter)),
@@ -1665,11 +1723,37 @@ export const register: Register = on => {
     // ----------------------------------------------------------------- aiux
     const aiuxScreen = () => {
       const project = d.aiux
+      if (d.projectChoice === 'pick') {
+        const apps = projects.filter(one => one.isAiux)
+        return (
+          <Box flexDirection="column" gap="md">
+            {title('Pick a project')}
+            {quiet(
+              `${d.workspace} holds ${projects.length} projects` +
+                (apps.length > 0 ? `; ${apps.length === 1 ? 'the AIUX app is' : 'the AIUX apps are'} ${apps.map(one => one.path).join(', ')}.` : '.'),
+            )}
+            {projectPicker()}
+          </Box>
+        )
+      }
+      if ((!project || !project.isAiux) && projects.length > 0) {
+        const apps = projects.filter(one => one.isAiux)
+        return (
+          <Box flexDirection="column" gap="md">
+            {title('This project is not an AIUX app')}
+            {quiet(
+              `An AIUX app has an aiux.json file at its root. ${d.cwd} has none.` +
+                (apps.length > 0 ? ` In this folder: ${apps.map(one => one.path).join(', ')}.` : ''),
+            )}
+            {projectPicker()}
+          </Box>
+        )
+      }
       if (!project || !project.isAiux) {
         return (
           <Box flexDirection="column" gap="md">
-            {title('This folder is not an AIUX project')}
-            {quiet(`An AIUX project has an aiux.json file at its root. ${d.cwd} has none.`)}
+            {title('No AIUX project here')}
+            {quiet(`An AIUX project has an aiux.json file at its root. ${d.cwd} has none, nor the two levels of folders under it.`)}
             {surface(
               <Text weight="medium">Create AIUX application</Text>,
               commandBox('aiux-init', 'now-sdk', ['init', '--template', 'javascript.aiux'], 1),

@@ -5,14 +5,14 @@ The files here are taken from it by `scripts/import_sdk_panel.py`, which says wh
 changes and why. Change the panel there and run the script again; do not edit these
 files here.
 
-Taken from commit `c67f5460138982283cc829fc70f0989a7972034a` (The docs extension is found on Windows and Linux too).
+Taken from commit `6528be6c576aee1022b1abf877fcd2a3c58521d8` (A session folder with several projects: the panel looks under it and asks which).
 
 | Here | There |
 | --- | --- |
 | `pane.tsx` | `hooks/register.tsx` |
 | `pane.test.tsx` | `tests/pane.test.tsx` |
-| `core/` (11 files) | `core/` |
-| `test/` (9 test files, 22 fixtures) | `test/` |
+| `core/` (12 files) | `core/` |
+| `test/` (10 test files, 22 fixtures) | `test/` |
 | the panel's part of `types/index.d.ts` | `types/index.d.ts` |
 
 Not taken, because they test parts that stay in the panel's repository:

@@ -164,7 +164,7 @@ test('in a middling pane the first three are tabs and the rest are under More', 
   expect(await ui.find({ key: 'screens-more' })).toBeTruthy()
 
   await ui.select({ key: 'screens-more', value: 'aiux' })
-  expect((await ui.find({ type: 'Text', text: /not an AIUX project/ }))?.text).toBe('This folder is not an AIUX project')
+  expect((await ui.find({ type: 'Text', text: /No AIUX project/ }))?.text).toBe('No AIUX project here')
   await ui.press({ key: 'tab-setup' })
   await ui.unmount()
 })
@@ -241,6 +241,63 @@ test('a version row says a newer version is out and offers Update, only when one
   expect(await marks({ 'ServiceNow SDK': '4.14.0' })).toEqual({ out: false, update: false })
   // A newer SDK is out: the row says so and has Update.
   expect(await marks({ 'ServiceNow SDK': '4.15.0' })).toEqual({ out: true, update: true })
+})
+
+test('in a folder that holds several projects, AIUX and Commands ask which one, and init is offered only where there is none', { options: { sdk_panel: true } }, async ($, on) => {
+  const projects = [
+    { folder: '/ws/sg-resource-booking', path: 'sg-resource-booking', isAiux: false, isFluent: true },
+    { folder: '/ws/skygard-avs-aiux', path: 'skygard-avs-aiux', isAiux: true, isFluent: true },
+  ]
+  const stored = {
+    isLoading: false,
+    cwd: '/ws',
+    workspace: '/ws',
+    projects,
+    projectChoice: 'pick',
+    nodeVersion: 'v26.8.1',
+    sdkVersion: '4.14.0',
+    sdkError: null,
+    telemetry: true,
+    topics: [],
+    topicText: {},
+    instances: [],
+    instancesError: null,
+    // The help of Build is already read, so opening it writes nothing to this fixed state.
+    helps: { build: { parameters: [], options: [], subcommands: [] } },
+    aiux: null,
+    run: null,
+    docs: null,
+    docsFolder: '',
+    docsHits: {},
+  } as Record<string, unknown>
+  on('state.get', (_, e, next) => (e.key === 'data' ? { value: { value: { shape: 'data-2', value: stored }, version: 1 } } : next(e)))
+  const screen = async (name: string) => {
+    const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+    if (name === 'aiux') await ui.press({ key: 'tab-aiux' })
+    if (name === 'build') {
+      await ui.press({ key: 'tab-commands' })
+      await ui.press({ key: 'cmd-build' })
+    }
+    const found = {
+      picker: Boolean(await ui.find({ key: 'project' })),
+      init: Boolean(await ui.find({ key: 'copy-aiux-init' })),
+    }
+    await ui.unmount()
+    return found
+  }
+
+  // Several and none picked: Setup, AIUX and a command that needs a project ask; nothing offers init.
+  expect(await screen('setup')).toEqual({ picker: true, init: false })
+  expect(await screen('aiux')).toEqual({ picker: true, init: false })
+  expect(await screen('build')).toEqual({ picker: true, init: false })
+
+  // A project that is not an AIUX app is picked: AIUX says so and still lets you pick, without init.
+  Object.assign(stored, { cwd: '/ws/sg-resource-booking', projectChoice: 'chosen' })
+  expect(await screen('aiux')).toEqual({ picker: true, init: false })
+
+  // No project in the folder or under it: init is offered and there is nothing to pick.
+  Object.assign(stored, { cwd: '/ws', projects: [], projectChoice: 'none' })
+  expect(await screen('aiux')).toEqual({ picker: false, init: true })
 })
 
 test('a long topic name is cut to fit a narrow list', { options: { sdk_panel: true } }, async ($, on) => {

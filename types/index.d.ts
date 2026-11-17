@@ -87,12 +87,21 @@ export type PanelField = {
   flags?: string[]
 }
 
+export type PanelProject = { folder: string; path: string; isAiux: boolean; isFluent: boolean }
+
 export type PanelCheck = { id: string; label: string; status: string; value?: string; fix?: string; detail?: string }
 
 /** What was read from the SDK and the project folder. */
 export type PanelData = {
   isLoading: boolean
+  /** The folder the panel works in: the project in use, or the session's folder while there is none. */
   cwd: string
+  /** The session's folder, which may be a workspace holding several projects. */
+  workspace?: string
+  /** The projects in the session's folder or up to two levels under it. */
+  projects?: PanelProject[]
+  /** none: no project found; one: the only one; chosen: picked before; pick: several, none picked yet. */
+  projectChoice?: 'none' | 'one' | 'chosen' | 'pick'
   nodeVersion: string | null
   sdkVersion: string | null
   sdkError: string | null
