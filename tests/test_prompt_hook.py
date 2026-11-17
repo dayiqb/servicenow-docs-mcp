@@ -126,6 +126,10 @@ _MESSAGE = (
     '<cross-session-message from="local_1" from-name="ServiceNow SDK panel">\n'
     "The ServiceNow SDK panel setting is on as installed.\n</cross-session-message>"
 )
+_IDLE = (
+    '[Cross-session idle notice] "ServiceNow SDK panel", which you asked to be notified '
+    "about, is idle now. This is an automated notice from that session's harness."
+)
 
 
 @pytest.mark.parametrize(
@@ -137,6 +141,9 @@ _MESSAGE = (
         _MESSAGE,
         "<task-notification>The ServiceNow index build finished.</task-notification>",
         _RELOADED + "wait, did the tests pass?",
+        # Notices the app sends as a whole prompt, without tags around them.
+        _IDLE,
+        "[Cross-session delivery notice] The ServiceNow SDK panel session held the message.",
     ],
 )
 def test_what_the_app_wrote_into_a_prompt_is_not_a_question(prompt: str) -> None:

@@ -85,11 +85,14 @@ _FROM_THE_APP = re.compile(
     """,
     re.DOTALL | re.VERBOSE,
 )
+# A notice the app sends as the whole prompt, untagged: "[Cross-session idle notice] ...".
+_APP_NOTICE = re.compile(r"\[Cross-session [a-z ]+notice\]")
 
 
 def typed(prompt: str) -> str:
     """The part of a prompt the user typed."""
-    return _FROM_THE_APP.sub(" ", prompt).strip()
+    text = _FROM_THE_APP.sub(" ", prompt).strip()
+    return "" if _APP_NOTICE.match(text) else text
 
 
 def looks_like_servicenow(prompt: str) -> bool:
