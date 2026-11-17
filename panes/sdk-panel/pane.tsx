@@ -795,6 +795,17 @@ export const register: Register = on => {
         {under ? hint(`    ${under}`) : null}
       </Box>
     )
+    /** A name and its value, with no state to show: the row of Checks without its mark. */
+    const factRow = (name: string, value: string) => (
+      <Box flexDirection="row" gap="sm" alignItems="flex-start">
+        <Box width="40%" flexShrink={0}>
+          <Text weight="medium">{name}</Text>
+        </Box>
+        <Box flexDirection="column" flexGrow={1} flexShrink={1} minWidth={0}>
+          {quiet(value)}
+        </Box>
+      </Box>
+    )
     const checkRow = (check: { status: string; label: string; value?: string; fix?: string; detail?: string }) =>
       statusRow(
         check.status,
@@ -1777,7 +1788,22 @@ export const register: Register = on => {
       return (
         <Box flexDirection="column" gap="md">
           {title(project.name || 'AIUX project')}
-          {quiet([d.cwd, `Source ${project.srcDir || '.'}`, project.version ? `Version ${project.version}` : '', project.framework ?? '', project.pattern ? `${project.pattern} pattern` : '', project.scope ? `Scope ${project.scope}` : ''].filter(Boolean).join('   '))}
+          {section(
+            'Project',
+            // One fact per row, its name beside its value, in the column Checks uses.
+            ...(
+              [
+                ['Folder', d.cwd],
+                ['Source folder', !project.srcDir || project.srcDir === '.' ? 'Project root' : project.srcDir],
+                ['Version', project.version ?? ''],
+                ['AIUX package', project.framework ?? ''],
+                ['Pattern', project.pattern ? project.pattern.charAt(0).toUpperCase() + project.pattern.slice(1) : ''],
+                ['Scope', project.scope],
+              ] as [string, string][]
+            )
+              .filter(([, value]) => value)
+              .map(([name, value]) => factRow(name, value)),
+          )}
           {section(failing.length === 0 ? `Checks, all ${project.checks.length} pass` : `Checks, ${failing.length} to look at`, ...failing.map(checkRow))}
           {/* What you run comes before what the project holds: the lists of pages and components are long. */}
           {section(

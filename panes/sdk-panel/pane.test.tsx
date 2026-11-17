@@ -300,6 +300,60 @@ test('in a folder that holds several projects, AIUX and Commands ask which one, 
   expect(await screen('aiux')).toEqual({ picker: false, init: true })
 })
 
+test('an AIUX project shows its facts one per row, each named', { options: { sdk_panel: true } }, async ($, on) => {
+  const stored = {
+    isLoading: false,
+    cwd: '/ws/app',
+    workspace: '/ws/app',
+    projects: [{ folder: '/ws/app', path: '', isAiux: true, isFluent: true }],
+    projectChoice: 'one',
+    nodeVersion: 'v26.8.1',
+    sdkVersion: '4.14.0',
+    sdkError: null,
+    telemetry: true,
+    topics: [],
+    topicText: {},
+    instances: [],
+    instancesError: null,
+    helps: {},
+    aiux: {
+      isAiux: true,
+      name: 'Skygard AVS',
+      srcDir: '.',
+      pattern: 'production',
+      version: '1.0.0',
+      framework: '@servicenow/aiux 23.12.0',
+      scope: 'x_skyas_avs',
+      checks: [],
+      pages: [],
+      widgets: [],
+      components: [],
+      scripts: [],
+    },
+    run: null,
+    docs: null,
+    docsFolder: '',
+    docsHits: {},
+  }
+  on('state.get', (_, e, next) => (e.key === 'data' ? { value: { value: { shape: 'data-2', value: stored }, version: 1 } } : next(e)))
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.press({ key: 'tab-aiux' })
+  for (const [name, value] of [
+    ['Folder', '/ws/app'],
+    ['Source folder', 'Project root'],
+    ['Version', '1.0.0'],
+    ['AIUX package', '@servicenow/aiux 23.12.0'],
+    ['Pattern', 'Production'],
+    ['Scope', 'x_skyas_avs'],
+  ]) {
+    expect((await ui.find({ type: 'Text', text: name }))?.text).toBe(name)
+    expect((await ui.find({ type: 'Text', text: value }))?.text).toBe(value)
+  }
+  // No line that runs the facts together.
+  expect(await ui.find({ type: 'Text', text: /Source \.|production pattern/ })).toBeFalsy()
+  await ui.unmount()
+})
+
 test('a long topic name is cut to fit a narrow list', { options: { sdk_panel: true } }, async ($, on) => {
   const long = 'building-ai-agents-advanced-guide'
   // What an earlier load stored: two topics, one with a long name.
