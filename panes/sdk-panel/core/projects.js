@@ -60,21 +60,49 @@ async function projectAt(files, folder, path) {
   return { folder, path, isAiux: aiux !== null, isFluent: fluent !== null };
 }
 
+/** How many levels above the folder are looked in. */
+export const PROJECT_DEPTH_UP = 4;
+
 /**
+ * The nearest project above a folder. The look is bounded, so a project the
+ * session does not work on is not taken: at most PROJECT_DEPTH_UP levels, never
+ * the home folder or above it, and not past the root of a repository (a folder
+ * with .git) that is not a project itself.
+ *
  * @param {import('./aiux.js').ProjectFiles} files
  * @param {string} root
- * @param {number} [depth]
+ * @param {string} home
+ * @returns {Promise<Project | null>}
+ */
+async function projectAbove(files, root, home) {
+  const isRepositoryRoot = async (/** @type {string} */ folder) =>
+    ((await files.listDirectory(folder)) ?? []).some((entry) => entry.name === '.git');
+  if (await isRepositoryRoot(root)) return null;
+  let folder = root;
+  for (let level = 1; level <= PROJECT_DEPTH_UP; level += 1) {
+    folder = parentOf(folder);
+    if (!folder || (home && (folder === home || !folder.startsWith(home)))) return null;
+    const above = await projectAt(files, folder, '');
+    if (above) return { ...above, isAbove: true };
+    if (await isRepositoryRoot(folder)) return null;
+  }
+  return null;
+}
+
+/**
+ * The projects for a folder: the folder itself when it is one; otherwise the
+ * nearest project above it and those up to two levels under it, in one list,
+ * so that with more than one the person picks.
+ *
+ * @param {import('./aiux.js').ProjectFiles} files
+ * @param {string} root
+ * @param {{ depth?: number, home?: string }} [options] home: the home folder, never looked in
  * @returns {Promise<Project[]>}
  */
-export async function findProjects(files, root, depth = PROJECT_DEPTH) {
+export async function findProjects(files, root, options = {}) {
+  const { depth = PROJECT_DEPTH, home = '' } = options;
   const self = await projectAt(files, root, '');
   if (self) return [self];
-  // A session can work in a folder inside a project (its notes, a plan folder,
-  // a dot folder): the nearest project above is the one it works on.
-  for (let folder = parentOf(root); folder; folder = parentOf(folder)) {
-    const above = await projectAt(files, folder, '');
-    if (above) return [{ ...above, isAbove: true }];
-  }
   /** @type {Project[]} */
   const found = [];
   /** @param {string} folder @param {string} path @param {number} level */
@@ -91,8 +119,9 @@ export async function findProjects(files, root, depth = PROJECT_DEPTH) {
       }),
     );
   };
-  await look(root, '', 1);
-  return found.sort((left, right) => left.path.localeCompare(right.path));
+  const [above] = await Promise.all([projectAbove(files, root, home.replace(/[\\/]+$/, '')), look(root, '', 1)]);
+  found.sort((left, right) => left.path.localeCompare(right.path));
+  return above ? [above, ...found] : found;
 }
 
 /**

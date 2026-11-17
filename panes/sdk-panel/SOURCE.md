@@ -5,7 +5,7 @@ The files here are taken from it by `scripts/import_sdk_panel.py`, which says wh
 changes and why. Change the panel there and run the script again; do not edit these
 files here.
 
-Taken from commit `c96c9e42a0ab89f44c25c52f0ce3988e27e21657` (A session folder inside a project finds that project).
+Taken from commit `4395a68d43c474c51bd05f95a078420d429c6f8e` (The look upward is bounded, and with more than one project the person picks).
 
 | Here | There |
 | --- | --- |

@@ -423,7 +423,9 @@ async function load($: Engine): Promise<void> {
   // The session's folder may be a workspace with several projects in it: the
   // panel works in the only one, or the one picked for this folder before.
   const workspace = await $.session.cwd()
-  const projects = await findProjects(projectFiles($), workspace)
+  // The home folder is never taken for a project; HOME, or USERPROFILE on Windows.
+  const home = homeFolder({ HOME: await $.env.get('HOME'), USERPROFILE: await $.env.get('USERPROFILE') })
+  const projects = await findProjects(projectFiles($), workspace, { home })
   const picks = ((await $.store.get('projectPicks')) ?? {}) as Record<string, string>
   const choice = chooseProject(projects, picks[workspace] ?? '')
   const cwd = 'project' in choice ? choice.project.folder : workspace
@@ -1284,7 +1286,8 @@ export const register: Register = on => {
 
     // ------------------------------------------------------------ project
     const projects = d.projects ?? []
-    const projectName = (one: PanelProject) => `${one.path || one.folder}${one.isAiux ? '  AIUX' : ''}`
+    const where = (one: PanelProject) => one.path || one.folder
+    const projectName = (one: PanelProject) => `${where(one)}${one.isAiux ? '  AIUX' : ''}`
     /** The projects of the session's folder, when there is more than one to choose from. */
     const projectPicker = () =>
       projects.length > 1 ? (
@@ -1731,7 +1734,7 @@ export const register: Register = on => {
             {title('Pick a project')}
             {quiet(
               `${d.workspace} holds ${projects.length} projects` +
-                (apps.length > 0 ? `; ${apps.length === 1 ? 'the AIUX app is' : 'the AIUX apps are'} ${apps.map(one => one.path).join(', ')}.` : '.'),
+                (apps.length > 0 ? `; ${apps.length === 1 ? 'the AIUX app is' : 'the AIUX apps are'} ${apps.map(where).join(', ')}.` : '.'),
             )}
             {projectPicker()}
           </Box>
@@ -1744,7 +1747,7 @@ export const register: Register = on => {
             {title('This project is not an AIUX app')}
             {quiet(
               `An AIUX app has an aiux.json file at its root. ${d.cwd} has none.` +
-                (apps.length > 0 ? ` In this folder: ${apps.map(one => one.path).join(', ')}.` : ''),
+                (apps.length > 0 ? ` In this folder: ${apps.map(where).join(', ')}.` : ''),
             )}
             {projectPicker()}
           </Box>

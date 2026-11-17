@@ -52,6 +52,33 @@ test('a folder inside a project, even under a dot folder, is in that project', a
   assert.equal((await findProjects(windows, 'C:\\Users\\ada\\app\\src'))[0]?.folder, 'C:\\Users\\ada\\app');
 });
 
+test('the look upward is bounded: four levels, not the home folder, not past a repository root', async () => {
+  // Five levels up is too far.
+  const far = memoryFiles({ '/p/aiux.json': '{}', '/p/a/b/c/d/e/x.txt': '' });
+  assert.deepEqual(await findProjects(far, '/p/a/b/c/d/e'), []);
+  assert.equal((await findProjects(far, '/p/a/b/c/d'))[0]?.folder, '/p');
+  // A project in the home folder, or above it, is not one the session works on.
+  const home = memoryFiles({ '/Users/ada/now.config.json': '{}', '/Users/ada/notes/x.txt': '' });
+  assert.deepEqual(await findProjects(home, '/Users/ada/notes', { home: '/Users/ada' }), []);
+  // A repository's root ends the look: a project above it is another one.
+  const repo = memoryFiles({ '/w/now.config.json': '{}', '/w/repo/.git/HEAD': '', '/w/repo/docs/x.txt': '' });
+  assert.deepEqual(await findProjects(repo, '/w/repo/docs'), []);
+});
+
+test('a project above and others under are all found, so the person picks', async () => {
+  const both = memoryFiles({ '/app/aiux.json': '{}', '/app/work/one/now.config.json': '{}', '/app/work/two/now.config.json': '{}' });
+  const projects = await findProjects(both, '/app/work');
+  assert.deepEqual(
+    projects.map((project) => [project.folder, Boolean(project.isAbove)]),
+    [
+      ['/app', true],
+      ['/app/work/one', false],
+      ['/app/work/two', false],
+    ],
+  );
+  assert.deepEqual(chooseProject(projects, ''), { kind: 'pick' });
+});
+
 test('a folder with no project anywhere near gives none', async () => {
   assert.deepEqual(await findProjects(memoryFiles({ '/empty/readme.md': '' }), '/empty'), []);
   assert.deepEqual(await findProjects(memoryFiles({}), '/missing'), []);
